@@ -143,7 +143,7 @@ For each predicate:
 Saved as:
 
 ```
-plots/{predicate}_confidence.png
+data/{predicate}_confidence.png
 ```
 
 ---

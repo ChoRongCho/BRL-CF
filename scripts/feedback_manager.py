@@ -11,9 +11,12 @@ GT_MODEL_CONFIDENCE = {
     "at": 0.99,
     "pose": 0.99,
     
-    "predidcate1": 0.3,
-    "predidcate2": 0.4,
-    "predidcate3": 0.2,
+    # "predidcate1": 0.3,
+    # "predidcate2": 0.4,
+    # "predidcate3": 0.2,
+    "predidcate1": 0.8,
+    "predidcate2": 0.9,
+    "predidcate3": 0.9,
     
     "ripe": 0.8,
     "unripe": 0.85,
@@ -38,6 +41,8 @@ class FeedbackManager:
         self.rng = random.Random(seed)
         self.missing_confidence: float = 0.0
         self.n_sample = n_sample
+        
+        self.number_of_query = 0
 
     # ---------- utilities ----------
     @staticmethod
@@ -194,6 +199,7 @@ class FeedbackManager:
         if not trigger:
             return log
 
+        self.number_of_query += 1
         # predicate별로 "가장 낮은 posterior"만 유지 (비관적)
         min_post_by_pred: Dict[str, Tuple[float, str]] = {}
 
@@ -289,5 +295,5 @@ class FeedbackManager:
             # timestep 끝난 뒤 KB에서 predicate별 confidence 기록
             for pred in PREDICATES:
                 history[pred].append(kb.get_predicate_confidence(pred))
-
-        return history
+        query_rate = (self.number_of_query / len(plan))*100
+        return history, query_rate

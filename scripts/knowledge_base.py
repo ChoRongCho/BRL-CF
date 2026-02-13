@@ -99,20 +99,20 @@ class KnowledgeBase:
     
 def generate_kb():
     KB = KnowledgeBase()
-    KB.add_fact("ripe_tomato1", 0.2) # initial confidence setting
-    KB.add_fact("ripe_tomato2", 0.2)
-    KB.add_fact("unripe_tomato3", 0.2)
-    KB.add_fact("at_stem1_tomato1", 0.2)
-    KB.add_fact("at_stem1_tomato2", 0.2)
-    KB.add_fact("at_stem1_tomato3", 0.2)
-    KB.add_fact("at_robot1_stem1", 0.2)
-    KB.add_fact("pose_tomato1_0.1_8.2_-0.1", 0.2)
-    KB.add_fact("pose_tomato2_0.3_8.1_-0.2", 0.2)
-    KB.add_fact("pose_tomato3_0.4_6.2_0.3", 0.2)
-    KB.add_fact("predidcate1_dummy1", 0.2)
-    KB.add_fact("predidcate1_dummy2", 0.2)
-    KB.add_fact("predidcate2_dummy1", 0.2)
-    KB.add_fact("predidcate2_dummy3", 0.2)
-    KB.add_fact("predidcate3_dummy3", 0.2)
+    KB.add_fact("ripe_tomato1", 0.5) # initial confidence setting
+    KB.add_fact("ripe_tomato2", 0.5)
+    KB.add_fact("unripe_tomato3", 0.5)
+    KB.add_fact("at_stem1_tomato1", 0.5)
+    KB.add_fact("at_stem1_tomato2", 0.5)
+    KB.add_fact("at_stem1_tomato3", 0.5)
+    KB.add_fact("at_robot1_stem1", 0.5)
+    KB.add_fact("pose_tomato1_0.1_8.2_-0.1", 0.5)
+    KB.add_fact("pose_tomato2_0.3_8.1_-0.2", 0.5)
+    KB.add_fact("pose_tomato3_0.4_6.2_0.3", 0.5)
+    KB.add_fact("predidcate1_dummy1", 0.5)
+    KB.add_fact("predidcate1_dummy2", 0.5)
+    KB.add_fact("predidcate2_dummy1", 0.5)
+    KB.add_fact("predidcate2_dummy3", 0.5)
+    KB.add_fact("predidcate3_dummy3", 0.5)
 
     return KB

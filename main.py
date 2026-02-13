@@ -14,11 +14,12 @@ def main():
     plan = planner.generate_random_plan(horizon=1000)
     
     # executing plan and query
-    fm = FeedbackManager(lam=2.0, n_sample=20)
-    history = fm.run_and_record(plan, kb)
-    plot_history(history, save_dir='data/lam2_nsample20_seed43_hori1000')  
+    fm = FeedbackManager(lam=1, n_sample=10)
+    history, query_call = fm.run_and_record(plan, kb)
+    plot_history(history, save_dir='data/lam1_nsample10_seed43_hori20')  
     
     kb.pretty_print()
+    print(f"The rate of total query: {query_call}%")
 
 
 if __name__ == "__main__":
