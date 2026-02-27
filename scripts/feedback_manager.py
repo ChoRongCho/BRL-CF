@@ -1,5 +1,6 @@
 # scripts/feedback_manager.py
 
+from scripts import GT_MODEL_CONFIDENCE
 from scripts.knowledge_base import KnowledgeBase
 from scripts.planner import Action
 
@@ -7,22 +8,41 @@ from typing import Dict, List, Tuple
 import random
 
 
-GT_MODEL_CONFIDENCE = {
-    "at": 0.99,
-    "pose": 0.99,
-    
-    # "predidcate1": 0.3,
-    # "predidcate2": 0.4,
-    # "predidcate3": 0.2,
-    "predidcate1": 0.8,
-    "predidcate2": 0.9,
-    "predidcate3": 0.9,
-    
-    "ripe": 0.8,
-    "unripe": 0.85,
-}
-
 PREDICATES = list(GT_MODEL_CONFIDENCE.keys())
+
+from typing import Dict, List
+
+def compute_classification_stats(logs: List[dict], classes=(1, 2, 3, 4)) -> Dict:
+    total = len(logs)
+
+    # cls1, cls2 ... 형태로 초기화
+    counts = {f"cls{c}": 0 for c in classes}
+    unknown = 0
+
+    for log in logs:
+        c = log.get("classification", None)
+        key = f"cls{c}"
+        if key in counts:
+            counts[key] += 1
+        else:
+            unknown += 1
+
+    # 소수점 둘째 자리까지 반올림
+    rates = {
+        f"cls{c}": round((counts[f"cls{c}"] / total * 100.0), 2) if total > 0 else 0.0
+        for c in classes
+    }
+
+    out = {
+        "counts": counts,
+        "rates": rates,
+        "total": total,
+    }
+
+    if unknown > 0:
+        out["unknown_count"] = unknown
+
+    return out
 
 
 class FeedbackManager:
@@ -75,9 +95,7 @@ class FeedbackManager:
         print("[INIT BETA DISTRIBUTION]")
         for pred, (a, b) in self.meta_ab.items():
             print(f"  {pred:<12} -> alpha={a:.3f}, beta={b:.3f}")
-        
-        
-        
+        print("====================================\n")
 
     # ---------- core logic ----------
     def compute_action_confidence(self, action: Action, kb: KnowledgeBase) -> float:
@@ -107,6 +125,7 @@ class FeedbackManager:
         """
         pred = self.predicate_of(fact)
         gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
+        
         return self.rng.random() < gt
 
     def bayesian_update(self, likelihood: float, prior: float, observation: bool) -> float:
@@ -144,7 +163,7 @@ class FeedbackManager:
 
     def propagate_predicate_confidence(self, kb: KnowledgeBase, pred: str, n_samples: int = 10) -> float:
         """
-        강한 전파 (덜 튐 버전):
+        강한 전파:
         - pred의 Beta에서 theta를 n_samples번 샘플링
         - 그 평균(theta_mean)을 KB에 저장(해당 predicate의 모든 fact에 overwrite)
         """
@@ -172,8 +191,22 @@ class FeedbackManager:
         )
 
         return theta_mean
-
-    def handle_action(self, action: Action, kb: KnowledgeBase) -> Dict:
+    
+    @staticmethod
+    def check_type(is_safe, trigger):
+        is_type = -1
+        if is_safe and trigger:
+            is_type = 1
+        elif is_safe and not trigger:
+            is_type = 2
+        elif not is_safe and trigger:
+            is_type = 3
+        elif not is_safe and not trigger:
+            is_type = 4
+        return is_type
+        
+        
+    def handle_action(self, action_gt: Tuple[Action, bool], kb: KnowledgeBase, timestep: int) -> Dict:
         """
         action 1개 처리:
         - trigger 여부 판단
@@ -181,16 +214,27 @@ class FeedbackManager:
         - 같은 predicate는 timestep 내에 1번만(비관적 min posterior)로 Beta 업데이트
         - 업데이트된 predicate에 대해 강한 전파로 KB를 일괄 갱신
         """
+        action = action_gt[0]
+        is_safe = action_gt[1]
+        
         p = self.compute_action_confidence(action, kb)
         trigger = self.rng.random() < (1.0 - p)
 
-        print(f"[FeedbackManager] action={action.name} preconf_product={p:.4f} trigger={trigger}")
-
+        # print(f"[FeedbackManager] action={action.name} preconf_product={p:.4f} trigger={trigger}")
+        
+        target_preconds = {}
+        for fact in action.preconditions:
+            internal_logit = self.rng.uniform(0.7, 1.0) # assign random internal belief
+            target_preconds[fact] = internal_logit
+            
+            
         log = {
             "action_name": action.name,
-            "preconditions": list(action.preconditions),
+            "preconditions": target_preconds,
             "preconf_product": p,
+            "safe": is_safe,
             "trigger": trigger,
+            "classification": self.check_type(is_safe, trigger),
             "queries": [],
             "beta_updates": [],
             "kb_updates": [],
@@ -200,36 +244,35 @@ class FeedbackManager:
             return log
 
         self.number_of_query += 1
-        # predicate별로 "가장 낮은 posterior"만 유지 (비관적)
         min_post_by_pred: Dict[str, Tuple[float, str]] = {}
 
-        # 1) fact 단위 posterior 계산
-        for fact in action.preconditions:
+        # Phase 1) fact 단위 posterior 계산
+        for fact, internal_logit in target_preconds.items():
             predicate = self.predicate_of(fact)
-            internal_logit = self.rng.uniform(0.5, 1.0)
+            internal_logit = self.rng.uniform(0.7, 1.0) # assign random internal belief
 
             if kb.has_fact(fact):
                 prior = kb.get_confidence(fact)
             else:
                 prior = self.missing_confidence
 
-            obs = self.oracle_query(fact)
-
+            obs = self.oracle_query(fact) # get evidence
+            
             posterior = self.bayesian_update(
                 likelihood=internal_logit,
                 prior=prior,
                 observation=obs
             )
-
-            print(
-                f"[FACT UPDATE] "
-                f"fact={fact:<30} "
-                f"pred={predicate:<12} "
-                f"prior={prior:>6.3f} "
-                f"logit={internal_logit:>6.3f} "
-                f"obs={str(obs):>5} "
-                f"posterior={posterior:>6.3f}"
-            )
+            
+            # print(
+            #     f"[FACT UPDATE] "
+            #     f"fact={fact:<30} "
+            #     f"pred={predicate:<12} "
+            #     f"prior={prior:>6.3f} "
+            #     f"logit={internal_logit:>6.3f} "
+            #     f"obs={str(obs):>5} "
+            #     f"posterior={posterior:>6.3f}"
+            # )
 
             log["queries"].append({
                 "fact": fact,
@@ -243,20 +286,20 @@ class FeedbackManager:
             if (predicate not in min_post_by_pred) or (posterior < min_post_by_pred[predicate][0]):
                 min_post_by_pred[predicate] = (posterior, fact)
 
-        # 2) predicate 단위 Beta 업데이트 (min posterior only)
-        print("[BETA UPDATE] pessimistic per-predicate (min posterior only)")
+        # Phase 2) predicate 단위 Beta 업데이트
+        # print("[BETA UPDATE] per-predicate (min posterior only)")
         updated_preds: List[str] = []
 
         for pred, (c_min, fact_min) in min_post_by_pred.items():
             a_new, b_new = self.update_beta_distribution(pred, c_min)
             updated_preds.append(pred)
 
-            print(
-                f"  pred={pred:<12} "
-                f"picked_fact={fact_min:<30} "
-                f"c_min={c_min:>6.3f} "
-                f"-> alpha={a_new:>7.3f}, beta={b_new:>7.3f}"
-            )
+            # print(
+            #     f"  pred={pred:<12} "
+            #     f"picked_fact={fact_min:<30} "
+            #     f"c_min={c_min:>6.3f} "
+            #     f"-> alpha={a_new:>7.3f}, beta={b_new:>7.3f}"
+            # )
 
             log["beta_updates"].append({
                 "predicate": pred,
@@ -266,8 +309,8 @@ class FeedbackManager:
                 "beta": b_new,
             })
 
-        # 3) 강한 전파로 KB 갱신 (업데이트된 predicate 전체)
-        print("[KB PROPAGATION] strong propagation: overwrite all facts of updated predicates")
+        # 3) KB 갱신
+        # print("[KB PROPAGATION] overwrite all facts of updated predicates")
         for pred in updated_preds:
             theta = self.propagate_predicate_confidence(kb, pred, n_samples=self.n_sample)
             log["kb_updates"].append({
@@ -277,23 +320,30 @@ class FeedbackManager:
 
         return log
 
-    def run_plan(self, plan: List[Action], kb: KnowledgeBase) -> List[Dict]:
-        """ordered plan을 순서대로 action 단위 처리"""
-        logs: List[Dict] = []
-        for action in plan:
-            print(f"\nAction {action.name}")
-            logs.append(self.handle_action(action, kb))
-        return logs
 
-    def run_and_record(self, plan: List[Action], kb: KnowledgeBase):
+    def run(self, plan: List[Tuple[Action, bool]], kb: KnowledgeBase):
+        """
+        Docstring for run_and_record
+        
+        :param self: Description
+        :param plan: Description
+        :type plan: List[Action]
+        :param kb: Description
+        :type kb: KnowledgeBase
+        """
         history = {pred: [] for pred in PREDICATES}
+        logs = []
+        
         self.init_beta_dist(kb)
         for t, action in enumerate(plan):
-            print(f"\nAction {action.name}")
-            self.handle_action(action, kb)  # 내부에서 KB 업데이트까지 수행
+            # print(f"\nAction {action.name}")
+            log = self.handle_action(action, kb, t)  # 내부에서 KB 업데이트까지 수행
+            logs.append(log)
 
             # timestep 끝난 뒤 KB에서 predicate별 confidence 기록
             for pred in PREDICATES:
                 history[pred].append(kb.get_predicate_confidence(pred))
+                
         query_rate = (self.number_of_query / len(plan))*100
-        return history, query_rate
+        cls_stats = compute_classification_stats(logs)
+        return history, query_rate, cls_stats, logs

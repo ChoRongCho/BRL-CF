@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import os
-
+import json
+from datetime import datetime
 from scripts.feedback_manager import GT_MODEL_CONFIDENCE
 
 
@@ -33,3 +34,23 @@ def plot_history(history, save_dir="data"):
         plt.close()                      # 메모리 정리
 
         print(f"[SAVED] {filepath}")
+
+
+
+
+def save_as_json(query_rate, cls_stats, logs, filename=None):
+    if filename is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"experiment_log_{timestamp}.json"
+
+    data = {
+        "query_rate": query_rate,
+        "cls_stats": cls_stats,
+        "logs": logs,
+    }
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
+    print(f"[SAVED] JSON -> {filename}")
+    
