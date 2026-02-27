@@ -12,47 +12,21 @@ PREDICATES = list(GT_MODEL_CONFIDENCE.keys())
 
 from typing import Dict, List
 
-def compute_classification_stats(logs: List[dict], classes=(1, 2, 3, 4)) -> Dict:
-    total = len(logs)
-
-    # cls1, cls2 ... 형태로 초기화
-    counts = {f"cls{c}": 0 for c in classes}
-    unknown = 0
-
-    for log in logs:
-        c = log.get("classification", None)
-        key = f"cls{c}"
-        if key in counts:
-            counts[key] += 1
-        else:
-            unknown += 1
-
-    # 소수점 둘째 자리까지 반올림
-    rates = {
-        f"cls{c}": round((counts[f"cls{c}"] / total * 100.0), 2) if total > 0 else 0.0
-        for c in classes
-    }
-
-    out = {
-        "counts": counts,
-        "rates": rates,
-        "total": total,
-    }
-
-    if unknown > 0:
-        out["unknown_count"] = unknown
-
-    return out
-
 
 class FeedbackManager:
     def __init__(self, 
                  lam: float = 1.0, 
                  n_sample=1,
-                 seed: int = 43):
+                 seed: int = 43,
+                 no_oracle=False,
+                 use_threshold=False,
+                 threshold=None):
         
         # 글로벌 증거 강도(학습률)
         self.lam: float = lam
+        self.no_oracle = no_oracle
+        self.use_threshold = use_threshold
+        self.threshold = threshold
 
         # predicate -> [alpha, beta]
         # (리스트로 유지: a,b 갱신이 간단)
@@ -63,6 +37,7 @@ class FeedbackManager:
         self.n_sample = n_sample
         
         self.number_of_query = 0
+        
 
     # ---------- utilities ----------
     @staticmethod
@@ -92,10 +67,10 @@ class FeedbackManager:
 
             self.meta_ab[pred] = [c, 1.0 - c]
 
-        print("[INIT BETA DISTRIBUTION]")
-        for pred, (a, b) in self.meta_ab.items():
-            print(f"  {pred:<12} -> alpha={a:.3f}, beta={b:.3f}")
-        print("====================================\n")
+        # print("[INIT BETA DISTRIBUTION]")
+        # for pred, (a, b) in self.meta_ab.items():
+        #     print(f"  {pred:<12} -> alpha={a:.3f}, beta={b:.3f}")
+        # print("====================================\n")
 
     # ---------- core logic ----------
     def compute_action_confidence(self, action: Action, kb: KnowledgeBase) -> float:
@@ -118,15 +93,28 @@ class FeedbackManager:
         p = self.compute_action_confidence(action, kb)
         return self.rng.random() < (1.0 - p)
 
-    def oracle_query(self, fact: str) -> bool:
+
+    def do_query(self, fact: str) -> bool:
         """
         외부 오라클(Query 모듈) 시뮬레이션.
         predicate별 GT 확률로 True(=맞다)를 반환.
         """
-        pred = self.predicate_of(fact)
-        gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
+        if self.no_oracle:
+            pred = self.predicate_of(fact)
+            gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
+            
+            noise = self.rng.normal(0.0, 0.1)
+            noisy_gt = gt + noise
+            noisy_gt = max(0.0, min(1.0, noisy_gt))
+            
+            return self.rng.random() < noisy_gt
         
-        return self.rng.random() < gt
+        else:
+            pred = self.predicate_of(fact)
+            gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
+            return self.rng.random() < gt
+
+
 
     def bayesian_update(self, likelihood: float, prior: float, observation: bool) -> float:
         """
@@ -183,12 +171,12 @@ class FeedbackManager:
                     kb.facts[fact] = theta_mean
                 updated_facts += 1
 
-        print(
-            f"  pred={pred:<12} "
-            f"theta_mean={theta_mean:>6.3f} "
-            f"samples={len(thetas):02d} "
-            f"updated_facts={updated_facts}"
-        )
+        # print(
+        #     f"  pred={pred:<12} "
+        #     f"theta_mean={theta_mean:>6.3f} "
+        #     f"samples={len(thetas):02d} "
+        #     f"updated_facts={updated_facts}"
+        # )
 
         return theta_mean
     
@@ -217,8 +205,14 @@ class FeedbackManager:
         action = action_gt[0]
         is_safe = action_gt[1]
         
+        # compute trigger
         p = self.compute_action_confidence(action, kb)
-        trigger = self.rng.random() < (1.0 - p)
+        if self.use_threshold:
+            prob = (1) if p <= self.threshold else (1-p)
+        else:
+            prob = 1.0 - p
+        trigger = self.rng.random() < prob
+        
 
         # print(f"[FeedbackManager] action={action.name} preconf_product={p:.4f} trigger={trigger}")
         
@@ -256,7 +250,7 @@ class FeedbackManager:
             else:
                 prior = self.missing_confidence
 
-            obs = self.oracle_query(fact) # get evidence
+            obs = self.do_query(fact) # get evidence
             
             posterior = self.bayesian_update(
                 likelihood=internal_logit,
@@ -346,4 +340,41 @@ class FeedbackManager:
                 
         query_rate = (self.number_of_query / len(plan))*100
         cls_stats = compute_classification_stats(logs)
+        
         return history, query_rate, cls_stats, logs
+
+
+
+
+def compute_classification_stats(logs: List[dict], classes=(1, 2, 3, 4)) -> Dict:
+    total = len(logs)
+
+    # cls1, cls2 ... 형태로 초기화
+    counts = {f"cls{c}": 0 for c in classes}
+    unknown = 0
+
+    for log in logs:
+        c = log.get("classification", None)
+        key = f"cls{c}"
+        if key in counts:
+            counts[key] += 1
+        else:
+            unknown += 1
+
+    # 소수점 둘째 자리까지 반올림
+    rates = {
+        f"cls{c}": round((counts[f"cls{c}"] / total * 100.0), 2) if total > 0 else 0.0
+        for c in classes
+    }
+
+    out = {
+        "counts": counts,
+        "rates": rates,
+        "total": total,
+    }
+
+    if unknown > 0:
+        out["unknown_count"] = unknown
+
+    return out
+

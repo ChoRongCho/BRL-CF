@@ -20,7 +20,7 @@ class Action:
 
 
 class Planner:
-    def __init__(self, do_label=True, show_actions=True):
+    def __init__(self, do_label=True, show_actions=False):
         """
         Planner 초기화
 

@@ -33,7 +33,7 @@ def plot_history(history, save_dir="data"):
         plt.savefig(filepath, dpi=300)   # ← 저장
         plt.close()                      # 메모리 정리
 
-        print(f"[SAVED] {filepath}")
+        # print(f"[SAVED] {filepath}")
 
 
 
