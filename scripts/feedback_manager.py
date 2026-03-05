@@ -3,7 +3,7 @@
 from scripts import GT_MODEL_CONFIDENCE
 from scripts.knowledge_base import KnowledgeBase
 from scripts.planner import Action
-
+import math
 from typing import Dict, List, Tuple
 import random
 
@@ -17,10 +17,12 @@ class FeedbackManager:
     def __init__(self, 
                  lam: float = 1.0, 
                  n_sample=1,
-                 seed: int = 43,
+                 gamma=0.95,
+                 seed: int = 42,
                  no_oracle=False,
                  use_threshold=False,
-                 threshold=None):
+                 threshold=None,
+                 use_timevariant=False):
         
         # 글로벌 증거 강도(학습률)
         self.lam: float = lam
@@ -37,7 +39,16 @@ class FeedbackManager:
         self.n_sample = n_sample
         
         self.number_of_query = 0
+        self.horizon = None
+        # self.gamma = 0.95
+        self.gamma = gamma
         
+        # for settings
+        self.use_timevariant = use_timevariant
+        self.gt_delta_inc = 0.5
+        self.gt_delta_dec = 0.5
+        self.gt_sine_amp  = 0.3
+        self.gt_eps = 1e-6
 
     # ---------- utilities ----------
     @staticmethod
@@ -71,7 +82,50 @@ class FeedbackManager:
         # for pred, (a, b) in self.meta_ab.items():
         #     print(f"  {pred:<12} -> alpha={a:.3f}, beta={b:.3f}")
         # print("====================================\n")
+    
+    
+    # ---------- test ----------------
+    def gt_at(self, pred: str, t: int) -> float:
+        """
+        Time-varying GT for certain predicates.
+        - predidcate1: linear increase from gt0 to gt0 + gt_delta_inc
+        - predidcate2: linear decrease from gt0 to gt0 - gt_delta_dec
+        - predidcate3: one-period sine over whole horizon (mean=gt0, amp=gt_sine_amp)
+        Others: constant gt0.
+        """
+        gt0 = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
+        if self.use_timevariant:
+            # horizon이 아직 없으면 그냥 상수로
+            H = self.horizon if (self.horizon is not None) else 1
+            H = max(1, int(H))
 
+            # t in [0, H-1]로 normalize
+            if H == 1:
+                tau = 0.0
+            else:
+                tau = max(0.0, min(1.0, t / (H - 1)))
+
+            if pred == "predidcate1":
+                gt = gt0 + self.gt_delta_inc * tau
+
+            elif pred == "predidcate2":
+                gt = gt0 - self.gt_delta_dec * tau
+
+            elif pred == "predidcate3":
+                # 전체 horizon이 1주기: t=0에서 sin(0)=0, t=H-1에서 sin(2π)=0
+                angle = 2.0 * math.pi * tau
+                gt = gt0 + self.gt_sine_amp * math.sin(angle)
+
+            else:
+                gt = gt0
+
+            # 0<gt<1 보장
+            gt = min(max(gt, self.gt_eps), 1.0 - self.gt_eps)
+            return gt
+        else:
+            return gt0
+    
+    
     # ---------- core logic ----------
     def compute_action_confidence(self, action: Action, kb: KnowledgeBase) -> float:
         """action의 preconditions confidence 곱"""
@@ -94,24 +148,19 @@ class FeedbackManager:
         return self.rng.random() < (1.0 - p)
 
 
-    def do_query(self, fact: str) -> bool:
+    def do_query(self, fact: str, t: int) -> bool:
         """
         외부 오라클(Query 모듈) 시뮬레이션.
         predicate별 GT 확률로 True(=맞다)를 반환.
         """
-        if self.no_oracle:
-            pred = self.predicate_of(fact)
-            gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
-            
-            noise = self.rng.normal(0.0, 0.1)
-            noisy_gt = gt + noise
-            noisy_gt = max(0.0, min(1.0, noisy_gt))
-            
-            return self.rng.random() < noisy_gt
+        pred = self.predicate_of(fact)
+        gt = self.gt_at(pred, t)
         
+        if self.no_oracle:            
+            noise = self.rng.gauss(0.0, 0.1)
+            noisy_gt = max(0.0, min(1.0 - self.gt_eps, gt + noise))
+            return self.rng.random() < noisy_gt
         else:
-            pred = self.predicate_of(fact)
-            gt = float(GT_MODEL_CONFIDENCE.get(pred, 0.5))
             return self.rng.random() < gt
 
 
@@ -144,6 +193,11 @@ class FeedbackManager:
         """
         self._ensure_predicate(pred)
         a, b = self.meta_ab[pred]
+        
+        # forgetting
+        a *= self.gamma
+        b *= self.gamma
+        
         a = a + self.lam * float(c)
         b = b + self.lam * (1.0 - float(c))
         self.meta_ab[pred] = [a, b]
@@ -243,30 +297,21 @@ class FeedbackManager:
         # Phase 1) fact 단위 posterior 계산
         for fact, internal_logit in target_preconds.items():
             predicate = self.predicate_of(fact)
-            internal_logit = self.rng.uniform(0.7, 1.0) # assign random internal belief
 
             if kb.has_fact(fact):
                 prior = kb.get_confidence(fact)
             else:
                 prior = self.missing_confidence
-
-            obs = self.do_query(fact) # get evidence
+            
+            # ================================================
+            obs = self.do_query(fact, timestep) # get evidence
+            # ================================================
             
             posterior = self.bayesian_update(
                 likelihood=internal_logit,
                 prior=prior,
                 observation=obs
             )
-            
-            # print(
-            #     f"[FACT UPDATE] "
-            #     f"fact={fact:<30} "
-            #     f"pred={predicate:<12} "
-            #     f"prior={prior:>6.3f} "
-            #     f"logit={internal_logit:>6.3f} "
-            #     f"obs={str(obs):>5} "
-            #     f"posterior={posterior:>6.3f}"
-            # )
 
             log["queries"].append({
                 "fact": fact,
@@ -287,13 +332,6 @@ class FeedbackManager:
         for pred, (c_min, fact_min) in min_post_by_pred.items():
             a_new, b_new = self.update_beta_distribution(pred, c_min)
             updated_preds.append(pred)
-
-            # print(
-            #     f"  pred={pred:<12} "
-            #     f"picked_fact={fact_min:<30} "
-            #     f"c_min={c_min:>6.3f} "
-            #     f"-> alpha={a_new:>7.3f}, beta={b_new:>7.3f}"
-            # )
 
             log["beta_updates"].append({
                 "predicate": pred,
@@ -326,11 +364,12 @@ class FeedbackManager:
         :type kb: KnowledgeBase
         """
         history = {pred: [] for pred in PREDICATES}
+        gt_history = {pred: [] for pred in PREDICATES}
         logs = []
         
         self.init_beta_dist(kb)
+        self.horizon = len(plan)
         for t, action in enumerate(plan):
-            # print(f"\nAction {action.name}")
             log = self.handle_action(action, kb, t)  # 내부에서 KB 업데이트까지 수행
             logs.append(log)
 
@@ -338,10 +377,13 @@ class FeedbackManager:
             for pred in PREDICATES:
                 history[pred].append(kb.get_predicate_confidence(pred))
                 
+            for pred in PREDICATES:
+                gt_history[pred].append(self.gt_at(pred, t))
+                
         query_rate = (self.number_of_query / len(plan))*100
         cls_stats = compute_classification_stats(logs)
         
-        return history, query_rate, cls_stats, logs
+        return history, gt_history, query_rate, cls_stats, logs
 
 
 

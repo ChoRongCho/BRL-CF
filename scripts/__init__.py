@@ -4,9 +4,9 @@ GT_MODEL_CONFIDENCE = {
     "at": 0.99,
     "pose": 0.99,
     
-    "predidcate1": 0.2,
-    "predidcate2": 0.3,
-    "predidcate3": 0.4,
+    "predidcate1": 0.3,
+    "predidcate2": 0.8,
+    "predidcate3": 0.5,
     
     "ripe": 0.8,
     "unripe": 0.85,
