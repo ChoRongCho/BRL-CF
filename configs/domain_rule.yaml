@@ -1,0 +1,240 @@
+domain: Logistics
+
+meta_data:
+  description: "ASP encoding schema for the Logistics domain"
+  semantics: "nongrounded first-order style rules"
+  state_predicates:
+    - at(object, location)
+    - in(package, carrier)
+  action_predicates:
+    - move_truck(truck, from, to)
+    - fly_airplane(airplane, from, to)
+    - load_truck(package, truck, location)
+    - unload_truck(package, truck, location)
+    - load_airplane(package, airplane, airport)
+    - unload_airplane(package, airplane, airport)
+  temporal_predicates:
+    - holds(fluent, time)
+    - occurs(action, time)
+
+fact:
+  - predicate: step(T)
+    arity: [T]
+    meaning: "T is an executable planning step"
+
+  - predicate: time(T)
+    arity: [T]
+    meaning: "T is a time point"
+
+  - predicate: next(T, T1)
+    arity: [T, T1]
+    meaning: "T1 is the successor of T"
+
+  - predicate: goal(F)
+    arity: [F]
+    meaning: "F is a goal fluent"
+
+  - predicate: airport(L)
+    arity: [L]
+    meaning: "L is an airport location"
+
+  - predicate: in_city(L, C)
+    arity: [L, C]
+    meaning: "Location L belongs to city C"
+
+  - predicate: road(L1, L2)
+    arity: [L1, L2]
+    meaning: "Truck can move between L1 and L2"
+
+rule:
+  - head: "holds(at(T, To), T1)"
+    body:
+      - "occurs(move_truck(T, From, To), T)"
+      - "next(T, T1)"
+
+  - head: "holds(at(A, To), T1)"
+    body:
+      - "occurs(fly_airplane(A, From, To), T)"
+      - "next(T, T1)"
+
+  - head: "holds(in(P, Tuck), T1)"
+    body:
+      - "occurs(load_truck(P, Tuck, L), T)"
+      - "next(T, T1)"
+
+  - head: "holds(at(P, L), T1)"
+    body:
+      - "occurs(unload_truck(P, Tuck, L), T)"
+      - "next(T, T1)"
+
+  - head: "holds(in(P, A), T1)"
+    body:
+      - "occurs(load_airplane(P, A, L), T)"
+      - "next(T, T1)"
+
+  - head: "holds(at(P, L), T1)"
+    body:
+      - "occurs(unload_airplane(P, A, L), T)"
+      - "next(T, T1)"
+
+  - head: "holds(F, T1)"
+    body:
+      - "holds(F, T)"
+      - "next(T, T1)"
+      - "not terminated(F, T)"
+
+  - head: "terminated(at(T, From), T)"
+    body:
+      - "occurs(move_truck(T, From, To), T)"
+
+  - head: "terminated(at(A, From), T)"
+    body:
+      - "occurs(fly_airplane(A, From, To), T)"
+
+  - head: "terminated(at(P, L), T)"
+    body:
+      - "occurs(load_truck(P, Tuck, L), T)"
+
+  - head: "terminated(at(P, L), T)"
+    body:
+      - "occurs(load_airplane(P, A, L), T)"
+
+  - head: "terminated(in(P, Tuck), T)"
+    body:
+      - "occurs(unload_truck(P, Tuck, L), T)"
+
+  - head: "terminated(in(P, A), T)"
+    body:
+      - "occurs(unload_airplane(P, A, L), T)"
+
+constraint:
+  - body:
+      - "occurs(move_truck(T, From, To), Time)"
+      - "not holds(at(T, From), Time)"
+
+  - body:
+      - "occurs(move_truck(T, From, To), Time)"
+      - "not road(From, To)"
+
+  - body:
+      - "occurs(fly_airplane(A, From, To), Time)"
+      - "not holds(at(A, From), Time)"
+
+  - body:
+      - "occurs(fly_airplane(A, From, To), Time)"
+      - "not airport(From)"
+
+  - body:
+      - "occurs(fly_airplane(A, From, To), Time)"
+      - "not airport(To)"
+
+  - body:
+      - "occurs(load_truck(P, Tuck, L), Time)"
+      - "not holds(at(P, L), Time)"
+
+  - body:
+      - "occurs(load_truck(P, Tuck, L), Time)"
+      - "not holds(at(Tuck, L), Time)"
+
+  - body:
+      - "occurs(unload_truck(P, Tuck, L), Time)"
+      - "not holds(in(P, Tuck), Time)"
+
+  - body:
+      - "occurs(unload_truck(P, Tuck, L), Time)"
+      - "not holds(at(Tuck, L), Time)"
+
+  - body:
+      - "occurs(load_airplane(P, A, L), Time)"
+      - "not holds(at(P, L), Time)"
+
+  - body:
+      - "occurs(load_airplane(P, A, L), Time)"
+      - "not holds(at(A, L), Time)"
+
+  - body:
+      - "occurs(load_airplane(P, A, L), Time)"
+      - "not airport(L)"
+
+  - body:
+      - "occurs(unload_airplane(P, A, L), Time)"
+      - "not holds(in(P, A), Time)"
+
+  - body:
+      - "occurs(unload_airplane(P, A, L), Time)"
+      - "not holds(at(A, L), Time)"
+
+  - body:
+      - "occurs(unload_airplane(P, A, L), Time)"
+      - "not airport(L)"
+
+  - body:
+      - "goal(F)"
+      - "not holds(F, T)"
+      - "final_time(T)"
+
+
+choice_rules:
+  - head: "occurs(A, T)"
+    body:
+      - "action(A)"
+      - "step(T)"
+    cardinality: "{ 0..1 }"
+    meaning: "an action may occur at time T"
+
+  - head: "occurs(A, T)"
+    body:
+      - "action(A)"
+      - "step(T)"
+    cardinality: "{ 1..1 }"
+    condition: "single_action_per_step"
+    meaning: "exactly one action occurs at each step if sequential planning is assumed"
+
+
+derived_rules:
+  - head: "action(move_truck(T, From, To))"
+    body:
+      - "truck(T)"
+      - "location(From)"
+      - "location(To)"
+
+  - head: "action(fly_airplane(A, From, To))"
+    body:
+      - "airplane(A)"
+      - "airport(From)"
+      - "airport(To)"
+
+  - head: "action(load_truck(P, Tuck, L))"
+    body:
+      - "package(P)"
+      - "truck(Tuck)"
+      - "location(L)"
+
+  - head: "action(unload_truck(P, Tuck, L))"
+    body:
+      - "package(P)"
+      - "truck(Tuck)"
+      - "location(L)"
+
+  - head: "action(load_airplane(P, A, L))"
+    body:
+      - "package(P)"
+      - "airplane(A)"
+      - "airport(L)"
+
+  - head: "action(unload_airplane(P, A, L))"
+    body:
+      - "package(P)"
+      - "airplane(A)"
+      - "airport(L)"
+
+  - head: "same_city(L1, L2)"
+    body:
+      - "in_city(L1, C)"
+      - "in_city(L2, C)"
+
+  - head: "local_move(T, From, To)"
+    body:
+      - "truck(T)"
+      - "road(From, To)"
+      - "same_city(From, To)"
