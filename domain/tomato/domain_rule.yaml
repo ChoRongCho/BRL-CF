@@ -1,0 +1,193 @@
+domain: TomatoHarvest
+
+meta_data:
+  description: "Generate all possible worlds consistent with partial observations in a tomato harvesting domain"
+  semantics: "ASP-style world generation under partial observability"
+  purpose: "belief state initialization / possible world enumeration"
+  assumptions:
+    - "Each tomato has exactly one hidden or observed state"
+    - "A tomato state is one of the predefined symbolic states"
+    - "Observed tomato states are hard evidence"
+    - "Unobserved tomatoes may be assigned any state consistent with constraints"
+    - "The total set of tomatoes is fixed in advance"
+    - "The state space is fixed and does not expand dynamically"
+
+predicates:
+  # Object
+  - predicate: tomato(T)
+    arity: [T]
+    meaning: "T is a tomato object"
+  
+  - predicate: robot(R)
+    arity: [R]
+    meaning: "R is a robot agent"
+
+  - predicate: location(L)
+    arity: [L]
+    meaning: "L is a location"
+  
+  - predicate: stem(S)
+    arity: [S]
+    meaning: "S is a stem where a tomato can be located"
+
+  # Tomato properties
+  - predicate: observed(T)
+    arity: [T]
+    meaning: "T is observed by R"
+
+  - predicate: ripe(T)
+    arity: [T]
+    meaning: "T is ripe"
+
+  - predicate: unripe(T)
+    arity: [T]
+    meaning: "T is unripe"
+
+  - predicate: rotten(T)
+    arity: [T]
+    meaning: "T is rotten"
+
+  # Tomato location
+  - predicate: holded(T, R)
+    arity: [T]
+    meaning: "Tomato T is holded by robot R"
+
+  - predicate: loaded(T, R)
+    arity: [T, R]
+    meaning: "Tomato T is harvested/loaded by robot R"
+  
+  - predicate: discarded(T)
+    arity: [T]
+    meaning: "Tomato T is discarded by robot R"
+
+  - predicate: at(T, S)
+    arity: [T, S]
+    meaning: "T is located at S"
+  
+  # The number of tomatoes
+  - predicate: tomato_count(N)
+    arity: [N]
+    meaning: "Total number of tomatoes"
+  
+  - predicate: tomato_harvested(N)
+    arity: [N]
+    meaning: "Total number of harvested tomatoes"
+
+  # Robot
+  - predicate: handempty(R)
+    arity: [R]
+    meaning: "The hand of R is available"
+  
+  - predicate: holding(R, T)
+    arity: [R, T]
+    meaning: "Robot R holds tomato T"
+  
+  - predicate: located(R, L)
+    arity: [R, L]
+    meaning: "R is located at L"
+
+rule:
+  - head: "location(S)"
+    body:
+      - "stem(S)"
+
+  - head: "tomato_count(N)"
+    body:
+      - "N = #count { T : tomato(T) }"
+
+  - head: "tomato_harvested(N)"
+    body:
+      - "N = #count { T,R : loaded(T, R) }"
+
+choice_rules:
+  - elements:
+      - atom: "at(T,S)"
+        over:
+          - "stem(S)"
+      - atom: "holded(T,R)"
+        over:
+          - "robot(R)"
+      - atom: "discarded(T)"
+      - atom: "loaded(T,R)"
+        over:
+          - "robot(R)"
+    given:
+      - "tomato(T)"
+      - "observed(T)"
+    cardinality: "1..1"
+
+  - elements:
+      - atom: "ripe(T)"
+      - atom: "unripe(T)"
+      - atom: "rotten(T)"
+    given:
+      - "tomato(T)"
+      - "not observed(T)"
+    cardinality: "1..1"
+
+  - elements:
+      - atom: "at(T, S)"
+        over: 
+          - "stem(S)"
+    given:
+      - "tomato(T)"
+      - "not observed(T)"
+    cardinality: "1..1"
+
+
+constraint:
+  - body:
+      - "tomato(T)"
+      - "not 1 { ripe(T); unripe(T); rotten(T) } 1"
+    meaning: "Each tomato must have exactly one state"
+
+  - body:
+      - "at(T, S)"
+      - "not stem(S)"
+    meaning: "A tomato attached by at(T,S) must be on a stem"
+
+  - body:
+      - "tomato(T)"
+      - "not 1 { at(T, S) : stem(S); holded(T, R) : robot(R); discarded(T); loaded(T, R) : robot(R) } 1"
+    meaning: "Each tomato must have exactly one physical placement status"
+
+  - body:
+      - "holded(T, R)"
+      - "not holding(R, T)"
+    meaning: "If a tomato is held by a robot, the robot must be holding it"
+
+  - body:
+      - "holding(R, T)"
+      - "handempty(R)"
+    meaning: "A robot cannot be holding a tomato and have an empty hand at the same time"
+
+  - body:
+      - "holding(R, T1)"
+      - "holding(R, T2)"
+      - "T1 != T2"
+    meaning: "A robot cannot hold two different tomatoes simultaneously"
+
+  - body:
+      - "robot(R)"
+      - "not 1 { located(R, L) : location(L) } 1"
+    meaning: "Each robot must have exactly one location"
+
+
+
+
+show:
+  - "#show tomato/1"
+  - "#show robot/1"
+  - "#show location/1"
+  - "#show stem/1"
+  - "#show observed/1"
+  - "#show ripe/1"
+  - "#show unripe/1"
+  - "#show rotten/1"
+  - "#show loaded/2"
+  - "#show at/2"
+  - "#show located/2"
+  - "#show handempty/1"
+  - "#show holding/2"
+  - "#show tomato_count/1"
+  - "#show tomato_harvested/1"

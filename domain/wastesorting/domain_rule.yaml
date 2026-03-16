@@ -1,0 +1,219 @@
+domain: WasteSorting
+
+meta_data:
+  description: "Pick, delivery, and recycling domain with material-based bins"
+  semantics: "ASP-style world generation under partial observability"
+  purpose: "belief state initialization / possible world enumeration"
+
+predicates:
+
+  # objects
+  - predicate: robot(R)
+    arity: [R]
+    meaning: "R is a robot"
+
+  - predicate: item(I)
+    arity: [I]
+    meaning: "I is a movable item"
+
+  - predicate: location(L)
+    arity: [L]
+    meaning: "L is a location"
+
+  - predicate: bin(B)
+    arity: [B]
+    meaning: "B is a recycling bin"
+
+  # item properties
+  - predicate: plastic(I)
+    arity: [I]
+    meaning: "Item is plastic"
+
+  - predicate: paper(I)
+    arity: [I]
+    meaning: "Item is paper"
+
+  - predicate: can(I)
+    arity: [I]
+    meaning: "Item is aluminum can"
+
+  - predicate: general(I)
+    arity: [I]
+    meaning: "Item is general waste"
+
+  - predicate: valuable(I)
+    arity: [I]
+    meaning: "Item must not be discarded"
+
+  # bin properties
+  - predicate: plastic_bin(B)
+    arity: [B]
+    meaning: "Bin accepts plastic"
+
+  - predicate: paper_bin(B)
+    arity: [B]
+    meaning: "Bin accepts paper"
+
+  - predicate: can_bin(B)
+    arity: [B]
+    meaning: "Bin accepts cans"
+
+  - predicate: general_bin(B)
+    arity: [B]
+    meaning: "Bin accepts general waste"
+
+  # world state
+  - predicate: at(I,L)
+    arity: [I,L]
+    meaning: "Item is located at location"
+
+  - predicate: bin_at(B,L)
+    arity: [B,L]
+    meaning: "Bin B is located at location L"
+
+  - predicate: holding(R,I)
+    arity: [R,I]
+    meaning: "Robot holds item"
+
+  - predicate: handempty(R)
+    arity: [R]
+    meaning: "Robot hand is empty"
+
+  - predicate: located(R,L)
+    arity: [R,L]
+    meaning: "Robot location"
+
+  - predicate: in_bin(I,B)
+    arity: [I,B]
+    meaning: "Item disposed into bin"
+
+
+rule:
+
+  # location typing
+  - head: "location(B)"
+    body:
+      - "bin(B)"
+
+  - head: "location(L)"
+    body:
+      - "bin_at(B,L)"
+
+  # material exclusivity
+  - head: "invalid_material(I)"
+    body:
+      - "plastic(I)"
+      - "paper(I)"
+
+  - head: "invalid_material(I)"
+    body:
+      - "plastic(I)"
+      - "can(I)"
+
+  - head: "invalid_material(I)"
+    body:
+      - "paper(I)"
+      - "can(I)"
+
+  - head: "invalid_material(I)"
+    body:
+      - "plastic(I)"
+      - "general(I)"
+
+  - head: "invalid_material(I)"
+    body:
+      - "paper(I)"
+      - "general(I)"
+
+  - head: "invalid_material(I)"
+    body:
+      - "can(I)"
+      - "general(I)"
+
+
+constraint:
+
+  - body:
+      - "bin_at(B,L1)"
+      - "bin_at(B,L2)"
+      - "L1 != L2"
+    meaning: "Each bin must have exactly one location"
+
+  # item cannot be both held and located
+  - body:
+      - "holding(R,I)"
+      - "at(I,L)"
+    meaning: "Item cannot be held and placed"
+
+  # robot single location
+  - body:
+      - "located(R,L1)"
+      - "located(R,L2)"
+      - "L1 != L2"
+    meaning: "Robot has exactly one location"
+
+  # robot hand consistency
+  - body:
+      - "holding(R,I)"
+      - "handempty(R)"
+    meaning: "Robot cannot hold item if hand empty"
+
+  - body:
+      - "holding(R,I1)"
+      - "holding(R,I2)"
+      - "I1 != I2"
+    meaning: "Robot cannot hold two items"
+
+  # item single location
+  - body:
+      - "at(I,L1)"
+      - "at(I,L2)"
+      - "L1 != L2"
+    meaning: "Item cannot be at two locations"
+
+  # valuable item cannot be recycled
+  - body:
+      - "valuable(I)"
+      - "in_bin(I,B)"
+    meaning: "Valuable items must not be discarded"
+
+  # bin compatibility
+  - body:
+      - "plastic(I)"
+      - "in_bin(I,B)"
+      - "not plastic_bin(B)"
+    meaning: "Plastic must go to plastic bin"
+
+  - body:
+      - "paper(I)"
+      - "in_bin(I,B)"
+      - "not paper_bin(B)"
+    meaning: "Paper must go to paper bin"
+
+  - body:
+      - "can(I)"
+      - "in_bin(I,B)"
+      - "not can_bin(B)"
+    meaning: "Cans must go to can bin"
+
+  - body:
+      - "general(I)"
+      - "in_bin(I,B)"
+      - "not general_bin(B)"
+    meaning: "General waste must go to general bin"
+
+
+show:
+  - "#show item/1"
+  - "#show robot/1"
+  - "#show location/1"
+  - "#show bin/1"
+  - "#show at/2"
+  - "#show holding/2"
+  - "#show located/2"
+  - "#show in_bin/2"
+  - "#show plastic/1"
+  - "#show paper/1"
+  - "#show can/1"
+  - "#show general/1"
+  - "#show valuable/1"
