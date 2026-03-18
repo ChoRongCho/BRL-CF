@@ -18,37 +18,44 @@ def parse_args(domain: str):
     )
 
     parser.add_argument(
-        "--domain-rule",
+        "--domain_rule",
         type=str,
         default=f"domain/{domain}/domain_rule.yaml",
         help="Path to domain rule yaml"
     )
 
     parser.add_argument(
-        "--initial-state",
+        "--initial_state",
         type=str,
         default=f"domain/{domain}/initial_state.yaml",
         help="Path to initial state yaml"
     )
     
     parser.add_argument(
-        "--robot-skill",
+        "--robot_skill",
         type=str,
         default=f"domain/{domain}/robot_skill.yaml",
         help="Path to robot-skill yaml"
+    )
+    
+    parser.add_argument(
+        "--stochastic_action",
+        type=bool,
+        default=False,
+        help="Is action stochastic"
     )
 
     parser.add_argument(
         "--seed",
         type=int,
-        default=0,
+        default=1,
         help="Random seed"
     )
 
     parser.add_argument(
-        "--max-steps",
+        "--max_step",
         type=int,
-        default=50,
+        default=10,
         help="Maximum steps per episode"
     )
 

@@ -89,7 +89,6 @@ predicates:
 
 
 rule:
-
   # location typing
   - head: "location(B)"
     body:
@@ -99,40 +98,68 @@ rule:
     body:
       - "bin_at(B,L)"
 
-  # material exclusivity
-  - head: "invalid_material(I)"
+  # bin 
+  - head: "bin(B)"
     body:
-      - "plastic(I)"
-      - "paper(I)"
+      - "plastic_bin(B)"
 
-  - head: "invalid_material(I)"
+  - head: "bin(B)"
     body:
-      - "plastic(I)"
-      - "can(I)"
+      - "paper_bin(B)"
 
-  - head: "invalid_material(I)"
+  - head: "bin(B)"
     body:
-      - "paper(I)"
-      - "can(I)"
+      - "can_bin(B)"
 
-  - head: "invalid_material(I)"
+  - head: "bin(B)"
     body:
-      - "plastic(I)"
-      - "general(I)"
+      - "general_bin(B)"
 
-  - head: "invalid_material(I)"
-    body:
-      - "paper(I)"
-      - "general(I)"
 
-  - head: "invalid_material(I)"
-    body:
-      - "can(I)"
-      - "general(I)"
+choice_rules:
+
+  # 각 item은 정확히 하나의 material을 가진다
+  - elements:
+      - atom: "plastic(I)"
+      - atom: "paper(I)"
+      - atom: "can(I)"
+      - atom: "general(I)"
+      - atom: "valuable(I)"
+    given:
+      - "item(I)"
+    cardinality: "1..1"
+
+
+  # 각 item은 정확히 하나의 물리 상태를 가진다
+  - elements:
+      - atom: "at(I,L)"
+        over:
+          - "location(L)"
+      - atom: "holding(R,I)"
+        over:
+          - "robot(R)"
+      - atom: "in_bin(I,B)"
+        over:
+          - "bin(B)"
+    given:
+      - "item(I)"
+    cardinality: "1..1"
+
+
+  # 각 bin은 정확히 하나의 물리 상태를 가진다
+  - elements:
+      - atom: "bin_at(B,L)"
+        over:
+          - "location(L)"
+    given:
+      - "bin(B)"
+    cardinality: "1..1"
+
+
 
 
 constraint:
-
+  # given bin is observable
   - body:
       - "bin_at(B,L1)"
       - "bin_at(B,L2)"
@@ -163,13 +190,6 @@ constraint:
       - "holding(R,I2)"
       - "I1 != I2"
     meaning: "Robot cannot hold two items"
-
-  # item single location
-  - body:
-      - "at(I,L1)"
-      - "at(I,L2)"
-      - "L1 != L2"
-    meaning: "Item cannot be at two locations"
 
   # valuable item cannot be recycled
   - body:

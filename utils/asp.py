@@ -64,6 +64,12 @@ class DomainRuleBridge:
         self.choice_rules = self._parse_choice_rule_section(self.raw_data.get("choice_rules", []))
         self.shows = self._parse_show_section(self.raw_data.get("show", []))
 
+    def clear_runtime(self):
+        self.runtime_facts.clear()
+        self.runtime_rules.clear()
+        self.runtime_constraints.clear()
+        self.runtime_shows.clear()
+    
     def add_runtime_facts(self, facts: Sequence[str]) -> None:
         self.runtime_facts.extend(self._normalize_statements(facts))
 
@@ -98,9 +104,52 @@ class DomainRuleBridge:
                 s = "#show " + s
 
             result.append(self._ensure_period(s))
-        self.runtime_shows.extend(result)
+        self.runtime_shows.extend(result)  
+        
+        
+    def build_certain_worlds(self) -> str:
+        lines: List[str] = [f"% Domain: {self.domain_name}", ""]
 
-    def build_program(self) -> str:
+        if self.runtime_facts:
+            lines.append("% Runtime facts")
+            lines.extend(self.runtime_facts)
+            lines.append("")
+
+        if self.facts:
+            lines.append("% Static domain facts")
+            lines.extend(self.facts)
+            lines.append("")
+
+        if self.rules:
+            lines.append("% Rules")
+            lines.extend(self.rules)
+            lines.append("")
+
+        if self.runtime_rules:
+            lines.append("% Runtime rules")
+            lines.extend(self.runtime_rules)
+            lines.append("")
+
+        if self.constraints:
+            lines.append("% Constraints")
+            lines.extend(self.constraints)
+            lines.append("")
+
+        if self.runtime_constraints:
+            lines.append("% Runtime constraints")
+            lines.extend(self.runtime_constraints)
+            lines.append("")
+
+        show_lines = self.shows + self.runtime_shows
+        if show_lines:
+            lines.append("% Show")
+            lines.extend(show_lines)
+            lines.append("")
+
+        return "\n".join(lines).strip() + "\n"
+    
+    
+    def build_possible_worlds(self) -> str:
         lines: List[str] = [f"% Domain: {self.domain_name}", ""]
 
         if self.runtime_facts:
@@ -149,14 +198,14 @@ class DomainRuleBridge:
 
     def save_program(self, output_path: Union[str, Path]) -> Path:
         output_path = Path(output_path)
-        output_path.write_text(self.build_program(), encoding="utf-8")
+        output_path.write_text(self.build_possible_worlds(), encoding="utf-8")
         return output_path
 
     def solve(self, max_models: int = 0, yield_: bool = True) -> List[PossibleWorld]:
         """
         max_models=0 means enumerate all models.
         """
-        program = self.build_program()
+        program = self.build_possible_worlds()
 
         ctl = clingo.Control(arguments=[str(max_models)])       
         ctl.add("base", [], program)       
@@ -447,11 +496,7 @@ def solve_asp(program, max_models: int = 0, yield_: bool = True) -> List[Possibl
     return worlds
 
 
-def solve_as_dicts(
-    self,
-    max_models: int = 0,
-    prefixes: Sequence[str] = (),
-) -> List[Dict[str, Any]]:
+def solve_as_dicts(self, max_models: int = 0, prefixes: Sequence[str] = ()) -> List[Dict[str, Any]]:
     worlds = self.solve(max_models=max_models)
     result: List[Dict[str, Any]] = []
 

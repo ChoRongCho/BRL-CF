@@ -1,30 +1,129 @@
 actions:
-  - name: move
-    type: task
-    parameters: [from, to]
+  - name: navigate
+    type: move
+    parameters: [R, L1, L2]
     cost: 1.0
     preconditions:
-      - robot_at_{from}
+      - robot(R)
+      - location(L1)
+      - location(L2)
+      - located(R, L1)
+      - nav_prepared(R)
     add_effects:
-      - robot_at_{to}
+      - located(R, L2)
     del_effects:
-      - robot_at_{from}
+      - located(R, L1)
+      - nav_prepared(R)
+    observation:
+      - located(R, L2)
 
-  - name: inspect
+  - name: prepare_nav
+    type: task
+    parameters: [R]
+    cost: 0.0
+    preconditions:
+      - robot(R)
+      - handempty(R)
+    add_effects:
+      - nav_prepared(R)
+    del_effects: []
+    observation:
+      - nav_prepared(R)
+
+  - name: detect
     type: observe
-    parameters: [target]
+    parameters: [R, S]
     cost: 0.5
-    preconditions: []
+    preconditions:
+      - robot(R)
+      - stem(S)
+      - located(R, S)
     add_effects: []
     del_effects: []
+    observation:
+      - observed(T)
+      - ripe(T)
+      - unripe(T)
+      - rotten(T)
+      - at(T, S)
 
-  - name: harvest
+
+  - name: pick
     type: task
-    parameters: [target]
+    parameters: [R, T, S, L]
     cost: 2.0
     preconditions:
-      - robot_at_{target}
+      - robot(R)
+      - tomato(T)
+      - stem(S)
+      - location(L)
+      - located(R, L)
+      - at(T, S)
+      - handempty(R)
+      - ripe(T)
     add_effects:
-      - harvested_{target}
+      - holding(R, T)
+      - holded(T, R)
     del_effects:
-      - ripe_{target}
+      - at(T, S)
+      - handempty(R)
+    observation:
+      - holding(R, T)
+      - holded(T, R)
+
+  - name: scan
+    type: observe
+    parameters: [R, T]
+    cost: 0.5
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - observed(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - ripe(T)
+      - unripe(T)
+      - rotten(T)
+      - at(T, S)
+      - holded(T, R)
+      - loaded(T, R)
+      - discarded(T)
+
+  - name: place
+    type: task
+    parameters: [R, T]
+    cost: 2.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - holding(R, T)
+      - holded(T, R)
+    add_effects:
+      - loaded(T, R)
+      - handempty(R)
+    del_effects:
+      - holding(R, T)
+      - holded(T, R)
+    observation:
+      - loaded(T, R)
+      - handempty(R)
+
+  - name: discard
+    type: task
+    parameters: [R, T]
+    cost: 2.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - holding(R, T)
+      - holded(T, R)
+    add_effects:
+      - discarded(T)
+      - handempty(R)
+    del_effects:
+      - holding(R, T)
+      - holded(T, R)
+    observation:
+      - discarded(T)
+      - handempty(R)

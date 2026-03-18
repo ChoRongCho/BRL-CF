@@ -3,16 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Union
-import re
-
-import clingo
-import yaml
 
 from utils.asp import solve_asp
 
+
 class Belief:
-    def __init__(self):
-        # self.domain_rule = domain_rule
+    """
+    1. asp program을 읽고, possible worlds 를 생성
+    2. 
+    
+    """
+    
+    def __init__(self, args):
+        
+        self.args = args
         self.possible_worlds = 0
         
     
@@ -23,4 +27,4 @@ class Belief:
         
         return worlds[0]
     
-    
+    # def     

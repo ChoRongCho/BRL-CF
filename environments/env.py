@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from utils.asp import DomainRuleBridge
-from typing import Any, Dict, Tuple
+from utils.asp import DomainRuleBridge, solve_asp
+from typing import Any, Dict, Tuple, List
 import copy
 import yaml
 
+from models.state import State, get_state
+from models.action import Action, GroundedActionSet, ActionSchema, get_actions
+from models.observation import ObservationModel
+from models.transition import TransitionModel
 
 class Environment:
     def __init__(self, args):
@@ -23,20 +27,49 @@ class Environment:
         self.domain_rule_path = self.args.domain_rule
         self.initial_state_path = self.args.initial_state
         self.robot_skill_path = self.args.robot_skill
+        self.stochastic_action = self.args.stochastic_action
+        self.max_step = self.args.max_step
         
+        # Domain rule
         self.asp_bridge = DomainRuleBridge(self.domain_rule_path)
         self.asp_bridge.load()
-        self.domain_rule = self.asp_bridge.build_program()
-        self.initial_state = self._load_config(self.initial_state_path).get("facts", []) or []
+        self.domain_rule = self.asp_bridge.build_possible_worlds()
         
-        # self.domain_rule = self.asp_bridge.build_program()
-        self.asp_bridge.add_runtime_facts(self.initial_state)
-        self.asp_program = self.asp_bridge.build_program()
-
+        # Get (initial) state, hidden_init_state, and goal state
+        init_config = self._load_config(self.initial_state_path) 
+        self.state, self.gt_init_state, self.goal = get_state(init_config) # a list of facts
+               
+        # Get all grounded actions
+        action_dicts = self._load_config(self.robot_skill_path).get("actions", []) or []
+        self.actions = get_actions(action_dicts, self.state)
+        
+        # Observation Model
+        self.observation_model = ObservationModel(
+            actions=self.actions,
+            noise=0.15,
+        )
+        
+        # Transition Model
+        self.transition_model = TransitionModel(
+            domain=self.domain_name,
+            actions=self.actions,
+            stochastic=self.stochastic_action,   # 나중에 True로 바꾸면 확률 전이
+        )
+        # Usage
+        """
+        applicable = self.transition_model.get_applicable_actions(self.state)
+        action = applicable[0]
+        next_state = self.transition_model.sample_next_state(self.state, action)
+        dist = self.transition_model.get_next_state_distribution(self.state, action)
+        """
+        
+        # generate possible worlds and clear runtime
+        _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
+        
         # reset
-        self.state = copy.deepcopy(self.initial_state)       
         self.done = False
         self.step_count = 0
+
 
     @staticmethod
     def _load_config(yaml_path) -> Dict:
@@ -45,6 +78,29 @@ class Environment:
             contents = yaml.safe_load(f) or {}
         return contents
     
+    
+    def build_state(self, runtime_facts: List[str], build_type="certain"):
+        self.asp_bridge.add_runtime_facts(runtime_facts)
+        
+        if build_type == "possible":
+            program = self.asp_bridge.build_possible_worlds()
+                        
+        elif build_type == "certain":
+            program = self.asp_bridge.build_certain_worlds()
+            worlds = solve_asp(program)
+            if not len(worlds)==1:
+                raise SystemError(f"The domain rule of {self.domain_name} went wrong.. ")
+            self.state.convert_world_to_state(worlds[0])
+            
+        else: 
+            raise ValueError("The build type must be one of 'possible' or 'certain'(default)..")
+        
+        # reset runtime after building program
+        self.asp_bridge.clear_runtime()
+        
+        return program
+            
+        
     
     # =========================== Print Method ===========================
     def print_domain_rule(self): 
@@ -74,9 +130,7 @@ class Environment:
             print(f"\n[{pred}]")
             for f in sorted(groups[pred]):
                 print(f"  {f}")
-    # =========================== Print Method ===========================
-
-    
+    # ====================================================================
 
     def reset(self) -> Dict[str, Any]:
         """
@@ -84,91 +138,81 @@ class Environment:
         내부 hidden state를 초기 상태로 복원하고,
         초기 observation을 반환.
         """
-        self.state = copy.deepcopy(self.initial_state)
         self.done = False
         self.step_count = 0
 
         observation = self._get_observation()
         return observation
 
-    def step(self, action: Dict[str, Any]) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
+
+    def step(self, action: Action) -> Tuple[Any, float, bool, Dict[str, Any]]:
         """
         action을 받아 내부 state를 transition 시키고,
         observation, reward, done, info 반환.
         """
+        
+        
         if self.done:
             raise RuntimeError("Episode is done. Call reset() before step().")
 
         self._apply_action(action)
+        # _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
+        
         reward = self._compute_reward(action)
-        self.done = self._check_done()
         self.step_count += 1
+        self.done = self._check_done()
 
-        observation = self._get_observation()
+        observation = self._get_observation(action)
         info = self._get_info()
 
         return observation, reward, self.done, info
 
-    def _apply_action(self, action: Dict[str, Any]) -> None:
+
+    def _apply_action(self, action: Dict[str, Any]) -> None:        
+        self.state = self.transition_model.sample_next_state(self.state, action)
+
+
+    def _get_observation(self, action: Action | None = None) -> Any:
         """
-        내부 hidden state transition.
-        실제 domain logic는 여기서 구현.
+        action이 주어지면 observation model 기반 관측을 생성하고,
+        reset 직후처럼 action이 없으면 현재 state 전체를 그대로 반환한다.
         """
-        action_type = action.get("type")
+        if action is None:
+            return copy.deepcopy(self.state)
 
-        if action_type == "move":
-            robot = action["robot"]
-            target = action["to"]
-            self.state["robot_state"]["location"][robot] = target
+        return self.observation_model.sample(self.state, action)
 
-        elif action_type == "pick":
-            robot = action["robot"]
-            obj = action["object"]
-            self.state["robot_state"]["holding"][robot] = obj
-
-        elif action_type == "drop":
-            robot = action["robot"]
-            self.state["robot_state"]["holding"][robot] = None
-
-        else:
-            raise ValueError(f"Unknown action type: {action_type}")
-
-    def _get_observation(self) -> Dict[str, Any]:
-        """
-        hidden state 전체를 주지 말고,
-        관측 가능한 일부만 잘라서 반환.
-        """
-        obs = {
-            "robot_location": copy.deepcopy(self.state.get("robot_state", {}).get("location", {})),
-            "visible_objects": copy.deepcopy(self.state.get("visible_objects", [])),
-        }
-        return obs
 
     def _compute_reward(self, action: Dict[str, Any]) -> float:
-        """
-        reward 계산.
-        우선은 placeholder.
-        """
         return -1.0
 
     def _check_done(self) -> bool:
-        """
-        종료 조건 검사.
-        우선은 placeholder.
-        """
-        max_steps = self.domain_rule.get("max_steps", 50)
-        return self.step_count >= max_steps
+        """Goal 달성 또는 max_step 초과 시 episode 종료"""
+
+        # 1. step limit
+        if self.step_count >= self.max_step:
+            return True
+
+        # 2. goal 달성 여부
+        if self.goal:
+            if all(self.state.has_fact(f) for f in self.goal.facts):
+                return True
+
+        return False
+
 
     def _get_info(self) -> Dict[str, Any]:
-        """
-        디버깅용 부가 정보.
-        planner에는 안 써도 됨.
-        """
+        applicable_actions = [
+            action.name for action in self.actions if action.is_applicable(self.state)
+        ]
+
         return {
             "step_count": self.step_count,
+            "current_state_size": self.state.get_size(),
+            "applicable_actions": applicable_actions,
         }
 
     def render(self) -> None:
-        """디버깅용 현재 상태 출력"""
         print("=== Env State ===")
-        print(self.state)
+        for f in self.state.facts:
+            print("  ", f)
