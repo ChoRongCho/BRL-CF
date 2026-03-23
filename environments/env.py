@@ -10,6 +10,7 @@ from models.state import State, get_state, get_types
 from models.action import Action, Grounding, ActionSchema, get_actions
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
+from models.reward import RewardModel
 
 class Environment:
     def __init__(self, args):
@@ -61,6 +62,12 @@ class Environment:
             actions=self.actions,
             obj_type=self.obj_type,
             noise=0.05,
+        )
+        
+        # Reward Model TODO
+        self.reward_model = RewardModel(
+            self.domain_name,
+            self.goal,
         )
         
         # self.transition_model.pretty_print()
@@ -189,7 +196,7 @@ class Environment:
 
         return self.observation_model.sample(self.state, action)
 
-
+    # TODO: reward shaping
     def _compute_reward(self, action: Dict[str, Any]) -> float:
         return -1.0
 

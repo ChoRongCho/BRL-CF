@@ -59,6 +59,38 @@ def parse_args(domain: str):
         help="Maximum steps per episode"
     )
 
+    # POMCP settings
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.95,
+        help="Discount factor for future rewards (0 < gamma ≤ 1). Higher values prioritize long-term rewards."
+    )
+    parser.add_argument(
+        "--c",
+        type=float,
+        default=1.0,
+        help="Exploration constant for UCB in tree search. Larger values encourage exploration over exploitation."
+    )
+    parser.add_argument(
+        "--max_depth",
+        type=int,
+        default=10,
+        help="Maximum simulation depth (planning horizon) for each rollout in POMCP."
+    )
+    parser.add_argument(
+        "--n_simulations",
+        type=int,
+        default=300,
+        help="Number of Monte Carlo simulations (tree traversals) per planning step."
+    )
+    parser.add_argument(
+        "--n_particles",
+        type=int,
+        default=100,
+        help="Number of particles sampled from belief to approximate the state distribution."
+    )
+    
     args = parser.parse_args()
 
     args.domain_rule = Path(args.domain_rule)

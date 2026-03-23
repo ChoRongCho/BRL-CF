@@ -191,8 +191,10 @@ class BeliefModel:
         weights = np.array([w for _, w in items], dtype=float)
 
         b_next = Belief(frontier=frontier, weights=weights)
+        confidence = self.calculate_confidence(weights)
         self.belief = b_next
-        return b_next
+        
+        return b_next, confidence
 
 
     def _get_transition_outcomes(self, state: State, action: Action) -> List[NextStateOutcome]:
@@ -275,3 +277,35 @@ class BeliefModel:
             "'probability(obs, state, action)', "
             "or 'score(obs, state, action)'."
         )
+        
+        
+    def calculate_confidence(self, weights) -> float:
+        """
+        1. weights를 max 기준으로 정규화
+        2. entropy 계산
+        3. 1 - H/theta 반환
+
+        theta가 None이면 max entropy(log N) 사용
+        """
+
+        if len(weights) == 0:
+            return 0.0
+        elif len(weights) == 1:
+            return 1.0
+
+        # 1. entropy normalization
+        theta = np.log2(len(weights))
+
+        # 확률처럼 쓰기 위해 다시 normalize (sum=1)
+        
+
+        # 2. entropy 계산 (log 안정성)
+        eps = 1e-12
+        h = -np.sum(weights * np.log2(weights + eps))
+
+        # 3. confidence
+        confidence = 1.0 - (h / theta)
+
+        # numerical safety
+        return confidence
+        
