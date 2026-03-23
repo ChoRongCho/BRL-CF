@@ -1,0 +1,479 @@
+# models/tomato/trans.py
+
+from __future__ import annotations
+from itertools import product
+from typing import List, Dict, Tuple
+import re
+
+from models.state import State
+from models.action import Action
+from models.transition import TransitionOutcome
+
+
+class TransitionTomato:
+    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+        self.type_map = type_map
+        self.true_state = true_state
+
+        self.navigate_success_rate = 0.90
+        self.prepare_nav_success_rate = 0.98
+        self.detect_success_rate = 0.60
+        self.pick_success_rate = 0.75
+        self.scan_success_rate = 0.8
+        self.place_success_rate = 0.90
+        self.discard_success_rate = 0.95
+
+    @staticmethod
+    def _format_fact(pred: str, args: List[str]) -> str:
+        return f"{pred}({','.join(args)})"
+
+    @staticmethod
+    def _parse_fact(fact: str) -> Tuple[str, List[str]]:
+        fact = fact.replace(" ", "")
+        m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)", fact)
+        if not m:
+            raise ValueError(f"Invalid fact format: {fact}")
+        pred = m.group(1)
+        args = [x.strip() for x in m.group(2).split(",")]
+        return pred, args
+
+    def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
+        pred, args = self._parse_fact(fact)
+
+        variable_positions = []
+        variable_domains = []
+
+        for i, arg in enumerate(args):
+            if re.fullmatch(r"[A-Z][A-Za-z0-9_]*", arg):
+                type_symbol = arg[0]
+                if type_symbol not in self.type_map:
+                    raise ValueError(f"Unknown type symbol for variable {arg}")
+                variable_positions.append(i)
+                variable_domains.append(self.type_map[type_symbol])
+
+        if not variable_positions:
+            return [fact.replace(" ", "")]
+
+        expanded = []
+
+        def backtrack(depth: int, current_args: List[str]):
+            if depth == len(variable_positions):
+                expanded.append(self._format_fact(pred, current_args))
+                return
+
+            pos = variable_positions[depth]
+            for obj in variable_domains[depth]:
+                next_args = current_args[:]
+                next_args[pos] = obj
+                backtrack(depth + 1, next_args)
+
+        backtrack(0, args[:])
+        return expanded
+
+    @staticmethod
+    def _dedup_facts(facts: List[str]) -> List[str]:
+        return list(dict.fromkeys(f.replace(" ", "") for f in facts))
+
+    @staticmethod
+    def _make_outcome(add_facts: List[str], del_facts: List[str], probability: float) -> TransitionOutcome:
+        return TransitionOutcome(
+            add_facts=list(dict.fromkeys(f.replace(" ", "") for f in add_facts)),
+            del_facts=list(dict.fromkeys(f.replace(" ", "") for f in del_facts)),
+            probability=probability
+        )
+
+    def _true_has_fact(self, fact: str) -> bool:
+        return self.true_state.has_fact(fact.replace(" ", ""))
+
+    def _extract_holding_facts(self, action: Action) -> List[str]:
+        return [f.replace(" ", "") for f in action.observation if f.replace(" ", "").startswith("holding(")]
+
+    def _extract_located_facts_from_observation(self, action: Action) -> List[str]:
+        expanded_obs = []
+        for obs in action.observation:
+            expanded_obs.extend(self._expand_free_variables_in_fact(obs))
+        expanded_obs = self._dedup_facts(expanded_obs)
+        return [f for f in expanded_obs if f.startswith("located(")]
+
+    def _extract_true_facts_from_observation(self, action: Action) -> List[str]:
+        expanded_obs = []
+        for obs in action.observation:
+            expanded_obs.extend(self._expand_free_variables_in_fact(obs))
+        expanded_obs = self._dedup_facts(expanded_obs)
+        
+        true_facts = []
+        for fact in expanded_obs:
+            if self._true_has_fact(fact):
+                true_facts.append(fact)
+        return true_facts
+
+    def build_outcomes(self, action_name: str, action: Action) -> List[TransitionOutcome]:
+        if action_name == "navigate":
+            return self._build_navigate_outcomes(action)
+
+        elif action_name == "prepare_nav":
+            return self._build_prepare_nav_outcomes(action)
+
+        elif action_name == "detect":
+            return self._build_detect_outcomes(action)
+
+        elif action_name == "pick":
+            return self._build_pick_outcomes(action)
+
+        elif action_name == "scan":
+            return self._build_scan_outcomes(action)
+
+        elif action_name == "place":
+            return self._build_place_outcomes(action)
+
+        elif action_name == "discard":
+            return self._build_discard_outcomes(action)
+
+        else:
+            return [
+                self._make_outcome(
+                    add_facts=action.add_effects,
+                    del_facts=action.del_effects,
+                    probability=1.0
+                )
+            ]
+
+    def _build_navigate_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        nominal_target = action.add_effects[0].replace(" ", "")
+        location_candidates = self._extract_located_facts_from_observation(action)
+        alternatives = [f for f in location_candidates if f != nominal_target]
+
+        outcomes = []
+        prob = self.navigate_success_rate
+
+        outcomes.append(
+            self._make_outcome(
+                add_facts=[nominal_target],
+                del_facts=action.del_effects,
+                probability=prob
+            )
+        )
+
+        if alternatives:
+            alt_prob = (1.0 - prob) / len(alternatives)
+            for alt in alternatives:
+                outcomes.append(
+                    self._make_outcome(
+                        add_facts=[alt],
+                        del_facts=action.del_effects,
+                        probability=alt_prob
+                    )
+                )
+        else:
+            outcomes[0].probability = 1.0
+
+        return outcomes
+
+    def _build_prepare_nav_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        prob = self.prepare_nav_success_rate
+
+        return [
+            self._make_outcome(
+                add_facts=action.add_effects,
+                del_facts=action.del_effects,
+                probability=prob
+            ),
+            self._make_outcome(
+                add_facts=[],
+                del_facts=[],
+                probability=1.0 - prob
+            )
+        ]
+
+    # TODO: Changmin
+    def _build_detect_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        """
+        detect:
+        성공 시 true tomato + true ripeness 전부 감지.
+        실패 alternatives에서는
+        - 일부 tomato를 놓칠 수 있고
+        - 감지한 tomato의 ripeness를 틀리게 분류할 수도 있음
+        """
+        true_facts = self._extract_true_facts_from_observation(action)
+        at_facts = [f for f in true_facts if f.startswith("at(")]
+
+        tomato_entries = []
+        for fact in at_facts:
+            predicate, arity = self._parse_fact(fact)
+            if predicate != "at":
+                continue
+
+            tomato = arity[0]
+            location = arity[1]
+
+            true_label = None
+            for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
+                if self._true_has_fact(c):
+                    true_label = c
+                    break
+
+            if true_label is None:
+                continue
+
+            tomato_entries.append({
+                "tomato": tomato,
+                "location": location,
+                "at_fact": fact.replace(" ", ""),
+                "true_label": true_label
+            })
+
+        # success outcome
+        success_add = []
+        for entry in tomato_entries:
+            success_add.append(entry["at_fact"])
+            success_add.append(entry["true_label"])
+        success_add = self._dedup_facts(success_add)
+
+        prob = self.detect_success_rate
+        outcomes = [
+            self._make_outcome(
+                add_facts=success_add,
+                del_facts=action.del_effects,
+                probability=prob
+            )
+        ]
+
+        # 각 tomato마다 local alternatives 생성
+        # []                          : miss
+        # [at(t,loc), true_label]     : correct detect
+        # [at(t,loc), wrong_label_1]  : wrong classify
+        # [at(t,loc), wrong_label_2]  : wrong classify
+        per_tomato_choices = []
+
+        for entry in tomato_entries:
+            tomato = entry["tomato"]
+            at_fact = entry["at_fact"]
+            true_label = entry["true_label"]
+
+            all_labels = [
+                f"ripe({tomato})",
+                f"unripe({tomato})",
+                f"rotten({tomato})"
+            ]
+
+            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
+
+            local_choices = []
+
+            # 1. miss
+            local_choices.append([])
+
+            # 2. correct
+            local_choices.append([at_fact, true_label])
+
+            # 3. wrong ripeness
+            for wrong_label in wrong_labels:
+                local_choices.append([at_fact, wrong_label])
+
+            per_tomato_choices.append(local_choices)
+
+        # 전체 조합 생성
+        alternative_adds = []
+        for combo in product(*per_tomato_choices):
+            flat = []
+            for part in combo:
+                flat.extend(part)
+            flat = self._dedup_facts(flat)
+
+            # success와 동일한 것은 제외
+            if set(flat) == set(success_add):
+                continue
+
+            alternative_adds.append(flat)
+
+        # 중복 제거
+        unique_alternatives = []
+        seen = set()
+        for alt in alternative_adds:
+            key = tuple(sorted(alt))
+            if key not in seen:
+                seen.add(key)
+                unique_alternatives.append(alt)
+
+        if unique_alternatives:
+            alt_prob = (1.0 - prob) / len(unique_alternatives)
+            for alt in unique_alternatives:
+                outcomes.append(
+                    self._make_outcome(
+                        add_facts=alt,
+                        del_facts=action.del_effects if alt else [],
+                        probability=alt_prob
+                    )
+                )
+        else:
+            outcomes[0].probability = 1.0
+
+        return outcomes
+
+    def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        prob = self.pick_success_rate
+
+        success = self._make_outcome(
+            add_facts=action.add_effects,
+            del_facts=action.del_effects,
+            probability=prob
+        )
+
+        failure_add = []
+        if any("handempty(" in d.replace(" ", "") for d in action.del_effects):
+            failure_add.extend(
+                [d.replace(" ", "") for d in action.del_effects if "handempty(" in d.replace(" ", "")]
+            )
+
+        failure = self._make_outcome(
+            add_facts=failure_add,
+            del_facts=[],
+            probability=1.0 - prob
+        )
+
+        return [success, failure]
+
+    def _build_scan_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        """
+        scan은 observation 후보 중 true_state에 실제 있는 fact를 기반으로 결과를 만든다.
+        성공 시 true ripeness를 반환하고,
+        실패 alternatives에서는 wrong ripeness 또는 empty observation을 반환한다.
+        """
+        true_facts = self._extract_true_facts_from_observation(action)
+        prob = self.scan_success_rate
+
+        # scan에서 ripeness 관련 fact만 뽑기
+        ripeness_facts = []
+        for fact in true_facts:
+            if fact.startswith("ripe(") or fact.startswith("unripe(") or fact.startswith("rotten("):
+                ripeness_facts.append(fact)
+
+        # true ripeness가 없으면 기존 방식 fallback
+        if not ripeness_facts:
+            success_add = true_facts if true_facts else action.add_effects
+            return [
+                self._make_outcome(
+                    add_facts=success_add,
+                    del_facts=action.del_effects,
+                    probability=prob
+                ),
+                self._make_outcome(
+                    add_facts=[],
+                    del_facts=[],
+                    probability=1.0 - prob
+                )
+            ]
+
+        # 성공 outcome
+        success_add = ripeness_facts
+        outcomes = [
+            self._make_outcome(
+                add_facts=success_add,
+                del_facts=action.del_effects,
+                probability=prob
+            )
+        ]
+
+        # 실패 alternatives 생성
+        alternatives = []
+
+        for true_label in ripeness_facts:
+            predicate, arity = self._parse_fact(true_label)
+            tomato = arity[0]
+
+            all_labels = [
+                f"ripe({tomato})",
+                f"unripe({tomato})",
+                f"rotten({tomato})"
+            ]
+
+            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
+            for wrong_label in wrong_labels:
+                alternatives.append([wrong_label])
+
+        # 완전 실패: 아무 것도 못 얻음
+        alternatives.append([])
+
+        # 중복 제거
+        unique_alternatives = []
+        seen = set()
+        for alt in alternatives:
+            key = tuple(sorted(alt))
+            if key not in seen:
+                seen.add(key)
+                unique_alternatives.append(alt)
+
+        alt_prob = (1.0 - prob) / len(unique_alternatives)
+
+        for alt in unique_alternatives:
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=alt,
+                    del_facts=[],
+                    probability=alt_prob
+                )
+            )
+
+        return outcomes
+
+    def _build_place_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        prob = self.place_success_rate
+        holding_facts = self._extract_holding_facts(action)
+
+        outcomes = [
+            self._make_outcome(
+                add_facts=action.add_effects,
+                del_facts=action.del_effects,
+                probability=prob
+            )
+        ]
+
+        if holding_facts:
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=holding_facts,
+                    del_facts=[],
+                    probability=1.0 - prob
+                )
+            )
+        else:
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=[],
+                    del_facts=[],
+                    probability=1.0 - prob
+                )
+            )
+
+        return outcomes
+
+    def _build_discard_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        prob = self.discard_success_rate
+        holding_facts = self._extract_holding_facts(action)
+
+        outcomes = [
+            self._make_outcome(
+                add_facts=action.add_effects,
+                del_facts=action.del_effects,
+                probability=prob
+            )
+        ]
+
+        if holding_facts:
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=holding_facts,
+                    del_facts=[],
+                    probability=1.0 - prob
+                )
+            )
+        else:
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=[],
+                    del_facts=[],
+                    probability=1.0 - prob
+                )
+            )
+
+        return outcomes

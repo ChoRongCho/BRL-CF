@@ -1,6 +1,3 @@
-from __future__ import annotations
-import numpy as np
-
 
 """
 Particle Belief Approximation for POMDP
@@ -45,321 +42,236 @@ ESS (effective sample size):
 
 Resample when ESS < threshold.
 """
+from __future__ import annotations
+import numpy as np
+from typing import Any, Dict, List, Optional, Iterable, Tuple
 
+from models.belief import Belief
 from models.state import State
-
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
-import copy
-import math
-import random
+from models.action import Action
+from models.observation import ObservationModel, Observation
+from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
 
 
-@dataclass
-class Particle:
-    state: State
-    weight: float = 1.0
-
-
-@dataclass
-class Factored:
-    state: State
-
-
-
-@dataclass
-class ParticleBelief:
-    particles: List[Particle] = field(default_factory=list)
-
-    def normalized_weights(self) -> List[float]:
-        total = sum(p.weight for p in self.particles)
-        if total <= 0:
-            n = len(self.particles)
-            return [1.0 / n] * n if n > 0 else []
-        return [p.weight / total for p in self.particles]
-
-    def effective_sample_size(self) -> float:
-        ws = self.normalized_weights()
-        if not ws:
-            return 0.0
-        return 1.0 / sum(w * w for w in ws)
-
-    def estimate(self) -> Dict[str, Any]:
-        """
-        아주 러프한 belief summary.
-        categorical / boolean / numeric 섞인 상태를 대충 aggregate.
-        """
-        if not self.particles:
-            return {}
-
-        ws = self.normalized_weights()
-        keys = set()
-        for p in self.particles:
-            keys.update(p.state.keys())
-
-        summary: Dict[str, Any] = {}
-
-        for key in keys:
-            values = [p.state.get(key, None) for p in self.particles]
-
-            # bool
-            if all(isinstance(v, bool) or v is None for v in values):
-                prob_true = 0.0
-                for p, w in zip(self.particles, ws):
-                    if p.state.get(key, False) is True:
-                        prob_true += w
-                summary[key] = {
-                    "type": "bernoulli",
-                    "p_true": prob_true
-                }
-                continue
-
-            # numeric
-            if all(isinstance(v, (int, float)) or v is None for v in values):
-                mean_val = 0.0
-                total_w = 0.0
-                for p, w in zip(self.particles, ws):
-                    v = p.state.get(key, None)
-                    if v is None:
-                        continue
-                    mean_val += w * float(v)
-                    total_w += w
-                if total_w > 0:
-                    mean_val /= total_w
-                summary[key] = {
-                    "type": "numeric",
-                    "mean": mean_val
-                }
-                continue
-
-            # categorical / symbol-like
-            counter: Dict[str, float] = {}
-            for p, w in zip(self.particles, ws):
-                v = p.state.get(key, None)
-                name = str(v)
-                counter[name] = counter.get(name, 0.0) + w
-            summary[key] = {
-                "type": "categorical",
-                "distribution": dict(sorted(counter.items(), key=lambda x: -x[1]))
-            }
-
-        return summary
-
-
-class BeliefUpdater:
-    """
-    Rough particle belief updater.
-
-    state example:
-        {
-            "robot_at": "kitchen",
-            "holding": None,
-            "obj1_material": "plastic",
-            "obj2_visible": True,
-            "battery": 0.82
-        }
-
-    지금은 가능한 한 러프하게:
-    - particle set 유지
-    - action + observation으로 update
-    - likelihood 기반 weight update
-    - ESS 낮으면 resampling
-    """
-
+class BeliefModel:
     def __init__(
         self,
-        num_particles: int = 100,
-        resample_threshold_ratio: float = 0.5,
-        random_seed: Optional[int] = None,
-    ) -> None:
-        self.num_particles = num_particles
-        self.resample_threshold_ratio = resample_threshold_ratio
-        self.random = random.Random(random_seed)
+        transition_model: TransitionModel,
+        observation_model: ObservationModel,
+        top_k: int = None,
+        prune_threshold: float = 1e-12,
+    ):
+        self.transition_model = transition_model
+        self.observation_model = observation_model
+        self.prune_threshold = prune_threshold
+        self.top_k = top_k
 
-        self.belief = ParticleBelief()
-        self.time_step = 0
+        self.belief = None
+        self.initial_belief = 1.0
 
-    def initialize(self, initial_particles: Optional[List[Dict[str, Any]]] = None) -> None:
+
+    def set_initial_belief(self, init_state: State) -> Belief:
         """
-        사용자가 직접 초기 particle states를 넣어주는 방식.
+        초기 belief state 생성
+        
+        :param init_state: State 구조의 초기 상태, belief는 1로 유지
         """
-        self.time_step = 0
-        self.belief.particles = []
+        self.belief = Belief(frontier=[init_state], weights=np.array([self.initial_belief], dtype=float))
+        return self.belief
+    
 
-        if not initial_particles:
-            return
+    def set_belief(self, belief: Belief) -> None:
+        self.belief = belief
+        
 
-        n = len(initial_particles)
-        w = 1.0 / n if n > 0 else 1.0
+    def get_belief(self) -> Optional[Belief]:
+        return self.belief
+    
 
-        for s in initial_particles:
-            self.belief.particles.append(
-                Particle(state=copy.deepcopy(s), weight=w)
+    def update_belief(
+        self,
+        b_prev: Belief,
+        obs: Observation,
+        action: Any,
+    ) -> Belief:
+        """
+        reachable state만 유지하는 sparse belief update.
+
+        흐름:
+        1. 각 이전 state에서 action에 따른 transition outcome 생성
+        2. 같은 next_state는 probability를 합산
+        3. observation likelihood로 reweight
+        4. pruning + normalize
+        
+        - self.observation_model.likelihood(obs, state, action) -> float
+          또는
+        - self.observation_model.probability(obs, state, action) -> float
+        """
+        if b_prev is None:
+            raise ValueError("b_prev is None. 초기 belief를 먼저 설정하세요.")
+
+        if b_prev.is_empty():
+            self.belief = Belief(frontier=[], weights=np.array([], dtype=float))
+            return self.belief
+
+        merged: Dict[str, float] = {}
+        state_map: Dict[str, State] = {}
+        
+        # 1. Transition expansion
+        for prev_state, prev_weight in zip(b_prev.frontier, b_prev.weights):
+            outcomes = self._get_transition_outcomes(prev_state, action)
+            
+            for outcome in outcomes:
+                
+                next_state, trans_prob = self._parse_transition_outcome(outcome)
+
+                if trans_prob <= 0.0:
+                    continue
+                
+                def _state_to_key(state: State) -> str:
+                    if hasattr(state, "facts"):
+                        try:
+                            return "||".join(sorted(str(f) for f in state.facts))
+                        except Exception:
+                            pass
+                    return repr(state)
+                
+                key = _state_to_key(next_state)
+                merged[key] = merged.get(key, 0.0) + prev_weight * trans_prob
+                state_map[key] = next_state
+                
+                
+                
+
+        # transition 결과가 하나도 없을 때: 이전 belief 유지 혹은 empty 처리
+        if not merged:
+            # 여기서는 보수적으로 이전 belief 유지
+            self.belief = Belief(
+                frontier=list(b_prev.frontier),
+                weights=np.array(b_prev.weights, dtype=float),
+            )
+            return self.belief
+
+        # 2. Observation correction
+        if obs is not None and self.observation_model is not None:
+            for key in list(merged.keys()):
+                state = state_map[key]
+                obs_likelihood = self._get_observation_likelihood(obs, state, action)
+                merged[key] *= obs_likelihood
+
+        # 3. Pruning
+        merged = {
+            s: w
+            for s, w in merged.items()
+            if w > self.prune_threshold
+        }
+
+        if not merged:
+            # observation 때문에 다 사라졌다면,
+            # fallback으로 transition 후 belief를 observation 없이 정규화
+            fallback_states = list(merged.keys())
+            # merged가 이미 비어 있으므로 transition 직후 상태를 다시 계산
+            merged = {}
+            for prev_state, prev_weight in zip(b_prev.frontier, b_prev.weights):
+                outcomes = self._get_transition_outcomes(prev_state, action)
+                for outcome in outcomes:
+                    next_state, trans_prob = self._parse_transition_outcome(outcome)
+                    if trans_prob <= 0.0:
+                        continue
+                    merged[next_state] = merged.get(next_state, 0.0) + prev_weight * trans_prob
+
+        # 4. Optional top-k
+        items = [(state_map[k], w) for k, w in merged.items() if w > self.prune_threshold]
+        items.sort(key=lambda x: x[1], reverse=True)
+
+        if self.top_k is not None:
+            items = items[:self.top_k]
+
+        frontier = [s for s, _ in items]
+        weights = np.array([w for _, w in items], dtype=float)
+
+        b_next = Belief(frontier=frontier, weights=weights)
+        self.belief = b_next
+        return b_next
+
+
+    def _get_transition_outcomes(self, state: State, action: Action) -> List[NextStateOutcome]:
+        return self.transition_model.get_next_state_distribution(state, action)
+        
+
+    def _parse_transition_outcome(self, outcome: Any) -> Tuple[State, float]:
+        """
+        TransitionOutcome의 구체 필드명을 아직 모르므로 유연하게 파싱.
+        지원 예시:
+        - outcome.next_state, outcome.prob
+        - outcome.state, outcome.probability
+        - {"next_state": ..., "prob": ...}
+        - (state, prob)
+        """
+        if isinstance(outcome, tuple) and len(outcome) == 2:
+            next_state, prob = outcome
+            return next_state, float(prob)
+
+        if isinstance(outcome, dict):
+            next_state = (
+                outcome.get("next_state")
+                or outcome.get("state")
+            )
+            prob = (
+                outcome.get("prob")
+                or outcome.get("probability")
+                or outcome.get("p")
+                or outcome.get("weight")
+            )
+            if next_state is None or prob is None:
+                raise ValueError(f"Invalid transition dict outcome: {outcome}")
+            return next_state, float(prob)
+
+        next_state = None
+        prob = None
+
+        for state_attr in ("next_state", "state"):
+            if hasattr(outcome, state_attr):
+                next_state = getattr(outcome, state_attr)
+                break
+
+        for prob_attr in ("prob", "probability", "p", "weight"):
+            if hasattr(outcome, prob_attr):
+                prob = getattr(outcome, prob_attr)
+                break
+
+        if next_state is None or prob is None:
+            raise ValueError(
+                "Could not parse TransitionOutcome. "
+                "Expected fields like (next_state/state) and (prob/probability/p/weight)."
             )
 
-    def initialize_from_prior(self) -> None:
-        """
-        도메인 prior에서 particle을 샘플링.
-        아직 러프 코드이므로 sample_initial_state()만 채우면 동작.
-        """
-        self.time_step = 0
-        self.belief.particles = []
+        return next_state, float(prob)
 
-        for _ in range(self.num_particles):
-            s0 = self.sample_initial_state()
-            self.belief.particles.append(Particle(state=s0, weight=1.0 / self.num_particles))
+    def _get_observation_likelihood(
+        self,
+        obs: Observation,
+        state: State,
+        action: Any,
+    ) -> float:
+        if self.observation_model is None:
+            return 1.0
 
-    def update(self, action: Any, observation: Any) -> None:
-        """
-        Bootstrap particle filter:
-            s_t^(i) ~ T(. | s_{t-1}^(i), a_{t-1})
-            w_t^(i) ∝ O(o_t | s_t^(i), a_{t-1})
-        """
-        if not self.belief.particles:
-            raise ValueError("Belief is empty. Initialize particles first.")
+        if hasattr(self.observation_model, "likelihood"):
+            value = self.observation_model.likelihood(obs, state, action)
+            return max(0.0, float(value))
 
-        self.time_step += 1
+        if hasattr(self.observation_model, "probability"):
+            value = self.observation_model.probability(obs, state, action)
+            return max(0.0, float(value))
 
-        new_particles: List[Particle] = []
+        if hasattr(self.observation_model, "score"):
+            value = self.observation_model.score(obs, state, action)
+            return max(0.0, float(value))
 
-        for old_particle in self.belief.particles:
-            prev_state = old_particle.state
-
-            predicted_state = self.transition_model(prev_state, action)
-            likelihood = self.observation_likelihood(observation, predicted_state, action)
-
-            # 수치 안정성 때문에 floor를 살짝 둠
-            likelihood = max(likelihood, 1e-12)
-
-            new_particles.append(
-                Particle(
-                    state=predicted_state,
-                    weight=likelihood
-                )
-            )
-
-        self.belief.particles = new_particles
-        self.normalize_weights()
-
-        ess = self.belief.effective_sample_size()
-        threshold = self.resample_threshold_ratio * len(self.belief.particles)
-
-        if ess < threshold:
-            self.resample()
-
-    def update_with_importance_sampling(self, action: Any, observation: Any) -> None:
-        """
-        좀 더 일반형.
-        proposal q를 따로 정의하고 importance weight를 계산한다.
-
-        w_t^(i) ∝ w_{t-1}^(i) *
-                  [ O(o_t | s_t^(i), a_{t-1}) * T(s_t^(i) | s_{t-1}^(i), a_{t-1}) ]
-                  / q(s_t^(i) | s_{t-1}^(i), a_{t-1}, o_t)
-
-        지금은 러프하게 인터페이스만 잡아둠.
-        """
-        if not self.belief.particles:
-            raise ValueError("Belief is empty. Initialize particles first.")
-
-        self.time_step += 1
-        new_particles: List[Particle] = []
-
-        for old_particle in self.belief.particles:
-            prev_state = old_particle.state
-            prev_weight = old_particle.weight
-
-            proposed_state = self.proposal_sample(prev_state, action, observation)
-
-            obs_prob = max(self.observation_likelihood(observation, proposed_state, action), 1e-12)
-            trans_prob = max(self.transition_probability(proposed_state, prev_state, action), 1e-12)
-            proposal_prob = max(self.proposal_probability(proposed_state, prev_state, action, observation), 1e-12)
-
-            new_weight = prev_weight * (obs_prob * trans_prob) / proposal_prob
-
-            new_particles.append(
-                Particle(
-                    state=proposed_state,
-                    weight=new_weight
-                )
-            )
-
-        self.belief.particles = new_particles
-        self.normalize_weights()
-
-        ess = self.belief.effective_sample_size()
-        threshold = self.resample_threshold_ratio * len(self.belief.particles)
-
-        if ess < threshold:
-            self.resample()
-
-    def normalize_weights(self) -> None:
-        total = sum(p.weight for p in self.belief.particles)
-        n = len(self.belief.particles)
-
-        if n == 0:
-            return
-
-        if total <= 0:
-            uniform = 1.0 / n
-            for p in self.belief.particles:
-                p.weight = uniform
-            return
-
-        for p in self.belief.particles:
-            p.weight /= total
-
-    def resample(self) -> None:
-        """
-        multinomial resampling
-        """
-        if not self.belief.particles:
-            return
-
-        weights = [p.weight for p in self.belief.particles]
-        states = [p.state for p in self.belief.particles]
-
-        sampled_indices = self.random.choices(
-            population=list(range(len(states))),
-            weights=weights,
-            k=len(states)
+        raise AttributeError(
+            "observation_model must implement one of "
+            "'likelihood(obs, state, action)', "
+            "'probability(obs, state, action)', "
+            "or 'score(obs, state, action)'."
         )
-
-        new_particles: List[Particle] = []
-        uniform_w = 1.0 / len(states)
-
-        for idx in sampled_indices:
-            new_particles.append(
-                Particle(
-                    state=copy.deepcopy(states[idx]),
-                    weight=uniform_w
-                )
-            )
-
-        self.belief.particles = new_particles
-
-    def estimate(self) -> Dict[str, Any]:
-        return self.belief.estimate()
-
-    def most_likely_particle(self) -> Optional[Particle]:
-        if not self.belief.particles:
-            return None
-        return max(self.belief.particles, key=lambda p: p.weight)
-
-    def sample_state(self) -> Optional[Dict[str, Any]]:
-        if not self.belief.particles:
-            return None
-        weights = [p.weight for p in self.belief.particles]
-        idx = self.random.choices(range(len(self.belief.particles)), weights=weights, k=1)[0]
-        return copy.deepcopy(self.belief.particles[idx].state)
-
-    def debug_print(self, top_k: int = 5) -> None:
-        print(f"[BeliefUpdater] t={self.time_step}")
-        print(f"num_particles={len(self.belief.particles)}")
-        print(f"ESS={self.belief.effective_sample_size():.4f}")
-
-        ranked = sorted(self.belief.particles, key=lambda p: p.weight, reverse=True)
-        for i, p in enumerate(ranked[:top_k], start=1):
-            print(f"\nParticle {i}")
-            print(f"weight={p.weight:.6f}")
-            print(p.state)
-

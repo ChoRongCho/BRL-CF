@@ -52,11 +52,11 @@ def get_state(init_config: Dict) -> List[State]:
     g_state = init_config.get("goal", []) or []
     
     for i_s in i_state:
-        state.add_fact(i_s)
+        state.add_fact(i_s.replace(" ", ""))
     for t_s in t_state:
-        hidden_state.add_fact(t_s)
+        hidden_state.add_fact(t_s.replace(" ", ""))
     for g_s in g_state:
-        goal.add_fact(g_s)
+        goal.add_fact(g_s.replace(" ", ""))
 
     return state, hidden_state, goal
 

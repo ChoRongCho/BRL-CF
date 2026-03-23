@@ -8,7 +8,7 @@ import yaml
 
 from models.state import State, get_state, get_types
 from models.action import Action, Grounding, ActionSchema, get_actions
-from models.observation import ObservationModel
+from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
 
 class Environment:
@@ -47,27 +47,24 @@ class Environment:
         action_dicts = self._load_config(self.robot_skill_path).get("actions", []) or []
         self.actions = get_actions(action_dicts, self.state, self.obj_type)
         
-        
-        # Observation Model: TODO
-        self.observation_model = ObservationModel(
-            actions=self.actions,
-            noise=0.15,
-        )
-        
-        # Transition Model: TODO
+        # Transition Model
         self.transition_model = TransitionModel(
             domain=self.domain_name,
-            actions=self.actions
+            actions=self.actions,
+            obj_type=self.obj_type,
+            true_state=self.gt_init_state
         )
-        # Usage
-        """
-        applicable = self.transition_model.get_applicable_actions(self.state)
-        action = applicable[0]
-        next_state = self.transition_model.sample_next_state(self.state, action)
-        dist = self.transition_model.get_next_state_distribution(self.state, action)
-        """
         
-        # update self.state
+        # Observation Model
+        self.observation_model = ObservationModel(
+            domain=self.domain_name,
+            actions=self.actions,
+            obj_type=self.obj_type,
+            noise=0.05,
+        )
+        
+        # self.transition_model.pretty_print()
+        # self.observation_model.pretty_print_candidates()     
         
         # reset
         self.done = False
@@ -156,12 +153,11 @@ class Environment:
         return observation
 
 
-    def step(self, action: Action) -> Tuple[Any, float, bool, Dict[str, Any]]:
+    def step(self, action: Action) -> Tuple[Observation, float, bool, Dict[str, Any]]:
         """
         action을 받아 내부 state를 transition 시키고,
         observation, reward, done, info 반환.
         """
-        
         
         if self.done:
             raise RuntimeError("Episode is done. Call reset() before step().")

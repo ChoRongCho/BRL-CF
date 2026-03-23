@@ -67,7 +67,17 @@ class Grounding:
         self.initial_facts = init_state
         self.obj_type = obj_type
         self.actions: List[Action] = []  
-
+    
+    
+    @staticmethod
+    def substitute(binding, expr: str) -> str:
+        result = expr
+        # 긴 변수명부터 치환해야 L1이 L보다 먼저 바뀜
+        for var in sorted(binding.keys(), key=len, reverse=True):
+            result = re.sub(rf"\b{re.escape(var)}\b", binding[var], result)
+        return result.replace(" ", "")
+    
+    
     def _is_valid_binding(self, schema: ActionSchema, 
                           param_type_symbols,
                           assignment) -> bool:
@@ -82,28 +92,28 @@ class Grounding:
             if not valid:
                 break  
         return valid
+
     
-    
-    @staticmethod
-    def substitute(binding, expr: str) -> str:
-        result = expr
-        # 긴 변수명부터 치환해야 L1이 L보다 먼저 바뀜
-        for var in sorted(binding.keys(), key=len, reverse=True):
-            result = re.sub(rf"\b{re.escape(var)}\b", binding[var], result)
-        return result.replace(" ", "")
-    
-    
-    def generate_action_set(self) -> List[Action]:
-        # 1. mapper 만들기        
-        grounded_actions: List[Action] = []
+    def _build_type_map(self) -> Dict[str, List[str]]:
+        """
         type_map = {}  # "robot(R)" -> type_symbol = R, objects=["changmin"]
+        
+        :param self: Description
+        :return: Description
+        :rtype: Dict[str, List[str]]
+        """
+        type_map = {}
         for type_declare, objects in self.obj_type.items():
             m = re.match(r".*\(([A-Z])\)", type_declare)
             if m:
-                # print(m)
                 type_symbol = m.group(1)
                 type_map[type_symbol] = objects
-        
+        return type_map
+
+    def generate_action_set(self) -> List[Action]:
+        # 1. mapper 만들기        
+        grounded_actions: List[Action] = []
+        type_map = self._build_type_map()
         
         for schema in self.action_schemas:
             # 2. schema parameter별 domain 만들기
