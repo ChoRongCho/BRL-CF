@@ -35,7 +35,16 @@ class State:
         self.facts = world.atoms
 
 
-def get_state(init_config: Dict):
+  
+
+
+def get_types(init_config: Dict) -> Dict:
+    obj_type = init_config.get("type", {}) or {}
+    return obj_type
+
+
+
+def get_state(init_config: Dict) -> List[State]:
     state, hidden_state, goal = State(), State(), State()
     
     i_state = init_config.get("facts", []) or []

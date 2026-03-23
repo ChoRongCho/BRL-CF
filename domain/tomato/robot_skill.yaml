@@ -15,7 +15,10 @@ actions:
       - located(R, L1)
       - nav_prepared(R)
     observation:
+      - located(R, L1)
       - located(R, L2)
+      - located(R, L3)
+
 
   - name: prepare_nav
     type: task
@@ -30,6 +33,7 @@ actions:
     observation:
       - nav_prepared(R)
 
+
   - name: detect
     type: observe
     parameters: [R, S]
@@ -42,25 +46,24 @@ actions:
     del_effects: []
     observation:
       - observed(T)
+      - at(T, S)
       - ripe(T)
       - unripe(T)
       - rotten(T)
-      - at(T, S)
 
 
   - name: pick
     type: task
-    parameters: [R, T, S, L]
+    parameters: [R, T, S]
     cost: 2.0
     preconditions:
       - robot(R)
       - tomato(T)
+      - observed(T)
       - stem(S)
-      - location(L)
-      - located(R, L)
+      - located(R, S)
       - at(T, S)
       - handempty(R)
-      - ripe(T)
     add_effects:
       - holding(R, T)
       - holded(T, R)
@@ -68,8 +71,10 @@ actions:
       - at(T, S)
       - handempty(R)
     observation:
+      - at(T, S)
       - holding(R, T)
       - holded(T, R)
+
 
   - name: scan
     type: observe
@@ -79,16 +84,14 @@ actions:
       - robot(R)
       - tomato(T)
       - observed(T)
+      - holding(R, T)
     add_effects: []
     del_effects: []
     observation:
       - ripe(T)
       - unripe(T)
       - rotten(T)
-      - at(T, S)
-      - holded(T, R)
-      - loaded(T, R)
-      - discarded(T)
+
 
   - name: place
     type: task
@@ -97,6 +100,7 @@ actions:
     preconditions:
       - robot(R)
       - tomato(T)
+      - observed(T)
       - holding(R, T)
       - holded(T, R)
     add_effects:
@@ -108,6 +112,8 @@ actions:
     observation:
       - loaded(T, R)
       - handempty(R)
+      - holding(R, T)
+
 
   - name: discard
     type: task
@@ -116,6 +122,7 @@ actions:
     preconditions:
       - robot(R)
       - tomato(T)
+      - observed(T)
       - holding(R, T)
       - holded(T, R)
     add_effects:
@@ -127,3 +134,5 @@ actions:
     observation:
       - discarded(T)
       - handempty(R)
+      - holding(R, T)
+

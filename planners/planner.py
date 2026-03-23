@@ -6,10 +6,12 @@ from typing import Any, Dict, Tuple
 import copy
 import yaml
 
-from models.action import Action, ActionSchema, GroundedActionSet
+from models.action import Action, ActionSchema, Grounding
 
 
-class BasePlanner:
-    def __init__(self, args):
+class Planner:
+    def __init__(self, actions):
         pass
     
+    def sample_action(self, belief):
+        return "Dummy"

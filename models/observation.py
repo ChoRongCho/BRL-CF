@@ -10,7 +10,7 @@ from models.action import Action
 
 @dataclass(slots=True)
 class Observation:
-    facts: List[str] = field(default_factory=list)
+    facts: State
 
     def is_empty(self) -> bool:
         return len(self.facts) == 0
@@ -18,7 +18,7 @@ class Observation:
     def __repr__(self) -> str:
         return f"Observation({self.facts})"
 
-
+# TODO
 class ObservationModel:
     def __init__(self, actions: List[Action], noise: float = 0.15):
         self.noise = noise
@@ -54,15 +54,15 @@ class ObservationModel:
         if not candidates:
             return Observation([])
 
-        observed: List[str] = []
+        observed: State = State()
 
         for fact in candidates:
             if state.has_fact(fact):
                 if random.random() > self.noise:
-                    observed.append(fact)
+                    observed.add_fact(fact)
             else:
                 if random.random() < self.noise:
-                    observed.append(fact)
+                    observed.add_fact(fact)
 
         return Observation(observed)
 

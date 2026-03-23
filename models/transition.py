@@ -14,11 +14,13 @@ class TransitionOutcome:
     probability: float
 
 
+# TODO
 class TransitionModel:
-    def __init__(self, domain, actions: List[Action], stochastic: bool = False):
+    def __init__(self, domain, actions: List[Action]):
         self.domain = domain
         self.actions = actions
-        self.stochastic = stochastic
+        
+        self.load_transition()
         
         if self.domain == "tomato":
             self.success_probs = {
@@ -54,6 +56,53 @@ class TransitionModel:
             raise ValueError("Domain is worng")
 
 
+    def load_transition(self):
+        
+        if self.domain == "tomato":
+            self.success_probs = {
+                "navigate": 0.95,
+                "pick": 0.85,
+                "place": 1.00,
+                "discard": 1.00,
+                "prepare_nav": 1.0,
+                "detect": 1.0,
+                "scan": 1.0,
+            }
+        elif self.domain == "blocksworld":  # TODO
+            self.success_probs = {
+                "navigate": 0.95,
+                "pick": 0.85,
+                "place": 1.00,
+                "discard": 1.00,
+                "prepare_nav": 1.0,
+                "detect": 1.0,
+                "scan": 1.0,
+            }
+        elif self.domain == "wastesorting":
+            self.success_probs = {
+                "navigate": 0.95,
+                "pick": 0.85,
+                "place": 1.00,
+                "discard": 1.00,
+                "prepare_nav": 1.0,
+                "detect": 1.0,
+                "scan": 1.0,
+            }
+        else:
+            raise ValueError("Domain is worng")
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     def get_next_state_distribution(self, state: State, action: Action) -> List[TransitionOutcome]:
         """핵심: P(s' | s, a) 분포를 반환"""
         if not action.is_applicable(state):

@@ -5,26 +5,34 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence, Union
 
 from utils.asp import solve_asp
+from models.state import State
+from models.observation import Observation
+from models.transition import TransitionOutcome
+import numpy as np
 
 
+
+@dataclass
 class Belief:
-    """
-    1. asp program을 읽고, possible worlds 를 생성
-    2. 
+    certain: State
+    frontier: List[State]
+    weight: np.ndarray[float]
     
-    """
-    
-    def __init__(self, args):
+
+class BeliefModel:
+    def __init__(self):
         
-        self.args = args
-        self.possible_worlds = 0
+        self.belief: Belief = None
         
     
     
-    def generate_possible_worlds(self, program):
-        worlds = solve_asp(program=program)
-        self.possible_worlds = len(worlds)
+    def update_belief(self, b_prev: Belief, obs, action):
         
-        return worlds[0]
+        
+        
+        
+        
+        
+        pass
     
-    # def     
+    

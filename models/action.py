@@ -11,6 +11,10 @@ from models.state import State
 
 @dataclass
 class ActionSchema:
+    """
+    robot_skill.yaml을 플래닝에 쓸 수 있도록 바꿔주는 브릿지 포맷
+    
+    """
     name: str
     parameters: List[str] = field(default_factory=list)
     preconditions: List[str] = field(default_factory=list)
@@ -19,74 +23,8 @@ class ActionSchema:
     observation: List[str] = field(default_factory=list)
     cost: float = 1.0
     action_type: str = "task"
-
-    def infer_parameter_types(self) -> Dict[str, str]:
-        """
-        robot(R), tomato(T), stem(S), location(L) 같은 unary type predicate를 보고
-        parameter의 타입을 추론한다.
-        """
-        type_preds = {"robot", "tomato", "stem", "location"}
-        param_types: Dict[str, str] = {}
-
-        all_atoms: List[str] = []
-        all_atoms.extend(self.preconditions or [])
-        all_atoms.extend(self.add_effects or [])
-        all_atoms.extend(self.del_effects or [])
-        all_atoms.extend(self.observation or [])
-
-        for atom in all_atoms:
-            pred, args = self._parse_fact(atom)
-            if pred in type_preds and len(args) == 1:
-                var = args[0]
-                if var in self.parameters:
-                    param_types[var] = pred
-
-        return param_types
-
-    @staticmethod
-    def _parse_fact(fact: str) -> Tuple[str, List[str]]:
-        fact = fact.strip().rstrip(".")
-        m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$", fact)
-        if not m:
-            return fact, []
-        pred = m.group(1)
-        arg_str = m.group(2).strip()
-        args = [x.strip() for x in arg_str.split(",")] if arg_str else []
-        return pred, args
-
-    @staticmethod
-    def _substitute(atom: str, binding: Dict[str, str]) -> str:
-        result = atom
-        for var, obj in binding.items():
-            result = re.sub(rf"\b{re.escape(var)}\b", obj, result)
-        return result
-
-    def ground(self, binding: Dict[str, str]) -> "Action":
-        return Action(
-            name=f"{self.name}({', '.join(binding[p] for p in self.parameters)})",
-            preconditions=[
-                normalize_fact(self._substitute(a, binding))
-                for a in (self.preconditions or [])
-                if a and a != "null"
-            ],
-            add_effects=[
-                normalize_fact(self._substitute(a, binding))
-                for a in (self.add_effects or [])
-                if a and a != "null"
-            ],
-            del_effects=[
-                normalize_fact(self._substitute(a, binding))
-                for a in (self.del_effects or [])
-                if a and a != "null"
-            ],
-            observation=[
-                normalize_fact(self._substitute(a, binding))
-                for a in (self.observation or [])
-                if a and a != "null"
-            ],
-            cost=self.cost,
-        )
-
+    
+    
 
 @dataclass(slots=True)
 class Action:
@@ -118,82 +56,91 @@ class Action:
         return next_state
     
 
-class GroundedActionSet:
-    def __init__(self, action_schemas: List[ActionSchema], init_state: State):
+class Grounding:
+    def __init__(self, action_schemas: List[ActionSchema], 
+                 init_state: State, 
+                 obj_type: Dict):
+        """
+
+        """
         self.action_schemas = action_schemas
         self.initial_facts = init_state
-        self.objects = self._collect_objects(init_state)
-        self.actions: List[Action] = []
+        self.obj_type = obj_type
+        self.actions: List[Action] = []  
 
-    def _parse_fact(self, fact: str) -> Tuple[str, List[str]]:
-        fact = fact.strip().rstrip(".")
-        m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$", fact)
-        if not m:
-            return fact, []
-        pred = m.group(1)
-        arg_str = m.group(2).strip()
-        args = [x.strip() for x in arg_str.split(",")] if arg_str else []
-        return pred, args
-
-    def _collect_objects(self, init_state: State) -> Dict[str, Set[str]]:
-        """
-        초기 상태의 unary typing fact들로부터 고정 object universe를 만든다.
-        그리고 stem(S) -> location(S) rule도 반영한다.
-        """
-        objects: Dict[str, Set[str]] = {
-            "robot": set(),
-            "tomato": set(),
-            "stem": set(),
-            "location": set(),
-        }
-
-        for fact in init_state.facts:
-            pred, args = self._parse_fact(fact)
-            if pred in objects and len(args) == 1:
-                objects[pred].add(args[0])
-
-        objects["location"].update(objects["stem"])
-        return objects
-
-
-    def _is_valid_binding(self, schema: ActionSchema, binding: Dict[str, str]) -> bool:
-        """
-        간단한 grounding pruning 규칙.
-        """
-        if schema.name == "navigate":
-            if "L1" in binding and "L2" in binding and binding["L1"] == binding["L2"]:
-                return False
-        return True
+    def _is_valid_binding(self, schema: ActionSchema, 
+                          param_type_symbols,
+                          assignment) -> bool:
+        
+        valid = True
+        for i in range(len(schema.parameters)):
+            for j in range(i+1, len(schema.parameters)):
+                if param_type_symbols[i] == param_type_symbols[j]:
+                    if assignment[i] == assignment[j]:
+                        valid = False
+                        break
+            if not valid:
+                break  
+        return valid
+    
+    
+    @staticmethod
+    def substitute(binding, expr: str) -> str:
+        result = expr
+        # 긴 변수명부터 치환해야 L1이 L보다 먼저 바뀜
+        for var in sorted(binding.keys(), key=len, reverse=True):
+            result = re.sub(rf"\b{re.escape(var)}\b", binding[var], result)
+        return result.replace(" ", "")
+    
     
     def generate_action_set(self) -> List[Action]:
+        # 1. mapper 만들기        
         grounded_actions: List[Action] = []
-
+        type_map = {}  # "robot(R)" -> type_symbol = R, objects=["changmin"]
+        for type_declare, objects in self.obj_type.items():
+            m = re.match(r".*\(([A-Z])\)", type_declare)
+            if m:
+                # print(m)
+                type_symbol = m.group(1)
+                type_map[type_symbol] = objects
+        
+        
         for schema in self.action_schemas:
-            param_types = schema.infer_parameter_types()
-
-            domains: List[List[str]] = []
+            # 2. schema parameter별 domain 만들기
+            # 예: ["R", "L1", "L2"] -> [["changmin"], ["dockstation", ...], ["dockstation", ...]]
+            param_domains = []
+            param_type_symbols = []
             for param in schema.parameters:
-                if param not in param_types:
-                    raise ValueError(
-                        f"[{schema.name}] parameter '{param}' type could not be inferred."
-                    )
-                obj_type = param_types[param]
-                domains.append(sorted(self.objects[obj_type]))
+                type_symbol = param[0]   # # L1, L2도 첫 글자 L 사용
+                if type_symbol not in type_map:
+                    raise ValueError(f"{param} 에 해당하는 타입이 self.obj_type에 없음")
+                param_domains.append(type_map[type_symbol])   
+                param_type_symbols.append(type_symbol)
+ 
 
-            for values in product(*domains):
-                binding = dict(zip(schema.parameters, values))
-
-                if not self._is_valid_binding(schema, binding):
+            # 3. 가능한 모든 grounding 조합 생성
+            for assignment in product(*param_domains):
+                binding = dict(zip(schema.parameters, assignment))
+                
+                if not self._is_valid_binding(schema, param_type_symbols, assignment):
                     continue
-
-                grounded_action = schema.ground(binding)
+                
+                grounded_name = f"{schema.name}(" + ", ".join(binding[p] for p in schema.parameters) + ")"
+                grounded_action = Action(
+                    name=grounded_name,
+                    preconditions=[self.substitute(binding, p) for p in schema.preconditions],
+                    add_effects=[self.substitute(binding, a) for a in schema.add_effects],
+                    del_effects=[self.substitute(binding, d) for d in schema.del_effects],
+                    observation=[self.substitute(binding, o) for o in schema.observation],
+                    cost=schema.cost
+                )
+                
+                # print(grounded_name, "|", grounded_action.observation)
                 grounded_actions.append(grounded_action)
 
         self.actions = grounded_actions
         return grounded_actions
     
-
-
     
 def normalize_fact(fact: str) -> str:
     fact = fact.strip().rstrip(".")
@@ -210,7 +157,15 @@ def normalize_fact(fact: str) -> str:
 
 
 
-def get_actions(action_dicts, state):
+def get_actions(action_dicts, state: State, obj_type: Dict):
+    """
+    1. 액션 스키마를 만들고
+    2. 초기 상태를 통해 grounded action set을 전부 만든 다음
+    3. List[Action] 형식으로 전달
+    
+    :param action_dicts: 액션 스키마가 적혀있는 yaml 파일을 바로 읽은 결과. env._load_config의 출력
+    :param state: 초기 상태를 중심으로 grounded actions를 얻어야 함
+    """
     action_schema = [
         ActionSchema(
             name=a["name"],
@@ -224,9 +179,13 @@ def get_actions(action_dicts, state):
         )
         for a in action_dicts
     ]
-    grounded_action_set = GroundedActionSet(
+    
+    action_grounder = Grounding(
         action_schemas=action_schema,
         init_state=state,
+        obj_type=obj_type
     )
-    actions = grounded_action_set.generate_action_set()
+    
+    actions = action_grounder.generate_action_set()
     return actions
+

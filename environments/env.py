@@ -6,8 +6,8 @@ from typing import Any, Dict, Tuple, List
 import copy
 import yaml
 
-from models.state import State, get_state
-from models.action import Action, GroundedActionSet, ActionSchema, get_actions
+from models.state import State, get_state, get_types
+from models.action import Action, Grounding, ActionSchema, get_actions
 from models.observation import ObservationModel
 from models.transition import TransitionModel
 
@@ -30,7 +30,7 @@ class Environment:
         self.stochastic_action = self.args.stochastic_action
         self.max_step = self.args.max_step
         
-        # Domain rule
+        # Domain rule: initially imported to the DomainRuleBridge
         self.asp_bridge = DomainRuleBridge(self.domain_rule_path)
         self.asp_bridge.load()
         self.domain_rule = self.asp_bridge.build_possible_worlds()
@@ -38,22 +38,26 @@ class Environment:
         # Get (initial) state, hidden_init_state, and goal state
         init_config = self._load_config(self.initial_state_path) 
         self.state, self.gt_init_state, self.goal = get_state(init_config) # a list of facts
-               
+        self.obj_type = get_types(init_config)
+        
+        # generate possible worlds and clear runtime
+        _ = self.build_state(runtime_facts=self.state.facts, build_type="certain") 
+
         # Get all grounded actions
         action_dicts = self._load_config(self.robot_skill_path).get("actions", []) or []
-        self.actions = get_actions(action_dicts, self.state)
+        self.actions = get_actions(action_dicts, self.state, self.obj_type)
         
-        # Observation Model
+        
+        # Observation Model: TODO
         self.observation_model = ObservationModel(
             actions=self.actions,
             noise=0.15,
         )
         
-        # Transition Model
+        # Transition Model: TODO
         self.transition_model = TransitionModel(
             domain=self.domain_name,
-            actions=self.actions,
-            stochastic=self.stochastic_action,   # 나중에 True로 바꾸면 확률 전이
+            actions=self.actions
         )
         # Usage
         """
@@ -63,8 +67,7 @@ class Environment:
         dist = self.transition_model.get_next_state_distribution(self.state, action)
         """
         
-        # generate possible worlds and clear runtime
-        _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
+        # update self.state
         
         # reset
         self.done = False
@@ -79,7 +82,15 @@ class Environment:
         return contents
     
     
-    def build_state(self, runtime_facts: List[str], build_type="certain"):
+    def build_state(self, runtime_facts: List[str], build_type: str ="certain"):
+        """
+        Update state using domain rule given 'self.domain_rule'
+        
+        :param runtime_facts: Description
+        :type runtime_facts: List[str]
+        :param build_type: Description
+        :type build_type: str
+        """
         self.asp_bridge.add_runtime_facts(runtime_facts)
         
         if build_type == "possible":
