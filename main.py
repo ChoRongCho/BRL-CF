@@ -27,7 +27,7 @@ def main():
         actions=env.actions,
         transition_model=env.transition_model,
         observation_model=env.observation_model,
-        reward_model=env.reward,
+        reward_model=env.reward_model,
     )
     
     observation = env.reset()
@@ -37,7 +37,7 @@ def main():
     
     while not done:     
         
-        action = planner.plan(b)
+        action = planner.sample_action(b)
         # ====================== Random action ======================
         applicable_actions = [
             a for a in env.actions if a.is_applicable(env.state)
