@@ -32,8 +32,8 @@ class Environment:
         self.max_step = self.args.max_step
         
         # Domain rule: initially imported to the DomainRuleBridge
-        self.asp_bridge = DomainRuleBridge(self.domain_rule_path)
-        self.asp_bridge.load()
+        self.asp_bridge = DomainRuleBridge()
+        self.asp_bridge.load(self.domain_rule_path)
         self.domain_rule = self.asp_bridge.build_possible_worlds()
         
         # Get (initial) state, hidden_init_state, and goal state
@@ -85,6 +85,8 @@ class Environment:
             contents = yaml.safe_load(f) or {}
         return contents
     
+    def get_asp_bridge(self) -> DomainRuleBridge:
+        return self.asp_bridge
     
     def build_state(self, runtime_facts: List[str], build_type: str ="certain"):
         """
@@ -178,6 +180,8 @@ class Environment:
 
         observation = self._get_observation(action)
         info = self._get_info()
+        
+        # self.transition_model.load_transition(state=self.state)
 
         return observation, reward, self.done, info
 

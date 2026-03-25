@@ -102,15 +102,22 @@ class ObservationModel:
             obs_state.add_fact(fact)
         return Observation(obs_state)
 
+
     def likelihood(self, observation: Observation, state: State, action: Action) -> float:
         outcomes = self.get_observation_distribution(state, action)
+        
         obs_set = set(observation.facts.facts)
+        
+        # Debug        
+        # print("[] Action: ", action)
+        # print("[] outcomes: ", outcomes)
+        # print("[] obs_set: ", obs_set)
+        # print()
 
         for outcome in outcomes:
             if set(outcome.facts) == obs_set:
                 return outcome.probability
-
-        return 0.0
+        return self.noise
     
     
     

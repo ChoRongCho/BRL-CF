@@ -14,14 +14,12 @@ from planners.pomct import POMCP
 
 
 class Planner:
-    def __init__(
-        self,
-        args,
-        actions: List[Action],
-        transition_model: TransitionModel,
-        observation_model: ObservationModel,
-        reward_model: RewardModel,
-    ):
+    def __init__(self, args,
+                 actions: List[Action],
+                 transition_model: TransitionModel,
+                 observation_model: ObservationModel,
+                 reward_model: RewardModel):
+        
         self.actions = actions
         self.transition_model = transition_model
         self.observation_model = observation_model
@@ -32,7 +30,7 @@ class Planner:
         self.max_depth = args.max_depth
         self.n_simulations = args.n_simulations
         self.n_particles = args.n_particles
-
+        
         self.pomcp = POMCP(
             actions=self.actions,
             transition_model=self.transition_model,
@@ -57,11 +55,17 @@ class Planner:
 
         if not belief_particles:
             raise ValueError("belief_particles is empty.")
-
+        print(belief)
+        print("\n\n")
+        print(belief_particles)
+        
+        asdf
+        
         action = self.pomcp.search(
             belief_particles=belief_particles,
             n_simulations=self.n_simulations
         )
+        
         return action
 
     def update(self, action: Action, observation) -> None:

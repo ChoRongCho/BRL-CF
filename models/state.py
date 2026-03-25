@@ -9,6 +9,11 @@ from utils.asp import PossibleWorld
 class State:
     facts: List[str] = field(default_factory=list)
 
+    def merge_state(self, other: State) -> State:
+        for f in other.facts:
+            self.add_fact(f)
+        return self
+        
     def get_size(self) -> int:
         return len(self.facts)
 

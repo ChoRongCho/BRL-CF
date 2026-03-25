@@ -12,4 +12,4 @@ class RewardModel:
     
     
     def get_reward(self, state: State, action: Action, next_state: State):
-        return
+        return 1.0

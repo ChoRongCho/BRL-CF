@@ -11,22 +11,23 @@ from models.state import State
 
 @dataclass
 class Belief:
+    knowledge: State
     frontier: List[State]                   # reachable states (support)
-    weights: np.ndarray                     # 각 state의 확률 (normalize됨)
+    frontier_weights: np.ndarray                     # 각 state의 확률 (normalize됨)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):  # @dataclass의 __init__
         if not isinstance(self.frontier, list):
             self.frontier = list(self.frontier)
 
-        if not isinstance(self.weights, np.ndarray):
-            self.weights = np.array(self.weights, dtype=float)
+        if not isinstance(self.frontier_weights, np.ndarray):
+            self.frontier_weights = np.array(self.frontier_weights, dtype=float)
         else:
-            self.weights = self.weights.astype(float)
+            self.frontier_weights = self.frontier_weights.astype(float)
 
-        if len(self.frontier) != len(self.weights):
+        if len(self.frontier) != len(self.frontier_weights):
             raise ValueError(
                 f"Belief mismatch: len(frontier)={len(self.frontier)} "
-                f"!= len(weights)={len(self.weights)}"
+                f"!= len(weights)={len(self.frontier_weights)}"
             )
 
         if len(self.frontier) == 0:
@@ -36,17 +37,25 @@ class Belief:
         self.normalize()
 
     def normalize(self) -> None:
-        if len(self.weights) == 0:
+        """
+        # 모든 확률이 0이 되면 균등분포로 fallback
+        
+        :param self: Description
+        """
+        if len(self.frontier_weights) == 0:
             return
 
-        total = float(np.sum(self.weights))
+        total = float(np.sum(self.frontier_weights))
         if total <= 0.0:
-            # 모든 확률이 0이 되면 균등분포로 fallback
-            self.weights = np.ones(len(self.frontier), dtype=float) / len(self.frontier)
+            self.frontier_weights = np.ones(len(self.frontier), dtype=float) / len(self.frontier)
         else:
-            self.weights = self.weights / total
+            self.frontier_weights = self.frontier_weights / total
 
-
+    def reset_belief(self):
+        self.frontier = [State()]
+        self.frontier_weights = np.array([1.0])
+    
+    
     def is_empty(self) -> bool:
         return len(self.frontier) == 0
 
@@ -56,7 +65,7 @@ class Belief:
             return "Belief(empty)"
 
         lines = ["Belief:"]
-        for i, (state, w) in enumerate(zip(self.frontier, self.weights)):
+        for i, (state, w) in enumerate(zip(self.frontier, self.frontier_weights)):
             lines.append(f"  [{i}] p={w:.{digits}f} | {state}")
         return "\n".join(lines)
 
@@ -65,7 +74,7 @@ class Belief:
         if self.is_empty():
             return []
 
-        pairs = list(zip(self.frontier, self.weights))
+        pairs = list(zip(self.frontier, self.frontier_weights))
         pairs.sort(key=lambda x: x[1], reverse=True)
         return pairs[:k]
 

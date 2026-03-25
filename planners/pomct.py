@@ -1,172 +1,219 @@
-# planners/pomct.py
+"""
+Source from https://github.com/GeorgePik/POMCP.git
+
+"""
+from __future__ import annotations
 
 import random
-import math
+from typing import List, Any
+import numpy as np
+from numpy.random import binomial, choice
+from joblib import Parallel, delayed, parallel_backend
+import multiprocessing
 
+from models.state import State
 from models.action import Action
+from models.belief import Belief
 from models.transition import TransitionModel
-from models.observation import ObservationModel
+from models.observation import Observation, ObservationModel
 from models.reward import RewardModel
+from planners.auxilliary import BuildTree, UCB
 
-"""
-핵심 구조 요약
-
-이 코드가 하는 일은 다음과 같습니다.
-
-belief → particle로 샘플링
-
-simulation → 하나의 state trajectory
-
-tree → history 기반으로 확장
-
-Q 업데이트 → Monte Carlo 평균
-"""
-
-class Node:
-    def __init__(self):
-        self.N = 0  # visit count
-        self.children = {}  # action -> ActionNode
+# planners/pomct.py
 
 
-class ActionNode:
-    def __init__(self):
-        self.N = 0
-        self.Q = 0.0
-        self.children = {}  # observation -> Node
-        
-        
+from planners.auxilliary import BuildTree, UCB
+
+
 class POMCP:
-    def __init__(
-        self,
-        actions: Action,
-        transition_model: TransitionModel,
-        observation_model: ObservationModel,
-        reward_model: RewardModel,
-        gamma=0.95,
-        c=1.0,
-        max_depth=10,
-    ):
+    def __init__(self,
+                 actions: List[Action],
+                 transition_model: TransitionModel,
+                 observation_model: ObservationModel,
+                 reward_model: RewardModel,
+                 gamma: float = 0.95,
+                 c: float = 1.0,
+                 threshold: float = 0.005,
+                 max_time: int = 10000,
+                 no_particles: int = 1200):
+        
         self.actions = actions
-        self.T = transition_model
-        self.O = observation_model
-        self.R = reward_model
+        self.transition_model = transition_model
+        self.observation_model = observation_model
+        self.reward_model = reward_model
 
         self.gamma = gamma
+        if gamma >= 1:
+            raise ValueError("gamma should be less than 1.")
+
+        self.e = threshold
         self.c = c
-        self.max_depth = max_depth
+        self.max_time = max_time
+        self.no_particles = no_particles
+        self.tree = BuildTree()
 
-        self.root = Node()
+
+    def initialize(self, belief: Belief, observations: Observation):
+        self.belief = belief if belief is not None else None
+        self.observations = observations if observations is not None else None
+
+
+    def _sample_generative_model(self, state, action):
+        """
+        기존 Generator(state, action)을 대체하는 함수.
+        반환: next_state, observation, reward
+        """
+        # 1. transition 샘플링
+        next_state = self.transition_model.sample_next_state(state, action)
+
+        # 2. observation 샘플링
+        observation = self.observation_model.sample(next_state, action)
         
-        
-    def search(self, belief_particles, n_simulations=1000):
-        for _ in range(n_simulations):
-            s = random.choice(belief_particles)
-            self.simulate(s, self.root, depth=0)
+        # 3. reward 계산
+        reward = self.reward_model.get_reward(state, action, next_state)
 
-        # best action 선택
-        best_action = max(
-            self.root.children.items(),
-            key=lambda x: x[1].Q
-        )[0]
+        return next_state, observation, reward
 
-        return best_action
 
-    def simulate(self, state, node, depth):
-        if depth >= self.max_depth:
-            return 0.0
+    def search_best(self, h, UseUCB=True):
+        max_value = None
+        result = None
+        resulta = None
 
-        # leaf node면 rollout
-        if not node.children:
-            return self.rollout(state, depth)
+        if UseUCB:
+            if self.tree.nodes[h][4] != -1:
+                children = self.tree.nodes[h][1]
+                for action, child in children.items():
+                    if self.tree.nodes[child][2] == 0:
+                        return action, child
 
-        # UCB로 action 선택
-        action = self.select_action(node)
+                    ucb = UCB(
+                        self.tree.nodes[h][2],
+                        self.tree.nodes[child][2],
+                        self.tree.nodes[child][3],
+                        self.c,
+                    )
 
-        action_node = node.children[action]
+                    if max_value is None or max_value < ucb:
+                        max_value = ucb
+                        result = child
+                        resulta = action
+            return resulta, result
 
-        # generative model
-        next_state, observation, reward = self.generative_model(state, action)
+        else:
+            if self.tree.nodes[h][4] != -1:
+                children = self.tree.nodes[h][1]
+                for action, child in children.items():
+                    node_value = self.tree.nodes[child][3]
+                    if max_value is None or max_value < node_value:
+                        max_value = node_value
+                        result = child
+                        resulta = action
+            return resulta, result
 
-        # 다음 노드
-        if observation not in action_node.children:
-            action_node.children[observation] = Node()
 
-        next_node = action_node.children[observation]
 
-        # recursive
-        value = reward + self.gamma * self.simulate(next_state, next_node, depth + 1)
 
-        # 업데이트
-        action_node.N += 1
-        node.N += 1
+    def search(self):
+        belief_history = self.tree.nodes[-1][4].copy()
 
-        action_node.Q += (value - action_node.Q) / action_node.N
+        for _ in range(self.max_time):
+            if not belief_history:
+                if not self.states:
+                    raise ValueError(
+                        "Root belief is empty and no fallback state set exists. "
+                        "Initialize particles or provide states."
+                    )
+                s = random.choice(self.states)
+                
+            else:
+                s = random.choice(belief_history)
 
-        return value
+            self.simulate(s, -1, 0)
 
-    
-    def rollout(self, state, depth):
-        if depth >= self.max_depth:
+        action, _ = self.search_best(-1, UseUCB=False)
+        return action
+
+
+
+
+
+    def get_observation_node(self, h, sample_observation): # h = next_node
+        if sample_observation not in list(self.tree.nodes[h][1].keys()):
+            self.tree.expand_tree_from(h, sample_observation)
+
+        next_node = self.tree.nodes[h][1][sample_observation]
+        return next_node
+
+
+    def rollout(self, s, depth):
+        if (self.gamma ** depth < self.e or self.gamma == 0) and depth != 0:
             return 0.0
 
         action = random.choice(self.actions)
-        next_state, observation, reward = self.generative_model(state, action)
-        return reward + self.gamma * self.rollout(next_state, depth + 1)
-    
-    
-    def select_action(self, node):
-        best_score = -float("inf")
-        best_action = None
+        sample_state, _, reward = self._sample_generative_model(s, action)
 
-        for action in self.actions:
-            if action not in node.children:
-                node.children[action] = ActionNode()
+        return reward + self.gamma * self.rollout(sample_state, depth + 1)
 
-            a_node = node.children[action]
+    def simulate(self, s, h, depth):
+        if (self.gamma ** depth < self.e or self.gamma == 0) and depth != 0:
+            return 0.0
 
-            if a_node.N == 0:
-                return action
+        if self.tree.isLeafNode(h):
+            for action in self.actions:
+                self.tree.expand_tree_from(h, action, IsAction=True)
 
-            ucb = a_node.Q + self.c * math.sqrt(
-                math.log(node.N + 1) / a_node.N
-            )
+            new_value = self.rollout(s, depth)
+            self.tree.nodes[h][2] += 1
+            self.tree.nodes[h][3] = new_value
+            return new_value
 
-            if ucb > best_score:
-                best_score = ucb
-                best_action = action
+        next_action, next_node = self.search_best(h, UseUCB=True)
 
-        return best_action
-    
-    
-    # TODO
-    def generative_model(self, state, action):
-        # transition
-        outcomes = self.T.get_next_state_distribution(state, action)
+        sample_state, sample_observation, reward = self._sample_generative_model(
+            s, next_action
+        )
 
-        next_states = []
-        probs = []
+        obs_node = self.get_observation_node(next_node, sample_observation)
 
-        for o in outcomes:
-            next_states.append(o.next_state)
-            probs.append(o.probability)
+        cum_reward = reward + self.gamma * self.simulate(
+            sample_state, obs_node, depth + 1
+        )
 
-        next_state = random.choices(next_states, weights=probs)[0]
+        self.tree.nodes[h][4].append(s)
+        if len(self.tree.nodes[h][4]) > self.no_particles:
+            self.tree.nodes[h][4] = self.tree.nodes[h][4][1:]
 
-        # observation
-        observation = self.O.sample(next_state, action)
+        self.tree.nodes[h][2] += 1
+        self.tree.nodes[next_node][2] += 1
+        self.tree.nodes[next_node][3] += (
+            cum_reward - self.tree.nodes[next_node][3]
+        ) / self.tree.nodes[next_node][2]
 
-        # reward
-        reward = self.R.get_reward(state, action, next_state)
+        return cum_reward
 
-        return next_state, observation, reward
-    
 
-    def update_root(self, action, observation):
-        if action in self.root.children:
-            a_node = self.root.children[action]
-            if observation in a_node.children:
-                self.root = a_node.children[observation]
-                return
+    def posterior_sample(self, Bh, action, observation):
+        if not Bh:
+            if not self.belief:
+                raise ValueError(
+                    "Belief is empty and no fallback state set exists."
+                )
+            s = random.choice(self.belief)
+        else:
+            s = random.choice(Bh)
 
-        # 없으면 새로
-        self.root = Node()
+        s_next, o_next, _ = self._sample_generative_model(s, action)
+
+        if o_next == observation:
+            return s_next
+
+        return self.posterior_sample(Bh, action, observation)
+
+    def update_belief(self, action, observation):
+        prior = self.tree.nodes[-1][4].copy()
+        self.tree.nodes[-1][4] = []
+
+        for _ in range(self.no_particles):
+            sampled_state = self.posterior_sample(prior, action, observation)
+            self.tree.nodes[-1][4].append(sampled_state)

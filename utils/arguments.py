@@ -28,6 +28,7 @@ def parse_args(domain: str):
         "--initial_state",
         type=str,
         default=f"domain/{domain}/initial_state.yaml",
+        # default=f"domain/{domain}/init_test.yaml",
         help="Path to initial state yaml"
     )
     

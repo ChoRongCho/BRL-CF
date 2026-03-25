@@ -306,8 +306,8 @@ class TransitionTomato:
                     )
                 )
         else:
-            outcomes[0].probability = 1.0
-
+            outcomes[0].probability = 1.0        
+        
         return outcomes
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:

@@ -43,7 +43,7 @@ class TransitionModel:
 
         self.type_map = self._build_type_map()
         self.transition_table: Dict[str, List[TransitionOutcome]] = {}
-        self.load_transition()
+        self.load_transition(state=self.true_state)
 
     def _build_type_map(self) -> Dict[str, List[str]]:
         type_map = {}
@@ -65,24 +65,24 @@ class TransitionModel:
 
         return next_state
 
-    def load_transition(self):
+    def load_transition(self, state: State):
         for a in self.actions:
 
             a_name = a.name.split("(")[0]
 
             if self.domain == "tomato":
                 from models.tomato.trans import TransitionTomato
-                trans_model = TransitionTomato(type_map=self.type_map, true_state=self.true_state)
+                trans_model = TransitionTomato(type_map=self.type_map, true_state=state)
                 self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
 
             elif self.domain == "blocksworld":
                 from models.blocksworld.trans import TransitionBlocksworld
-                trans_model = TransitionBlocksworld(type_map=self.type_map, true_state=self.true_state)
+                trans_model = TransitionBlocksworld(type_map=self.type_map, true_state=state)
                 self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
 
             elif self.domain == "wastesorting":
                 from models.wastesorting.trans import TransitionWastesorting
-                trans_model = TransitionWastesorting(type_map=self.type_map, true_state=self.true_state)
+                trans_model = TransitionWastesorting(type_map=self.type_map, true_state=state)
                 self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
 
             else:

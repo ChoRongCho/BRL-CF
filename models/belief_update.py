@@ -44,8 +44,11 @@ Resample when ESS < threshold.
 """
 from __future__ import annotations
 import numpy as np
+import copy
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 
+
+from utils.asp import DomainRuleBridge, solve_asp
 from models.belief import Belief
 from models.state import State
 from models.action import Action
@@ -53,145 +56,92 @@ from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
 
 
-class BeliefModel:
-    def __init__(
-        self,
-        transition_model: TransitionModel,
-        observation_model: ObservationModel,
-        top_k: int = None,
-        prune_threshold: float = 1e-12,
-    ):
+class BeliefManager:
+    def __init__(self,
+                 transition_model: TransitionModel,
+                 observation_model: ObservationModel,
+                 asp_bridge: DomainRuleBridge):
+        """
+        Docstring for __init__
+        
+        """
         self.transition_model = transition_model
         self.observation_model = observation_model
-        self.prune_threshold = prune_threshold
-        self.top_k = top_k
+        self.asp_bridge = asp_bridge
 
-        self.belief = None
+        self.belief: Belief = None
         self.initial_belief = 1.0
-
-
-    def set_initial_belief(self, init_state: State) -> Belief:
-        """
-        초기 belief state 생성
+        self.conf_threshold = 0.7
         
-        :param init_state: State 구조의 초기 상태, belief는 1로 유지
-        """
-        self.belief = Belief(frontier=[init_state], weights=np.array([self.initial_belief], dtype=float))
+        
+    def initialize_belief(self, init_state: State):
+        self.belief = Belief(knowledge=init_state,
+                             frontier=[State()],
+                             frontier_weights=np.array([self.initial_belief], dtype=float))
+        return self.belief
+           
+    def get_belief(self) -> Belief:
         return self.belief
     
-
-    def set_belief(self, belief: Belief) -> None:
-        self.belief = belief
-        
-
-    def get_belief(self) -> Optional[Belief]:
-        return self.belief
     
-
-    def update_belief(
-        self,
-        b_prev: Belief,
-        obs: Observation,
-        action: Any,
-    ) -> Belief:
+    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> Belief:
         """
-        reachable state만 유지하는 sparse belief update.
-
-        흐름:
-        1. 각 이전 state에서 action에 따른 transition outcome 생성
-        2. 같은 next_state는 probability를 합산
-        3. observation likelihood로 reweight
-        4. pruning + normalize
-        
-        - self.observation_model.likelihood(obs, state, action) -> float
-          또는
-        - self.observation_model.probability(obs, state, action) -> float
         """
-        if b_prev is None:
+        if belief is None:
             raise ValueError("b_prev is None. 초기 belief를 먼저 설정하세요.")
 
-        if b_prev.is_empty():
+        if belief.is_empty():
             self.belief = Belief(frontier=[], weights=np.array([], dtype=float))
             return self.belief
-
-        merged: Dict[str, float] = {}
-        state_map: Dict[str, State] = {}
         
-        # 1. Transition expansion
-        for prev_state, prev_weight in zip(b_prev.frontier, b_prev.weights):
-            outcomes = self._get_transition_outcomes(prev_state, action)
+        # 1. Transition expansion from knowledge base
+        outcomes = self._get_transition_outcomes(belief.knowledge, action)
+        
+        tran_row = []
+        obs_row = []
+        frontier = []
+        
+        for outcome in outcomes:   
+            next_state, trans_prob = outcome.next_state, outcome.probability
+            frontier.append(next_state)
+            tran_row.append(trans_prob)
+
+            # 2. Observation            
+            obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
+            obs_row.append(obs_likelihood)
             
-            for outcome in outcomes:
-                
-                next_state, trans_prob = self._parse_transition_outcome(outcome)
-
-                if trans_prob <= 0.0:
-                    continue
-                
-                def _state_to_key(state: State) -> str:
-                    if hasattr(state, "facts"):
-                        try:
-                            return "||".join(sorted(str(f) for f in state.facts))
-                        except Exception:
-                            pass
-                    return repr(state)
-                
-                key = _state_to_key(next_state)
-                merged[key] = merged.get(key, 0.0) + prev_weight * trans_prob
-                state_map[key] = next_state
-                
-                
-                
-
-        # transition 결과가 하나도 없을 때: 이전 belief 유지 혹은 empty 처리
-        if not merged:
-            # 여기서는 보수적으로 이전 belief 유지
-            self.belief = Belief(
-                frontier=list(b_prev.frontier),
-                weights=np.array(b_prev.weights, dtype=float),
-            )
-            return self.belief
-
-        # 2. Observation correction
-        if obs is not None and self.observation_model is not None:
-            for key in list(merged.keys()):
-                state = state_map[key]
-                obs_likelihood = self._get_observation_likelihood(obs, state, action)
-                merged[key] *= obs_likelihood
-
-        # 3. Pruning
-        merged = {
-            s: w
-            for s, w in merged.items()
-            if w > self.prune_threshold
-        }
-
-        if not merged:
-            # observation 때문에 다 사라졌다면,
-            # fallback으로 transition 후 belief를 observation 없이 정규화
-            fallback_states = list(merged.keys())
-            # merged가 이미 비어 있으므로 transition 직후 상태를 다시 계산
-            merged = {}
-            for prev_state, prev_weight in zip(b_prev.frontier, b_prev.weights):
-                outcomes = self._get_transition_outcomes(prev_state, action)
-                for outcome in outcomes:
-                    next_state, trans_prob = self._parse_transition_outcome(outcome)
-                    if trans_prob <= 0.0:
-                        continue
-                    merged[next_state] = merged.get(next_state, 0.0) + prev_weight * trans_prob
-
-        # 4. Optional top-k
-        items = [(state_map[k], w) for k, w in merged.items() if w > self.prune_threshold]
-        items.sort(key=lambda x: x[1], reverse=True)
-
-        if self.top_k is not None:
-            items = items[:self.top_k]
-
-        frontier = [s for s, _ in items]
-        weights = np.array([w for _, w in items], dtype=float)
-
-        b_next = Belief(frontier=frontier, weights=weights)
-        confidence = self.calculate_confidence(weights)
+        transition_matrix = np.array(tran_row)
+        observation_matrix = np.array(obs_row)
+        
+        # DEBUG
+        # print(transition_matrix, transition_matrix.size)
+        # print(observation_matrix, observation_matrix.size)
+        
+        if transition_matrix.size != observation_matrix.size:
+            raise SystemError("The size of Transition and Observation is Different. Modify the code!!!")
+        
+        # 2. Update belief, posterior ∝ transition * observation
+        unnormalized = transition_matrix * observation_matrix
+        total = float(np.sum(unnormalized))
+        if total <= 0.0:
+            weights = np.ones(len(frontier), dtype=float) / len(frontier)
+        else:
+            weights = unnormalized / total
+        
+        b_next = Belief(knowledge=belief.knowledge, frontier=frontier, frontier_weights=weights)
+        
+        # 3. verify frontier
+        b_next = self.verify_frontier(belief=b_next)
+        
+        # 4. calcluate confidence
+        confidence = self.calculate_confidence(b_next.frontier_weights)
+        
+        # 5. append belief into the knowledge
+        self.advance_observation(belief=b_next, confidence=confidence)
+        
+        
+        
+        
         self.belief = b_next
         
         return b_next, confidence
@@ -201,83 +151,28 @@ class BeliefModel:
         return self.transition_model.get_next_state_distribution(state, action)
         
 
-    def _parse_transition_outcome(self, outcome: Any) -> Tuple[State, float]:
-        """
-        TransitionOutcome의 구체 필드명을 아직 모르므로 유연하게 파싱.
-        지원 예시:
-        - outcome.next_state, outcome.prob
-        - outcome.state, outcome.probability
-        - {"next_state": ..., "prob": ...}
-        - (state, prob)
-        """
-        if isinstance(outcome, tuple) and len(outcome) == 2:
-            next_state, prob = outcome
-            return next_state, float(prob)
-
-        if isinstance(outcome, dict):
-            next_state = (
-                outcome.get("next_state")
-                or outcome.get("state")
-            )
-            prob = (
-                outcome.get("prob")
-                or outcome.get("probability")
-                or outcome.get("p")
-                or outcome.get("weight")
-            )
-            if next_state is None or prob is None:
-                raise ValueError(f"Invalid transition dict outcome: {outcome}")
-            return next_state, float(prob)
-
-        next_state = None
-        prob = None
-
-        for state_attr in ("next_state", "state"):
-            if hasattr(outcome, state_attr):
-                next_state = getattr(outcome, state_attr)
-                break
-
-        for prob_attr in ("prob", "probability", "p", "weight"):
-            if hasattr(outcome, prob_attr):
-                prob = getattr(outcome, prob_attr)
-                break
-
-        if next_state is None or prob is None:
-            raise ValueError(
-                "Could not parse TransitionOutcome. "
-                "Expected fields like (next_state/state) and (prob/probability/p/weight)."
-            )
-
-        return next_state, float(prob)
-
     def _get_observation_likelihood(
         self,
         obs: Observation,
         state: State,
         action: Any,
     ) -> float:
+
         if self.observation_model is None:
             return 1.0
+                
+        value = self.observation_model.likelihood(obs, state, action)
+        return max(0.0, float(value))
 
-        if hasattr(self.observation_model, "likelihood"):
-            value = self.observation_model.likelihood(obs, state, action)
-            return max(0.0, float(value))
-
-        if hasattr(self.observation_model, "probability"):
-            value = self.observation_model.probability(obs, state, action)
-            return max(0.0, float(value))
-
-        if hasattr(self.observation_model, "score"):
-            value = self.observation_model.score(obs, state, action)
-            return max(0.0, float(value))
-
-        raise AttributeError(
-            "observation_model must implement one of "
-            "'likelihood(obs, state, action)', "
-            "'probability(obs, state, action)', "
-            "or 'score(obs, state, action)'."
-        )
-        
+    
+    @staticmethod
+    def _state_to_key(state: State) -> str:
+        if hasattr(state, "facts"):
+            try:
+                return "||".join(sorted(str(f) for f in state.facts))
+            except Exception:
+                pass
+        return repr(state)
         
     def calculate_confidence(self, weights) -> float:
         """
@@ -309,3 +204,65 @@ class BeliefModel:
         # numerical safety
         return confidence
         
+        
+    def verify_frontier(self, belief: Belief):
+        """
+        ASP로 belief를 검증하고, 불가능한 belief는 0으로 한 뒤, 강제 normalize
+        
+        :param self: Description
+        :param belief: Description
+        """
+        self.asp_bridge.clear_runtime()
+        
+        for i, frontier in enumerate(belief.frontier):
+            self.asp_bridge.add_runtime_facts(frontier.facts)
+            program = self.asp_bridge.build_certain_worlds()
+            worlds = solve_asp(program)
+            
+            if not len(worlds)==1:
+                # print(f"The {i}th worlds is not possible. Avaialble: {len(worlds)}")
+                belief.frontier_weights[i] = 0.0 + 1e-12
+            else:
+                # print(f"The {i}th worlds is possible {belief.frontier_weights[i]}. Avaialble: {len(worlds)}")
+                # belief.frontier_weights[i] = 0.0 + 1e-12
+                pass
+            self.asp_bridge.clear_runtime()
+        
+        # normalize belief
+        total = float(np.sum(belief.frontier_weights))
+        belief.frontier_weights = belief.frontier_weights / total
+        
+        return belief
+    
+    
+    def advance_observation(self, belief: Belief, confidence: float):
+        if confidence < self.conf_threshold:
+            print(f"[BeliefManager] the confidence {confidence} is low. ")
+            
+            new_obs = self.dummy_function()
+            
+            max_idx = np.argmax(belief.frontier_weights)
+            max_frontier = belief.frontier[max_idx]
+            
+            
+            belief.knowledge.merge_state(max_frontier)
+            belief.reset_belief()
+            
+            return belief
+        
+        else:
+            print(f"[BeliefManager] the confidence {confidence} is sufficiently high. ")
+            
+            max_idx = np.argmax(belief.frontier_weights)
+            max_frontier = belief.frontier[max_idx]
+            
+            belief.knowledge.merge_state(max_frontier)
+            belief.reset_belief()
+            
+            return belief
+        
+        
+        
+    def dummy_function(self) -> Observation:
+        new_observation = Observation(facts=["at(changmin)"])
+        return new_observation

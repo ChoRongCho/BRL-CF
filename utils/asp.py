@@ -31,8 +31,8 @@ class DomainRuleBridge:
     run clingo, and extract answer sets as possible worlds.
     """
 
-    def __init__(self, yaml_path: Union[str, Path]) -> None:
-        self.yaml_path = Path(yaml_path)
+    def __init__(self) -> None:
+        # self.yaml_path = Path(yaml_path)
 
         self.raw_data: Dict[str, Any] = {}
         self.domain_name: str = "unknown"
@@ -50,8 +50,8 @@ class DomainRuleBridge:
         self.runtime_constraints: List[str] = []
         self.runtime_shows: List[str] = []
 
-    def load(self) -> None:
-        with self.yaml_path.open("r", encoding="utf-8") as f:
+    def load(self, yaml_path: Union[str, Path]) -> None:
+        with yaml_path.open("r", encoding="utf-8") as f:
             self.raw_data = yaml.safe_load(f) or {}
 
         self.domain_name = str(self.raw_data.get("domain", "unknown"))

@@ -92,13 +92,13 @@ class ObservationTomato:
     def _build_default_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         candidates = self.build_candidates(action)
         true_facts = [f for f in candidates if state.has_fact(f)]
-
+        
         if true_facts:
             return [
                 ObservationOutcome(facts=true_facts, probability=1.0 - self.noise),
                 ObservationOutcome(facts=[], probability=self.noise)
             ]
-        return [ObservationOutcome(facts=[], probability=1.0)]
+        return [ObservationOutcome(facts=[], probability=1.0 - self.noise)]
 
     def _build_navigate_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         candidates = [f for f in self.build_candidates(action) if f.startswith("located(")]
