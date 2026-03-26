@@ -40,6 +40,8 @@ def main():
 
         print("Confidence: ", confidence)
         print("==================\n")
+        # print(belief)
+        # asdf
 
 
 

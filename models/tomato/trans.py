@@ -17,7 +17,7 @@ class TransitionTomato:
 
         self.navigate_success_rate = 0.90
         self.prepare_nav_success_rate = 0.98
-        self.detect_success_rate = 0.60
+        self.detect_success_rate = 0.80
         self.pick_success_rate = 0.75
         self.scan_success_rate = 0.8
         self.place_success_rate = 0.90
@@ -268,10 +268,13 @@ class TransitionTomato:
             location = arity[1]
 
             true_label = None
-            # for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
-            for c in [f"ripe({tomato})", f"unripe({tomato})"]:
+            for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
+            # for c in [f"ripe({tomato})", f"unripe({tomato})"]:
                 if self._true_has_fact(c):
-                    true_label = c
+                    if c.startswith("rotten"):
+                        true_label = f"ripe({tomato})"
+                    else:
+                        true_label = c  
                     break
 
             if true_label is None:

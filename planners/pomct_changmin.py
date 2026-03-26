@@ -77,16 +77,58 @@ class POMCPPlanner:
         self.tree.reset()
         history = self.tree.root_id
         
-        # for kb in belief.knowledge.facts:
-        #     print(kb)
         
         for k in range(self.n_simulations):
             state = belief.knowledge.copy()
             self.simulate(state=state, history=history, depth=0)
         
         
-        candidates = self.tree.get_action_children(history)
         
+        
+        
+        
+        
+        
+        # ====== 🔥 TREE EXPANSION DEBUG ======
+        total_nodes = len(self.tree.nodes)
+
+        action_nodes = sum(1 for n in self.tree.nodes.values() if n.is_action_node)
+        obs_nodes = sum(1 for n in self.tree.nodes.values() if n.is_observation_node)
+
+        print("\n===== 🔥 TREE DEBUG 🔥 =====")
+        print(f"Total nodes: {total_nodes}")
+        print(f"Action nodes: {action_nodes}")
+        print(f"Observation nodes: {obs_nodes}")
+
+        # root branching factor
+        root_children = self.tree.get_action_children(history)
+        print(f"Root branching factor: {len(root_children)}")
+
+        # depth 계산
+        max_depth = 0
+        depth_count = {}
+
+        for node_id, node in self.tree.nodes.items():
+            depth = 0
+            current = node
+
+            while current.parent_id is not None:
+                depth += 1
+                current = self.tree.get_node(current.parent_id)
+
+            max_depth = max(max_depth, depth)
+            depth_count[depth] = depth_count.get(depth, 0) + 1
+
+        print(f"Max depth: {max_depth}")
+        print("Nodes per depth:", depth_count)
+
+        print("======================\n")
+        # ====================================
+        
+        
+        
+        
+        candidates = self.tree.get_action_children(history)
         for action, node_id in candidates:
             print(
                 f"[ROOT] action={action.name} "

@@ -18,7 +18,7 @@ class ObservationTomato:
         self.noise = noise
 
         self.detect_success_rate = 0.85
-        self.scan_success_rate = 0.70
+        self.scan_success_rate = 0.95
         self.navigate_success_rate = 0.90
 
     @staticmethod

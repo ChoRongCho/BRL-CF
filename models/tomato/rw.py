@@ -26,6 +26,53 @@ class RewardTomato:
         facts = self._to_fact_set(state)
         return sum(1 for g in self.goal.facts if g in facts)
 
+    def _tomato_reward(self, state, next_state):
+        
+        t_reward = 0
+        
+        s_facts = self._to_fact_set(state)
+        ns_facts = self._to_fact_set(next_state)
+        added = ns_facts - s_facts
+        
+        # positive t_reward
+        for fact in added:
+            if fact.startswith("loaded("):
+                tomato = fact[len("loaded("):-1].split(",")[0].strip()
+                if f"ripe({tomato})" in s_facts or f"ripe({tomato})" in ns_facts:
+                    t_reward += 15.0
+                    
+        for fact in added:
+            if fact.startswith("discarded("):
+                tomato = fact[len("discarded("):-1].split(",")[0].strip()
+                if f"rotten({tomato})" in s_facts or f"rotten({tomato})" in ns_facts:
+                    t_reward += 15.0
+                    
+        # negative t_reward
+        for fact in added:
+            if fact.startswith("loaded("):
+                tomato = fact[len("loaded("):-1].split(",")[0].strip()
+                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
+                    t_reward -= 20.0
+
+            if fact.startswith("discarded("):
+                tomato = fact[len("discarded("):-1].split(",")[0].strip()
+                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
+                    t_reward -= 8.0
+
+        for fact in added:
+            if fact.startswith("discarded("):
+                tomato = fact[len("discarded("):-1].split(",")[0].strip()
+                if f"ripe({tomato})" in s_facts or f"ripe({tomato})" in ns_facts:
+                    t_reward -= 20.0
+
+        for fact in added:
+            if fact.startswith("loaded("):
+                tomato = fact[len("loaded("):-1].split(",")[0].strip()
+                if f"rotten({tomato})" in s_facts or f"rotten({tomato})" in ns_facts:
+                    t_reward -= 20.0
+        
+        return t_reward
+    
     def calculate_reward(self, state: State, action: Action, next_state: State) -> float:
         reward = 0.0
 
@@ -38,49 +85,28 @@ class RewardTomato:
         # 기본 step cost: 쓸데없는 반복 방지7
         reward -= action.cost
 
-        # 1) 토마토가 새로 observed 되면 보상
-        # 예시 predicate: observed(t1), observed(t1, stem1), detected(t1) 등
-        for fact in added:
-            if fact.startswith("observed("):
-                reward += 7.0
+        # 1) 새 observed 보상
+        new_observed = [fact for fact in added if fact.startswith("observed(")]
+        reward += 7.0 * len(new_observed)
+        new_quality = [
+            fact for fact in added
+            if fact.startswith("ripe(")
+            or fact.startswith("unripe(")
+            or fact.startswith("rotten(")
+        ]
 
-        # 2) ripe 토마토를 수확/적재 상태로 만들면 큰 보상
-        # goal 예시에 loaded(t1, changmin) 형태가 있으므로 loaded 추가를 강하게 보상
-        for fact in added:
-            if fact.startswith("loaded("):
-                reward += 15.0
+        # 2) 토마토 탐지 보상
+        reward += self._tomato_reward(state=state, next_state=next_state)
+        
+        # 비어있는 곳에서 자꾸 detect 하면 패널티
+        # 다 되어있는 곳에서 detect를 자꾸 하게 되니까 이걸 패널티를 따로 해줘야 할까? 아니면 걍 detect action의 패널티를 높일까?
+        # 4) detect가 아무 새 정보도 못 얻었으면 패널티
+        if action.name.startswith("detect("):
+            if len(new_observed) == 0:
+                reward -= 3.0
 
-        # 3) rotten 토마토를 discard 하면 큰 보상
-        for fact in added:
-            if fact.startswith("discarded("):
-                reward += 15.0
-
-        # 4) unripe는 그대로 두기
-        # 즉 unripe를 잘못 집거나 버리면 패널티
-        # predicate 이름은 실제 state 표현에 맞춰야 함
-        for fact in added:
-            if fact.startswith("loaded("):
-                tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
-                    reward -= 15.0
-
-            if fact.startswith("discarded("):
-                tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
-                    reward -= 15.0
-
-        # ripe를 discard하면 패널티
-        for fact in added:
-            if fact.startswith("discarded("):
-                tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if f"ripe({tomato})" in s_facts or f"ripe({tomato})" in ns_facts:
-                    reward -= 50.0
-
-        # rotten을 loaded하면 패널티
-        for fact in added:
-            if fact.startswith("loaded("):
-                tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if f"rotten({tomato})" in s_facts or f"rotten({tomato})" in ns_facts:
-                    reward -= 50.0
-
+        if action.name.startswith("scan("):
+            if len(new_quality) == 0:
+                reward -= 1.0
+        
         return reward
