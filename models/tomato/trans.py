@@ -107,6 +107,67 @@ class TransitionTomato:
                 true_facts.append(fact)
         return true_facts
 
+    def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
+        
+        current_facts = set(state.facts)
+        
+        if not action.name.startswith("detect("):
+            return outcomes
+        
+        observed_tomatoes = set()
+        for fact in current_facts:
+            if fact.startswith("observed(") and fact.endswith(")"):
+                tomato = fact[len("observed("):-1].strip()
+                observed_tomatoes.add(tomato)
+        
+        
+        if not observed_tomatoes:
+            return outcomes
+        
+        merged = {}
+        for outcome in outcomes:
+            filtered_add_facts = []
+
+            for fact in outcome.add_facts:
+                remove_fact = False
+
+                for tomato in observed_tomatoes:
+                    if fact == f"observed({tomato})":
+                        remove_fact = True
+                        break
+                    if fact == f"ripe({tomato})":
+                        remove_fact = True
+                        break
+                    if fact == f"unripe({tomato})":
+                        remove_fact = True
+                        break
+                    if fact == f"rotten({tomato})":
+                        remove_fact = True
+                        break
+                    if fact.startswith(f"at({tomato},") and fact.endswith(")"):
+                        remove_fact = True
+                        break
+
+                if not remove_fact:
+                    filtered_add_facts.append(fact)
+
+            filtered_add_facts = self._dedup_facts(filtered_add_facts)
+            key = (tuple(sorted(filtered_add_facts)), tuple(sorted(outcome.del_facts)))
+
+            if key not in merged:
+                merged[key] = TransitionOutcome(
+                    add_facts=filtered_add_facts,
+                    del_facts=outcome.del_facts,
+                    probability=outcome.probability
+                )
+            else:
+                merged[key].probability += outcome.probability
+                
+        return list(merged.values())
+
+    
+    
+    
     def build_outcomes(self, action_name: str, action: Action) -> List[TransitionOutcome]:
         if action_name == "navigate":
             return self._build_navigate_outcomes(action)
@@ -189,11 +250,11 @@ class TransitionTomato:
     def _build_detect_outcomes(self, action: Action) -> List[TransitionOutcome]:
         """
         detect:
-        성공 시 true tomato + true ripeness 전부 감지.
-        실패 alternatives에서는
-        - 일부 tomato를 놓칠 수 있고
-        - 감지한 tomato의 ripeness를 틀리게 분류할 수도 있음
+        각 tomato에 대해
+        - 0.9 확률로 발견: observed(T), at(T,S), true ripeness
+        - 0.1 확률로 미발견: 아무 정보도 못 얻음
         """
+
         true_facts = self._extract_true_facts_from_observation(action)
         at_facts = [f for f in true_facts if f.startswith("at(")]
 
@@ -207,7 +268,8 @@ class TransitionTomato:
             location = arity[1]
 
             true_label = None
-            for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
+            # for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
+            for c in [f"ripe({tomato})", f"unripe({tomato})"]:
                 if self._true_has_fact(c):
                     true_label = c
                     break
@@ -219,95 +281,73 @@ class TransitionTomato:
                 "tomato": tomato,
                 "location": location,
                 "at_fact": fact.replace(" ", ""),
+                "observed_fact": f"observed({tomato})",
                 "true_label": true_label
             })
 
-        # success outcome
-        success_add = []
-        for entry in tomato_entries:
-            success_add.append(entry["at_fact"])
-            success_add.append(entry["true_label"])
-        success_add = self._dedup_facts(success_add)
-
-        prob = self.detect_success_rate
-        outcomes = [
-            self._make_outcome(
-                add_facts=success_add,
-                del_facts=action.del_effects,
-                probability=prob
-            )
-        ]
-
-        # 각 tomato마다 local alternatives 생성
-        # []                          : miss
-        # [at(t,loc), true_label]     : correct detect
-        # [at(t,loc), wrong_label_1]  : wrong classify
-        # [at(t,loc), wrong_label_2]  : wrong classify
-        per_tomato_choices = []
-
-        for entry in tomato_entries:
-            tomato = entry["tomato"]
-            at_fact = entry["at_fact"]
-            true_label = entry["true_label"]
-
-            all_labels = [
-                f"ripe({tomato})",
-                f"unripe({tomato})",
-                f"rotten({tomato})"
+        # stem에 tomato가 하나도 없으면 detect 결과는 빈 outcome 1개
+        if not tomato_entries:
+            return [
+                self._make_outcome(
+                    add_facts=[],
+                    del_facts=[],
+                    probability=1.0
+                )
             ]
 
-            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
+        # 각 tomato별 local choice:
+        # 1) 발견 성공: observed + at + true_label
+        # 2) 발견 실패: []
+        per_tomato_choices = []
 
-            local_choices = []
+        detect_success = self.detect_success_rate  # 예: 0.9
 
-            # 1. miss
-            local_choices.append([])
-
-            # 2. correct
-            local_choices.append([at_fact, true_label])
-
-            # 3. wrong ripeness
-            for wrong_label in wrong_labels:
-                local_choices.append([at_fact, wrong_label])
-
+        for entry in tomato_entries:
+            local_choices = [
+                (
+                    [
+                        entry["observed_fact"],
+                        entry["at_fact"],
+                        entry["true_label"]
+                    ],
+                    detect_success
+                ),
+                (
+                    [],
+                    1.0 - detect_success
+                )
+            ]
             per_tomato_choices.append(local_choices)
 
+        outcomes = []
+        outcome_map = {}
+
         # 전체 조합 생성
-        alternative_adds = []
         for combo in product(*per_tomato_choices):
-            flat = []
-            for part in combo:
-                flat.extend(part)
-            flat = self._dedup_facts(flat)
+            add_facts = []
+            prob = 1.0
 
-            # success와 동일한 것은 제외
-            if set(flat) == set(success_add):
-                continue
+            for facts_part, part_prob in combo:
+                add_facts.extend(facts_part)
+                prob *= part_prob
 
-            alternative_adds.append(flat)
+            add_facts = self._dedup_facts(add_facts)
+            key = tuple(sorted(add_facts))
 
-        # 중복 제거
-        unique_alternatives = []
-        seen = set()
-        for alt in alternative_adds:
-            key = tuple(sorted(alt))
-            if key not in seen:
-                seen.add(key)
-                unique_alternatives.append(alt)
+            if key in outcome_map:
+                outcome_map[key] += prob
+            else:
+                outcome_map[key] = prob
 
-        if unique_alternatives:
-            alt_prob = (1.0 - prob) / len(unique_alternatives)
-            for alt in unique_alternatives:
-                outcomes.append(
-                    self._make_outcome(
-                        add_facts=alt,
-                        del_facts=action.del_effects if alt else [],
-                        probability=alt_prob
-                    )
+        for add_key, prob in outcome_map.items():
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=list(add_key),
+                    del_facts=[],
+                    probability=prob
                 )
-        else:
-            outcomes[0].probability = 1.0        
-        
+            )
+
         return outcomes
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:

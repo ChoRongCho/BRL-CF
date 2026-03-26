@@ -161,7 +161,8 @@ class ObservationTomato:
             _, args = self._parse_fact(at_fact)
             tomato = args[0]
 
-            labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
+            # labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
+            labels = [f"ripe({tomato})", f"unripe({tomato})"]
             true_label = None
             for lbl in labels:
                 if state.has_fact(lbl):
@@ -172,11 +173,17 @@ class ObservationTomato:
                 tomato_groups.append([[at_fact], []])
             else:
                 wrong_labels = [x for x in labels if x != true_label]
+                # local = [
+                #     [],
+                #     [at_fact, true_label],
+                #     [at_fact, wrong_labels[0]],
+                #     [at_fact, wrong_labels[1]],
+                # ]
                 local = [
                     [],
                     [at_fact, true_label],
                     [at_fact, wrong_labels[0]],
-                    [at_fact, wrong_labels[1]],
+                    # [at_fact, wrong_labels[1]],
                 ]
                 tomato_groups.append(local)
 

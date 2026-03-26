@@ -56,7 +56,7 @@ def parse_args(domain: str):
     parser.add_argument(
         "--max_step",
         type=int,
-        default=10,
+        default=30,
         help="Maximum steps per episode"
     )
 
@@ -82,7 +82,7 @@ def parse_args(domain: str):
     parser.add_argument(
         "--n_simulations",
         type=int,
-        default=300,
+        default=100,
         help="Number of Monte Carlo simulations (tree traversals) per planning step."
     )
     parser.add_argument(

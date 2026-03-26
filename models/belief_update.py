@@ -105,7 +105,7 @@ class BeliefManager:
             next_state, trans_prob = outcome.next_state, outcome.probability
             frontier.append(next_state)
             tran_row.append(trans_prob)
-
+            
             # 2. Observation            
             obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
             obs_row.append(obs_likelihood)
@@ -137,10 +137,7 @@ class BeliefManager:
         confidence = self.calculate_confidence(b_next.frontier_weights)
         
         # 5. append belief into the knowledge
-        self.advance_observation(belief=b_next, confidence=confidence)
-        
-        
-        
+        b_next = self.advance_observation(belief=b_next, confidence=confidence)
         
         self.belief = b_next
         
@@ -237,7 +234,7 @@ class BeliefManager:
     
     def advance_observation(self, belief: Belief, confidence: float):
         if confidence < self.conf_threshold:
-            print(f"[BeliefManager] the confidence {confidence} is low. ")
+            # print(f"[BeliefManager] the confidence {confidence} is low. ")
             
             new_obs = self.dummy_function()
             
@@ -245,18 +242,18 @@ class BeliefManager:
             max_frontier = belief.frontier[max_idx]
             
             
-            belief.knowledge.merge_state(max_frontier)
+            belief.knowledge = max_frontier
             belief.reset_belief()
             
             return belief
         
         else:
-            print(f"[BeliefManager] the confidence {confidence} is sufficiently high. ")
+            # print(f"[BeliefManager] the confidence {confidence} is sufficiently high. ")
             
             max_idx = np.argmax(belief.frontier_weights)
             max_frontier = belief.frontier[max_idx]
             
-            belief.knowledge.merge_state(max_frontier)
+            belief.knowledge = max_frontier
             belief.reset_belief()
             
             return belief

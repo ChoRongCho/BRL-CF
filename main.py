@@ -33,16 +33,13 @@ def main():
     while not done:     
         
         action = planner.search(belief)    
-        
+
         observation, reward, done, info = env.step(action)
                 
         belief, confidence = belief_manager.update_belief(belief, observation, action)
-        
-        print(action.name)
-        print(belief.knowledge)
-        print(confidence)
-        
-        # asdf
+
+        print("Confidence: ", confidence)
+        print("==================\n")
 
 
 

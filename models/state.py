@@ -13,6 +13,13 @@ class State:
         for f in other.facts:
             self.add_fact(f)
         return self
+    
+    def replace_state(self, other: State):
+        
+        self.clean_all()
+        self.merge_state(other=other)
+        
+        return self
         
     def get_size(self) -> int:
         return len(self.facts)
@@ -38,9 +45,6 @@ class State:
     def convert_world_to_state(self, world: PossibleWorld) -> State:
         self.clean_all()
         self.facts = world.atoms
-
-
-  
 
 
 def get_types(init_config: Dict) -> Dict:

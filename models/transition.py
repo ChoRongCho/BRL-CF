@@ -42,6 +42,7 @@ class TransitionModel:
         self.true_state = true_state
 
         self.type_map = self._build_type_map()
+        self.trans_model = None
         self.transition_table: Dict[str, List[TransitionOutcome]] = {}
         self.load_transition(state=self.true_state)
 
@@ -72,25 +73,35 @@ class TransitionModel:
 
             if self.domain == "tomato":
                 from models.tomato.trans import TransitionTomato
-                trans_model = TransitionTomato(type_map=self.type_map, true_state=state)
-                self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
+                self.trans_model = TransitionTomato(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
 
             elif self.domain == "blocksworld":
                 from models.blocksworld.trans import TransitionBlocksworld
-                trans_model = TransitionBlocksworld(type_map=self.type_map, true_state=state)
-                self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
+                self.trans_model = TransitionBlocksworld(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
 
             elif self.domain == "wastesorting":
                 from models.wastesorting.trans import TransitionWastesorting
-                trans_model = TransitionWastesorting(type_map=self.type_map, true_state=state)
-                self.transition_table[a.name] = trans_model.build_outcomes(a_name, a)
+                self.trans_model = TransitionWastesorting(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
 
             else:
                 raise ValueError("Domain is wrong")
+        
+        # for key, value in self.transition_table.items():
+        #     print(key)
+        #     for trans_outcome in value:
+        #         print("    ", trans_outcome)
 
     def sample_next_state(self, state: State, action: Action) -> State:
         outcomes = self.transition_table[action.name]
 
+        # Exeception Handler
+        outcomes = self.trans_model.handle_exeception(state, action, outcomes)
+        
+        
+        
         r = random.random()
         cum = 0.0
 
