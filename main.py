@@ -29,20 +29,18 @@ def main():
 
     done = False
 
-    
     while not done:     
         
         action = planner.search(belief)    
 
         observation, reward, done, info = env.step(action)
-                
+        
         belief, confidence = belief_manager.update_belief(belief, observation, action)
 
+        planner.prune_search_tree(action=action, observation=observation)
+        
         print("Confidence: ", confidence)
         print("==================\n")
-        # print(belief)
-        # asdf
-
 
 
 if __name__ == "__main__":

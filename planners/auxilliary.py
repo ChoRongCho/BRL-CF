@@ -1,7 +1,3 @@
-"""
-Source from https://github.com/GeorgePik/POMCP.git
-
-"""
 # Auxilliary code
 
 import numpy as np 
@@ -31,7 +27,7 @@ class BuildTree():
 
     # Expand the tree by one node. 
     # If the result of an action give IsAction = True
-    def expand_tree_from(self, parent, index, IsAction = False):
+    def ExpandTreeFrom(self, parent, index, IsAction = False):
         self.count += 1
         if IsAction: 
             # add node to tree
@@ -54,7 +50,7 @@ class BuildTree():
         # Check if a given observation node has been visited
         if sample_observation not in list(self.nodes[h][1].keys()):
             # If not create the node
-            self.expand_tree_from(h, sample_observation)
+            self.ExpandTreeFrom(h, sample_observation)
         # Get the nodes index
         Next_node = self.nodes[h][1][sample_observation]
         return Next_node

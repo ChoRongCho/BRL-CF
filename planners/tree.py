@@ -268,3 +268,55 @@ class POMDPTree:
             return tuple(sorted(observation))
 
         return observation
+    
+
+    def prune(self, node_id: int):
+        children = list(self.nodes[node_id].children.values())
+        del self.nodes[node_id]
+
+        for child_id in children:
+            self.prune(child_id)
+
+
+    def make_new_root(self, new_root_id: int):
+        old_root = self.nodes[new_root_id]
+
+        self.nodes[self.root_id] = Node(
+            id=self.root_id,
+            parent_id=None,
+            node_type="observation",
+            children=old_root.children.copy(),
+            edge_data=old_root.edge_data.copy(),
+            visits=old_root.visits,
+            value=old_root.value,
+            knowledge=old_root.knowledge,
+            frontiers=list(old_root.frontiers),
+        )
+
+        if new_root_id != self.root_id:
+            del self.nodes[new_root_id]
+
+        for child_id in self.nodes[self.root_id].children.values():
+            self.nodes[child_id].parent_id = self.root_id
+
+
+    def prune_after_action(self, action: Action, observation: Observation):
+        action_key = self._make_action_key(action)
+        obs_key = self._make_obs_key(observation)
+
+        # root --action--> action node
+        action_node_id = self.nodes[self.root_id].children[action_key]
+
+        # action node --observation--> new root
+        new_root_id = self.get_observation_node(action_node_id, observation)
+
+        # new_root 브랜치는 삭제되지 않도록 부모에서 잠깐 분리
+        del self.nodes[action_node_id].children[obs_key]
+        if obs_key in self.nodes[action_node_id].edge_data:
+            del self.nodes[action_node_id].edge_data[obs_key]
+
+        # 기존 root 아래 나머지 전부 삭제
+        self.prune(self.root_id)
+
+        # 선택된 observation node를 새 root로 승격
+        self.make_new_root(new_root_id)

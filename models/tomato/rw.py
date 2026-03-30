@@ -38,38 +38,22 @@ class RewardTomato:
         for fact in added:
             if fact.startswith("loaded("):
                 tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if f"ripe({tomato})" in s_facts or f"ripe({tomato})" in ns_facts:
+                if tomato == "t1" or tomato == "t2" or tomato == "t4":  # ripe
                     t_reward += 15.0
+                elif tomato == "t5":    # rotten
+                    t_reward -= 15.0
+                elif tomato == "t3":    # unripe
+                    t_reward -= 10.0
                     
-        for fact in added:
+        # for fact in added:
             if fact.startswith("discarded("):
                 tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if f"rotten({tomato})" in s_facts or f"rotten({tomato})" in ns_facts:
+                if tomato == "t1" or tomato == "t2" or tomato == "t4":  # ripe
+                    t_reward -= 15.0
+                elif tomato == "t5":    # rotten
                     t_reward += 15.0
-                    
-        # negative t_reward
-        for fact in added:
-            if fact.startswith("loaded("):
-                tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
-                    t_reward -= 20.0
-
-            if fact.startswith("discarded("):
-                tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if f"unripe({tomato})" in s_facts or f"unripe({tomato})" in ns_facts:
-                    t_reward -= 8.0
-
-        for fact in added:
-            if fact.startswith("discarded("):
-                tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if f"ripe({tomato})" in s_facts or f"ripe({tomato})" in ns_facts:
-                    t_reward -= 20.0
-
-        for fact in added:
-            if fact.startswith("loaded("):
-                tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if f"rotten({tomato})" in s_facts or f"rotten({tomato})" in ns_facts:
-                    t_reward -= 20.0
+                elif tomato == "t3":    # unripe
+                    t_reward -= 10.0
         
         return t_reward
     
@@ -106,7 +90,7 @@ class RewardTomato:
                 reward -= 3.0
 
         if action.name.startswith("scan("):
-            if len(new_quality) == 0:
-                reward -= 1.0
+            if len(added) == 0:
+                reward -= 2.0
         
         return reward

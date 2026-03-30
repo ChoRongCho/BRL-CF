@@ -74,69 +74,65 @@ class POMCPPlanner:
                 
     def search(self, belief: Belief):
         
-        self.tree.reset()
-        history = self.tree.root_id
-        
-        
-        for k in range(self.n_simulations):
-            state = belief.knowledge.copy()
-            self.simulate(state=state, history=history, depth=0)
-        
-        
-        
-        
-        
-        
-        
-        
-        # ====== 🔥 TREE EXPANSION DEBUG ======
-        total_nodes = len(self.tree.nodes)
+        # self.tree.reset() # <- 원래라면 없어야 함
 
-        action_nodes = sum(1 for n in self.tree.nodes.values() if n.is_action_node)
-        obs_nodes = sum(1 for n in self.tree.nodes.values() if n.is_observation_node)
-
-        print("\n===== 🔥 TREE DEBUG 🔥 =====")
-        print(f"Total nodes: {total_nodes}")
-        print(f"Action nodes: {action_nodes}")
-        print(f"Observation nodes: {obs_nodes}")
-
-        # root branching factor
-        root_children = self.tree.get_action_children(history)
-        print(f"Root branching factor: {len(root_children)}")
-
-        # depth 계산
-        max_depth = 0
-        depth_count = {}
-
-        for node_id, node in self.tree.nodes.items():
-            depth = 0
-            current = node
-
-            while current.parent_id is not None:
-                depth += 1
-                current = self.tree.get_node(current.parent_id)
-
-            max_depth = max(max_depth, depth)
-            depth_count[depth] = depth_count.get(depth, 0) + 1
-
-        print(f"Max depth: {max_depth}")
-        print("Nodes per depth:", depth_count)
-
-        print("======================\n")
-        # ====================================
+        history = self.tree.root_id # pruning을 했기 때문에 항상 root id로 시작
+        knowledge = belief.knowledge.copy()
+        
+        # Repeat simulations until timeout
+        for _ in range(self.n_simulations):
+            self.simulate(state=knowledge, history=history, depth=0)
         
         
+        # # ====== 🔥 TREE EXPANSION DEBUG ======
+        # total_nodes = len(self.tree.nodes)
+
+        # action_nodes = sum(1 for n in self.tree.nodes.values() if n.is_action_node)
+        # obs_nodes = sum(1 for n in self.tree.nodes.values() if n.is_observation_node)
+
+        # print("\n===== 🔥 TREE DEBUG 🔥 =====")
+        # print(f"Total nodes: {total_nodes}")
+        # print(f"Action nodes: {action_nodes}")
+        # print(f"Observation nodes: {obs_nodes}")
+
+        # # root branching factor
+        # root_children = self.tree.get_action_children(history)
+        # print(f"Root branching factor: {len(root_children)}")
+
+        # # depth 계산
+        # max_depth = 0
+        # depth_count = {}
+
+        # for node_id, node in self.tree.nodes.items():
+        #     depth = 0
+        #     current = node
+
+        #     while current.parent_id is not None:
+        #         depth += 1
+        #         current = self.tree.get_node(current.parent_id)
+
+        #     max_depth = max(max_depth, depth)
+        #     depth_count[depth] = depth_count.get(depth, 0) + 1
+
+        # print(f"Max depth: {max_depth}")
+        # print("Nodes per depth:", depth_count)
+
+        # print("======================\n")
+
+        # for fact in belief.knowledge.facts:
+        #     print(fact)
+        # print("======================\n")
         
-        
-        candidates = self.tree.get_action_children(history)
-        for action, node_id in candidates:
-            print(
-                f"[ROOT] action={action.name} "
-                f"visits={self.tree.get_visit(node_id)} "
-                f"value={self.tree.get_value(node_id):.4f}"
-            )
+        # candidates = self.tree.get_action_children(history)
+        # for action, node_id in candidates:
+        #     print(
+        #         f"[ROOT] action={action.name} "
+        #         f"visits={self.tree.get_visit(node_id)} "
+        #         f"value={self.tree.get_value(node_id):.4f}"
+        #     )
             
-        best_action, _ = self.search_best(history, state, use_ucb=False)        
+        # ====================================
+        best_action, _ = self.search_best(history, knowledge, use_ucb=False)        
         print("Selected:", best_action.name if best_action else None)
         
         return best_action
@@ -265,3 +261,6 @@ class POMCPPlanner:
             return best
         
     
+    # TODO
+    def prune_search_tree(self, action, observation):
+        self.tree.prune_after_action(action, observation) 

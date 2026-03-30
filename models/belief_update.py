@@ -1,47 +1,4 @@
 
-"""
-Particle Belief Approximation for POMDP
-=======================================
-
-Belief update (exact):
-    b_t(s_t) = eta * O(o_t | s_t, a_{t-1}) * sum_{s_{t-1}} T(s_t | s_{t-1}, a_{t-1}) b_{t-1}(s_{t-1})
-
-where
-    - b_t(s_t): posterior belief at time t
-    - T(s_t | s_{t-1}, a_{t-1}): transition model
-    - O(o_t | s_t, a_{t-1}): observation likelihood
-    - eta: normalization constant
-
-Particle approximation:
-    b_t(s) ≈ sum_{i=1}^N w_t^(i) * delta(s - s_t^(i))
-
-Bootstrap particle filter:
-    1) Sample:
-         s_t^(i) ~ T(. | s_{t-1}^(i), a_{t-1})
-    2) Weight:
-         w_t^(i) ∝ O(o_t | s_t^(i), a_{t-1})
-    3) Normalize:
-         w_t^(i) <- w_t^(i) / sum_j w_t^(j)
-    4) Resample if needed:
-         draw N particles from categorical(w_1, ..., w_N)
-
-More general importance sampling form:
-    if s_t^(i) ~ q(s_t | s_{t-1}^(i), a_{t-1}, o_t),
-    then
-         w_t^(i) ∝ w_{t-1}^(i) *
-                    [ O(o_t | s_t^(i), a_{t-1}) * T(s_t^(i) | s_{t-1}^(i), a_{t-1}) ]
-                    / q(s_t^(i) | s_{t-1}^(i), a_{t-1}, o_t)
-
-In this rough implementation below, we use the bootstrap filter:
-    q = T
-so the weight simplifies to:
-    w_t^(i) ∝ O(o_t | s_t^(i), a_{t-1})
-
-ESS (effective sample size):
-    ESS = 1 / sum_i (w_t^(i))^2
-
-Resample when ESS < threshold.
-"""
 from __future__ import annotations
 import numpy as np
 import copy
