@@ -11,6 +11,7 @@ from models.state import State
 from models.action import Action
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
+from models.feedback_manager import FeedbackManger
 
 
 class BeliefManager:
@@ -30,6 +31,8 @@ class BeliefManager:
         self.initial_belief = 1.0
         self.conf_threshold = 0.7
         
+        self.feedback_manager = FeedbackManger(self.conf_threshold)
+        
         
     def initialize_belief(self, init_state: State):
         self.belief = Belief(knowledge=init_state,
@@ -41,66 +44,6 @@ class BeliefManager:
         return self.belief
     
     
-    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> Belief:
-        """
-        """
-        if belief is None:
-            raise ValueError("b_prev is None. 초기 belief를 먼저 설정하세요.")
-
-        if belief.is_empty():
-            self.belief = Belief(frontier=[], weights=np.array([], dtype=float))
-            return self.belief
-        
-        # 1. Transition expansion from knowledge base
-        outcomes = self._get_transition_outcomes(belief.knowledge, action) # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
-        
-        tran_row = []
-        obs_row = []
-        frontiers = []
-        
-        for outcome in outcomes:   
-            next_state, trans_prob = outcome.next_state, outcome.probability
-            frontiers.append(next_state)
-            tran_row.append(trans_prob)
-            
-            # 2. Observation            
-            obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
-            obs_row.append(obs_likelihood)
-            
-        transition_matrix = np.array(tran_row)
-        observation_matrix = np.array(obs_row)
-        
-        # DEBUG
-        # print(transition_matrix, transition_matrix.size)
-        # print(observation_matrix, observation_matrix.size)
-        
-        if transition_matrix.size != observation_matrix.size:
-            raise SystemError("The size of Transition and Observation is Different. Modify code!!!")
-        
-        # 2. Update belief, posterior ∝ transition * observation
-        unnormalized = transition_matrix * observation_matrix
-        total = float(np.sum(unnormalized))
-        if total <= 0.0:
-            weights = np.ones(len(frontiers), dtype=float) / len(frontiers)
-        else:
-            weights = unnormalized / total
-        
-        b_next = Belief(knowledge=belief.knowledge, frontier=frontiers, frontier_weights=weights)
-        
-        # 3. verify frontier, CSP
-        b_next = self.verify_frontier(belief=b_next)
-        
-        # 4. calcluate confidence
-        confidence = self.calculate_confidence(b_next.frontier_weights)
-        
-        # 5. append belief into the knowledge / expand knowledge
-        b_next = self.advance_observation(belief=b_next, confidence=confidence)
-        
-        self.belief = b_next
-        
-        return b_next, confidence
-
-
     def _get_transition_outcomes(self, state: State, action: Action) -> List[NextStateOutcome]:
         return self.transition_model.get_next_state_distribution(state, action)
         
@@ -152,10 +95,8 @@ class BeliefManager:
         1. weights를 max 기준으로 정규화
         2. entropy 계산
         3. 1 - H/theta 반환
-
         theta가 None이면 max entropy(log N) 사용
         """
-
         if len(weights) == 0:
             return 0.0
         elif len(weights) == 1:
@@ -173,6 +114,19 @@ class BeliefManager:
 
         # numerical safety
         return confidence
+    
+    
+    def verify_knowledge(self, belief: Belief):
+        self.asp_bridge.clear_runtime()
+        
+        self.asp_bridge.add_runtime_facts(belief.knowledge.facts)
+        program = self.asp_bridge.build_certain_worlds()
+        worlds = solve_asp(program)
+        
+        if not len(worlds)==1:
+            print(f"The knowledge is not possible.")
+            self.asp_bridge.clear_runtime()
+            raise ValueError("지식기반이 스스로 모순에 빠졌다. 불가능한 상태이다.")
         
         
     def verify_frontier(self, belief: Belief):
@@ -204,67 +158,20 @@ class BeliefManager:
         
         return belief
     
-    def select_best_fact_to_ask(belief):
-        """
-        frontier의 uncertainty를 가장 많이 줄여줄 fact를 고른다.
-        """
-        frontier = belief.frontier
-        weights = normalize(belief.frontier_weights)
-
-        candidate_facts = get_changed_facts_from_knowledge(belief.knowledge, frontier)
-        if not candidate_facts:
-            return None
-
-        current_entropy = entropy(weights)
-
-        best_fact = None
-        best_gain = -float("inf")
-
-        for fact in candidate_facts:
-            exp_h = expected_entropy_after_asking(frontier, weights, fact)
-            info_gain = current_entropy - exp_h
-
-            if info_gain > best_gain:
-                best_gain = info_gain
-                best_fact = fact
-
-        return best_fact
 
     
-    def advance_observation(self, belief: Belief, confidence: float):
-        """
-        목적:
-        frontier 불확실성을 만드는 fact를 찾아 질문하고,
-        confidence가 threshold 이상이 될 때까지 반복한다.
-        마지막에는 max frontier를 knowledge로 덮어쓴다.
-        """
-
-        while confidence < self.conf_threshold:
-            # 1. 질문할 가치가 가장 큰 fact 선택
-            target_fact = select_best_fact_to_ask(belief)
-
-            # 더 이상 질문할 fact가 없으면 종료
-            if target_fact is None:
-                break
-
-            # 2. 사람에게 질문
-            # dummy_function은 예를 들어 True / False 반환한다고 가정
-            answer = self.dummy_function(target_fact)
-
-            # 3. 답변에 맞게 belief 갱신
-            belief = apply_fact_answer_to_belief(belief, target_fact, answer)
-
-            # 4. confidence 재계산
-            confidence = compute_confidence(belief.frontier_weights)
-
-        # 5. threshold를 넘었거나, 더 이상 질문할 게 없으면
-        #    가장 가능성 높은 frontier를 knowledge로 채택
+    def advance_observation_new(self, belief: Belief):
+        
+        belief = self.feedback_manager.get_new_observation(belief=belief)
+        
+        # expand knowledge
         if len(belief.frontier) > 0:
             max_idx = np.argmax(belief.frontier_weights)
             max_frontier = belief.frontier[max_idx]
 
             belief.knowledge = max_frontier
             belief.reset_belief()
+
 
         return belief
     
@@ -306,18 +213,12 @@ class BeliefManager:
         # 형식 belief.frontier = List[State]
         # State.facts = List[str]
         # 어떤 액션 a 로 인한 변화를 추정해야 함
-        """
-        
-        
-        """
-        
         
         if confidence < self.conf_threshold:            
-            dummy = self.dummy_function()
+            # dummy = self.dummy_function()
             
             max_idx = np.argmax(belief.frontier_weights)
             max_frontier = belief.frontier[max_idx]
-            
             
             belief.knowledge = max_frontier
             belief.reset_belief()
@@ -332,9 +233,66 @@ class BeliefManager:
             belief.reset_belief()
             
             return belief
+    
+    
+    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> Belief:
+        """
+        """
+        if belief is None:
+            raise ValueError("b_prev is None. 초기 belief를 먼저 설정하세요.")
+
+        if belief.is_empty():
+            self.belief = Belief(frontier=[], weights=np.array([], dtype=float))
+            return self.belief
         
+        # 1. Transition expansion from knowledge base
+        outcomes = self._get_transition_outcomes(belief.knowledge, action) # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
         
+        tran_row = []
+        obs_row = []
+        frontiers = []
         
-    def dummy_function(self) -> Observation:
-        new_observation = Observation(facts=["at(changmin)"])
-        return new_observation
+        for outcome in outcomes:   
+            next_state, trans_prob = outcome.next_state, outcome.probability
+            frontiers.append(next_state)
+            tran_row.append(trans_prob)
+            
+            # 2. Observation            
+            obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
+            obs_row.append(obs_likelihood)
+            
+        transition_matrix = np.array(tran_row)
+        observation_matrix = np.array(obs_row)
+        
+        # DEBUG
+        # print(transition_matrix, transition_matrix.size)
+        # print(observation_matrix, observation_matrix.size)
+        
+        if transition_matrix.size != observation_matrix.size:
+            raise SystemError("The size of Transition and Observation is Different. Modify code!!!")
+        
+        # 2. Update belief, posterior ∝ transition * observation
+        unnormalized = transition_matrix * observation_matrix
+        weights = self.feedback_manager.normalize(unnormalized)
+        
+        # total = float(np.sum(unnormalized))
+        # if total <= 0.0:
+        #     weights = np.ones(len(frontiers), dtype=float) / len(frontiers)
+        # else:
+        #     weights = unnormalized / total
+        
+        b_next = Belief(knowledge=belief.knowledge, frontier=frontiers, frontier_weights=weights)
+        
+        # 3. verify frontier, CSP
+        b_next = self.verify_frontier(belief=b_next)
+        
+
+        # 5. append belief into the knowledge / expand knowledge
+        # b_next = self.advance_observation(belief=b_next, confidence=confidence)
+        b_next = self.advance_observation_new(belief=b_next)
+        
+        self.verify_knowledge(belief=b_next)
+        
+        self.belief = b_next
+        
+        return b_next

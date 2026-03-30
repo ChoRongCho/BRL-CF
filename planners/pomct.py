@@ -1,161 +1,266 @@
-from auxilliary import BuildTree, UCB
+from __future__ import annotations
+
+import random
 import numpy as np
 from numpy.random import binomial, choice
-from joblib import Parallel, delayed, parallel_backend
-import multiprocessing
+from typing import List
 
-#POMCP solver
-class POMCP():
-    # gamma = discount rate
-    # c = higher value to encourage UCB exploration
-    # threshold = threshold below which discount is too little
-    # timeout = number of runs from node
-    def __init__(self, generator, gamma = 0.95, c = 1, threshold = 0.005, timeout = 10000, no_particles = 1200):
-        self.gamma = gamma 
-        if gamma >= 1:
-            raise ValueError("gamma should be less than 1.")
-        self.Generator = generator
-        self.e = threshold
-        self.c = c
-        self.timeout = timeout
-        self.no_particles = no_particles
-        self.tree = BuildTree() 
+from models.state import State
+from models.action import Action
+from models.belief import Belief
+from models.belief_update import BeliefManager
+from models.transition import TransitionModel
+from models.observation import ObservationModel, Observation
+from models.reward import RewardModel
+from planners.tree import POMDPTree
+from environments.env import Environment
+
+
+
+def UCB(N, n, V, c=1.0):
+    if n == 0:
+        return float("inf")   # exploration 우선
+
+    return V + c * np.sqrt(np.log(max(1, N)) / n)
+
+
+class POMCPPlanner:
+    
+    def __init__(self, args, env: Environment, belief_manager: BeliefManager):
+        self.args = args
         
-    # give state, action, and observation space
-    def initialize(self, S , A, O):
-        self.states = S  # given initial state
-        self.actions = A
-        self.observations = O
+        # set parameters
+        self.n_simulations = args.n_simulations
+        self.gamma = 0.95
+        self.epsilon = 0.005
+        self.c = 1.0
+        
+        # call tree manager
+        self.tree = POMDPTree()
+        
+        # all grounded actions
+        self.actions = env.actions
+        self.action_map = {action.name: action for action in self.actions}
+        self.belief: Belief = None
+        
+        # model settings
+        self.env: Environment = env
+        self.belief_manager: BeliefManager = belief_manager
+        self.transition_model: TransitionModel = self.belief_manager.transition_model
+        self.observation_model: ObservationModel = self.belief_manager.observation_model
+        self.reward_model: RewardModel = self.env.reward_model
+        
+        self.initialize(self.env.state)    
+    
+    def get_applicable_actions(self, knowledge):
+        applicable_actions = [a for a in self.actions if a.is_applicable(knowledge)]    
+        if not applicable_actions:
+            return []
+        else:
+            return applicable_actions
+    
+    def initialize(self, init_state: State):
+        self.belief = self.belief_manager.initialize_belief(init_state)
+    
+    
+    def _ensure_applicable_children(self, history, state):
+        applicable = self.get_applicable_actions(state)
+        existing = self.tree.get_action_children(history)
+        existing_names = {a.name for a, _ in existing}
 
-    # searchBest action to take
-    # UseUCB = False to pick best value at end of Search()
-    def SearchBest(self, h, UseUCB = True):
-        max_value = None
-        result = None
-        resulta = None
-        if UseUCB:
-            if self.tree.nodes[h][4] != -1:
-                children = self.tree.nodes[h][1]
-                # UCB for each child node
-                for action, child in children.items():
-                    # if node is unvisited return it
-                    if self.tree.nodes[child][2] == 0:
-                        return action, child
-                    ucb = UCB(self.tree.nodes[h][2], self.tree.nodes[child][2], 
-                    self.tree.nodes[child][3], self.c)
+        for action in applicable:
+            if action.name not in existing_names:
+                self.tree.expand_tree_from(history, action, is_action=True)
+                
+    def search(self, belief: Belief):
+        
+        # self.tree.reset() # <- 원래라면 없어야 함
+
+        history = self.tree.root_id # pruning을 했기 때문에 항상 root id로 시작
+        knowledge = belief.knowledge.copy()
+        
+        # Repeat simulations until timeout
+        for _ in range(self.n_simulations):
+            self.simulate(state=knowledge, history=history, depth=0)
+        
+        
+        # # ====== 🔥 TREE EXPANSION DEBUG ======
+        # total_nodes = len(self.tree.nodes)
+
+        # action_nodes = sum(1 for n in self.tree.nodes.values() if n.is_action_node)
+        # obs_nodes = sum(1 for n in self.tree.nodes.values() if n.is_observation_node)
+
+        # print("\n===== 🔥 TREE DEBUG 🔥 =====")
+        # print(f"Total nodes: {total_nodes}")
+        # print(f"Action nodes: {action_nodes}")
+        # print(f"Observation nodes: {obs_nodes}")
+
+        # # root branching factor
+        # root_children = self.tree.get_action_children(history)
+        # print(f"Root branching factor: {len(root_children)}")
+
+        # # depth 계산
+        # max_depth = 0
+        # depth_count = {}
+
+        # for node_id, node in self.tree.nodes.items():
+        #     depth = 0
+        #     current = node
+
+        #     while current.parent_id is not None:
+        #         depth += 1
+        #         current = self.tree.get_node(current.parent_id)
+
+        #     max_depth = max(max_depth, depth)
+        #     depth_count[depth] = depth_count.get(depth, 0) + 1
+
+        # print(f"Max depth: {max_depth}")
+        # print("Nodes per depth:", depth_count)
+
+        # print("======================\n")
+
+        # for fact in belief.knowledge.facts:
+        #     print(fact)
+        # print("======================\n")
+        
+        # candidates = self.tree.get_action_children(history)
+        # for action, node_id in candidates:
+        #     print(
+        #         f"[ROOT] action={action.name} "
+        #         f"visits={self.tree.get_visit(node_id)} "
+        #         f"value={self.tree.get_value(node_id):.4f}"
+        #     )
             
-                    # Max is kept 
-                    if max_value is None or max_value < ucb:
-                        max_value = ucb
-                        result = child
-                        resulta = action
-            #return action-child_id values
-            return resulta, result
+        # ====================================
+        best_action, _ = self.search_best(history, knowledge, use_ucb=False)        
+        print("Selected:", best_action.name if best_action else None)
+        
+        return best_action
+                
+    
+    def simulate(self, state, history, depth):
+        """
+        Docstring for simulate
+        
+        :param state: 지금 시뮬레이션이 깔고 있는 상태가 무엇인가
+        :param history: 현재 search tree의 어느 노드인가
+        :param depth: Description
+        """
+        # 1. stopping condition
+        if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
+            return 0.0
+        
+        # 2. leaf expansion
+        self._ensure_applicable_children(history, state)
+
+        candidates = self.tree.get_action_children(history)
+        if not candidates:
+            self.tree.increment_visit(history)
+            self.tree.set_value_if_first(history, 0.0)
+            return 0.0
+        
+        # 3. selection
+        action, action_node = self.search_best(history, state)
+        if action is None:
+            self.tree.increment_visit(history)
+            self.tree.set_value_if_first(history, 0.0)
+            return 0.0
+                
+        # 4. generative model
+        # TODO
+        next_state = self.transition_model.sample_next_state(state, action)
+        observation = self.observation_model.sample(next_state, action)
+        reward = self.reward_model.get_reward(state, action, next_state)
+        
+        # 5. observation child
+        obs_node = self.tree.get_observation_node(action_node, observation)        
+    
+        # 6. recursive simulation
+        future = self.simulate(next_state, obs_node, depth + 1)
+        total_return = reward + self.gamma * future
+
+        # 7. backup
+        self.tree.increment_visit(history)
+        self.tree.increment_visit(action_node)
+        self.tree.update_action_value(action_node, total_return)
+
+
+        # print(
+        #     f"[SIM] depth={depth} action={action.name} "
+        #     f"reward={reward:.4f} future={future:.4f} total={total_return:.4f} "
+        #     f"Q={self.tree.get_value(action_node):.4f} N={self.tree.get_visit(action_node)}"
+        # )
+
+        return total_return
+    
+        
+    
+    def rollout(self, state, depth):
+        if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
+            return 0.0
+
+        applicable_actions = self.get_applicable_actions(state)
+        if not applicable_actions:
+            return 0.0        
+        
+        action = random.choice(applicable_actions)
+        
+        sample_state = self.transition_model.sample_next_state(state, action)
+        reward = self.reward_model.get_reward(state, action, sample_state)
+
+        return_val = reward + self.gamma * self.rollout(sample_state, depth + 1)
+        
+        
+        return return_val
+    
+    
+    def search_best(self, h, state, use_ucb=True) -> Action:
+        
+        candidates = self.tree.get_action_children(h)
+        if not candidates:
+            print("There is no candidates")
+        
+        if state is not None:
+            applicable = self.get_applicable_actions(state)
+            applicable_names = {a.name for a in applicable}
+            
+            candidates = [(a, nid) for a, nid in candidates if a.name in applicable_names]
+        
+        if not candidates:
+            print("There is no candidates")
+            for a in applicable:
+                print(a)
+                
+            print("Original Candidate")
+            candidates = self.tree.get_action_children(h)
+            print(candidates)
+            return None, None
+            
+        if use_ucb:
+            parent_visits = max(1, self.tree.get_visit(h))
+            best_score = float("-inf")
+            best = None
+
+            for action, node_id in candidates:
+                child_visits = self.tree.get_visit(node_id)
+                child_value = self.tree.get_value(node_id)
+
+                if child_visits == 0:
+                    score = float("inf")
+                else:
+                    score = child_value + self.c * ((parent_visits ** 0.5) / (1 + child_visits))
+
+                if score > best_score:
+                    best_score = score
+                    best = (action, node_id)
+
+            return best
+
         else:
-            if self.tree.nodes[h][4] != -1: 
-                children = self.tree.nodes[h][1]
-                # pick optimal value node for termination
-                for action, child in children.items():
-                    node_value = self.tree.nodes[child][3]
-                    # keep max
-                    if max_value is None or max_value < node_value:
-                        max_value = node_value
-                        result = child
-                        resulta = action
-            return resulta, result
-
-    # Search module
-    def Search(self):
-        Bh = self.tree.nodes[-1][4].copy()
-        # Repeat Simulations until timeout
-        for _ in range(self.timeout):
-            if Bh == []:
-                s = choice(self.states)
-            else:
-                s = choice(Bh)
-            self.Simulate(s, -1, 0)
-        # Get best action
-        action, _ = self.SearchBest(-1, UseUCB = False)
-        return action
-
-    # Check if a given observation node has been visited
-    def getObservationNode(self,h,sample_observation):
+            best = max(candidates, key=lambda x: self.tree.get_value(x[1]))
+            return best
         
-        if sample_observation not in list(self.tree.nodes[h][1].keys()):
-            # If not create the node
-            self.tree.ExpandTreeFrom(h, sample_observation)
-        # Get the nodes index
-        Next_node = self.tree.nodes[h][1][sample_observation]
-        return Next_node
-
-    def Rollout(self, s, depth):
-
-        # Check significance of update
-        if (self.gamma**depth < self.e or self.gamma == 0 ) and depth != 0:
-            return 0
-        
-        cum_reward = 0
-        
-        # Pick random action; maybe change this later
-        # Need to also add observation in history if this is changed
-        action = choice(self.actions)
-        
-        # Generate states and observations
-        sample_state, _, r = self.Generator(s,action)
-        cum_reward += r + self.gamma*self.Rollout(sample_state, depth + 1)
-        return cum_reward
-
-    def Simulate(self, s, h, depth):
-
-        # Check significance of update
-        if (self.gamma**depth < self.e or self.gamma == 0 ) and depth != 0:
-            return 0
-
-        # If leaf node
-        if self.tree.isLeafNode(h):
-            for action in self.actions:
-                self.tree.ExpandTreeFrom(h, action, IsAction=True)
-            new_value = self.Rollout(s,depth)
-            self.tree.nodes[h][2] += 1
-            self.tree.nodes[h][3] = new_value
-            return new_value
-        
-        cum_reward = 0
-        # Searches best action
-        next_action, next_node = self.SearchBest(h)
-        # Generate next states etc.. 
-        sample_state, sample_observation, reward = self.Generator(s, next_action)
-        # Get resulting node index
-        Next_node = self.getObservationNode(next_node,sample_observation)
-        # Estimate node Value
-        cum_reward += reward + self.gamma*self.Simulate(sample_state, Next_node, depth + 1)
-        # Backtrack
-        self.tree.nodes[h][4].append(s)
-        if len(self.tree.nodes[h][4]) > self.no_particles:
-            self.tree.nodes[h][4] = self.tree.nodes[h][4][1:]
-        self.tree.nodes[h][2] += 1
-        self.tree.nodes[next_node][2] += 1
-        self.tree.nodes[next_node][3] += (cum_reward - self.tree.nodes[next_node][3])/self.tree.nodes[next_node][2]
-        return cum_reward
-
-    # FIXFIXFIX
-    # Samples from posterior after action and observation
-    def PosteriorSample(self, Bh, action, observation):
-        if Bh == []:
-            s = choice(self.states)
-        else:
-            s = choice(Bh)
-        #Sample from transition distribution
-        s_next, o_next, _ = self.Generator(s,action)
-        if o_next == observation:
-            return s_next
-        result = self.PosteriorSample(Bh,action,observation)
-        return result
-   
-    # Updates belief by sampling posterior
-    def UpdateBelief(self, action, observation):
-        prior = self.tree.nodes[-1][4].copy()
-        
-        self.tree.nodes[-1][4] = []
-        for _ in range(self.no_particles):
-            self.tree.nodes[-1][4].append(self.PosteriorSample(prior, action, observation))
+    
+    # TODO
+    def prune_search_tree(self, action, observation):
+        self.tree.prune_after_action(action, observation) 

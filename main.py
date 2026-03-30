@@ -8,7 +8,7 @@ from utils.asp import solve_asp
 from environments.env import Environment
 from models.belief_update import BeliefManager
 from models.action import Action
-from planners.pomct_changmin import POMCPPlanner
+from planners.pomct import POMCPPlanner
 
 
 # available domain
@@ -23,6 +23,8 @@ def main():
     belief_manager = BeliefManager(env.transition_model, env.observation_model, env.asp_bridge)
     planner = POMCPPlanner(args=args, env=env, belief_manager=belief_manager)
     
+    # print(env.transition_model.transition_table)
+    # ㅁㄴㅇㄹ
     observation = env.reset()
     
     belief = belief_manager.initialize_belief(env.state)
@@ -36,11 +38,10 @@ def main():
 
         observation, reward, done, info = env.step(action)
         
-        belief, confidence = belief_manager.update_belief(belief, observation, action)
+        belief = belief_manager.update_belief(belief, observation, action)
 
         planner.prune_search_tree(action=action, observation=observation)
         
-        print(f"Confidence is {confidence}. Threshold: {belief_manager.conf_threshold}")
         print("==================\n")
 
 

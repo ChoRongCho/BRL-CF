@@ -9,7 +9,7 @@ from environments.env import Environment
 from models.belief_update import BeliefManager
 from models.action import Action
 
-from planners.pomct_changmin import POMCPPlanner
+from planners.pomct import POMCPPlanner
 
 from utils.arguments import parse_args
 

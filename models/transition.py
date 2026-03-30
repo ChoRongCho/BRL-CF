@@ -95,12 +95,11 @@ class TransitionModel:
         #         print("    ", trans_outcome)
 
     def sample_next_state(self, state: State, action: Action) -> State:
+        
         outcomes = self.transition_table[action.name]
 
         # Exeception Handler
         outcomes = self.trans_model.handle_exeception(state, action, outcomes)
-        
-        
         
         r = random.random()
         cum = 0.0

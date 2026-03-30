@@ -303,25 +303,46 @@ class TransitionTomato:
         # 2) 발견 실패: []
         per_tomato_choices = []
 
-        detect_success = self.detect_success_rate  # 예: 0.9
-
+        
+        p_true = 0.8
+        p_false = 0.15
+        p_miss = 0.05
+        
         for entry in tomato_entries:
-            local_choices = [
-                (
-                    [
-                        entry["observed_fact"],
-                        entry["at_fact"],
-                        entry["true_label"]
-                    ],
-                    detect_success
-                ),
-                (
-                    [],
-                    1.0 - detect_success
-                )
-            ]
-            per_tomato_choices.append(local_choices)
+            tomato = entry["tomato"]
+            true_label = entry["true_label"]
 
+            # 가능한 label들
+            all_labels = [
+                f"ripe({tomato})",
+                f"unripe({tomato})",
+                f"rotten({tomato})"
+            ]
+            
+            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
+            local_choices = []
+            
+            # 1. True detection
+            local_choices.append((
+                [entry["observed_fact"], entry["at_fact"], true_label],
+                p_true
+            ))
+            
+             # 2. False detection (label만 틀림)
+            false_prob_each = p_false / len(wrong_labels)
+            for wrong_label in wrong_labels:
+                local_choices.append((
+                    [entry["observed_fact"], entry["at_fact"], wrong_label],
+                    false_prob_each
+                ))
+
+            # 3. Miss detection
+            local_choices.append((
+                [],
+                p_miss
+            ))
+            per_tomato_choices.append(local_choices)
+        
         outcomes = []
         outcome_map = {}
 
