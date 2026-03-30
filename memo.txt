@@ -1,20 +1,139 @@
+import numpy as np
+from collections import defaultdict
 
 
-def main():
+def compute_confidence(weights: np.ndarray) -> float:
+    if len(weights) == 0:
+        return 1.0
+
+    weights = np.array(weights, dtype=float)
+    s = weights.sum()
+    if s <= 0:
+        return 0.0
+
+    weights = weights / s
+
+    if len(weights) == 1:
+        return 1.0
+
+    theta = np.log2(len(weights))
+    eps = 1e-12
+    h = -np.sum(weights * np.log2(weights + eps))
+    confidence = 1.0 - (h / theta)
+    return float(confidence)
 
 
-    done = False
-    while not done:
-        action = planner.search()
-
-        observation, reward, done, info = env.step(action)
-
-        planner.update_belief(action, observation)
-
-        planner.prune_after_action(action,observation)
+def normalize(weights: np.ndarray) -> np.ndarray:
+    weights = np.array(weights, dtype=float)
+    s = weights.sum()
+    if s <= 0:
+        return np.ones(len(weights), dtype=float) / len(weights)
+    return weights / s
 
 
+def entropy(weights: np.ndarray) -> float:
+    weights = normalize(weights)
+    eps = 1e-12
+    return float(-np.sum(weights * np.log2(weights + eps)))
 
 
-if __name__ == "__main__"
-    main()
+def fact_in_state(state, fact: str) -> bool:
+    return fact in state.facts
+
+
+def get_changed_facts_from_knowledge(knowledge, frontier):
+    """
+    knowledge와 비교해서 frontier들에서 달라지는 fact 후보를 모은다.
+    """
+    knowledge_set = set(knowledge.facts)
+    candidate_facts = set()
+
+    for state in frontier:
+        state_set = set(state.facts)
+
+        added = state_set - knowledge_set
+        removed = knowledge_set - state_set
+
+        candidate_facts.update(added)
+        candidate_facts.update(removed)
+
+    return sorted(candidate_facts)
+
+
+def expected_entropy_after_asking(frontier, weights, fact: str) -> float:
+    """
+    fact를 질문해서 참/거짓을 알게 된다고 가정할 때의 기대 엔트로피.
+    """
+    weights = normalize(weights)
+
+    true_idx = []
+    false_idx = []
+
+    for i, state in enumerate(frontier):
+        if fact_in_state(state, fact):
+            true_idx.append(i)
+        else:
+            false_idx.append(i)
+
+    p_true = weights[true_idx].sum() if len(true_idx) > 0 else 0.0
+    p_false = weights[false_idx].sum() if len(false_idx) > 0 else 0.0
+
+    h_true = entropy(weights[true_idx]) if p_true > 0 else 0.0
+    h_false = entropy(weights[false_idx]) if p_false > 0 else 0.0
+
+    return p_true * h_true + p_false * h_false
+
+
+def select_best_fact_to_ask(belief):
+    """
+    frontier의 uncertainty를 가장 많이 줄여줄 fact를 고른다.
+    """
+    frontier = belief.frontier
+    weights = normalize(belief.frontier_weights)
+
+    candidate_facts = get_changed_facts_from_knowledge(belief.knowledge, frontier)
+    if not candidate_facts:
+        return None
+
+    current_entropy = entropy(weights)
+
+    best_fact = None
+    best_gain = -float("inf")
+
+    for fact in candidate_facts:
+        exp_h = expected_entropy_after_asking(frontier, weights, fact)
+        info_gain = current_entropy - exp_h
+
+        if info_gain > best_gain:
+            best_gain = info_gain
+            best_fact = fact
+
+    return best_fact
+
+
+def apply_fact_answer_to_belief(belief, fact: str, answer: bool):
+    """
+    질문 결과(answer)에 맞는 frontier만 남긴다.
+    answer=True  -> fact가 있는 state만 유지
+    answer=False -> fact가 없는 state만 유지
+    """
+    new_frontier = []
+    new_weights = []
+
+    for state, w in zip(belief.frontier, belief.frontier_weights):
+        has_fact = fact_in_state(state, fact)
+
+        if answer is True and has_fact:
+            new_frontier.append(state)
+            new_weights.append(w)
+        elif answer is False and not has_fact:
+            new_frontier.append(state)
+            new_weights.append(w)
+
+    if len(new_frontier) == 0:
+        return belief
+
+    belief.frontier = new_frontier
+    belief.frontier_weights = normalize(np.array(new_weights, dtype=float))
+
+    return belief

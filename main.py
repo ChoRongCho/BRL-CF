@@ -28,9 +28,10 @@ def main():
     belief = belief_manager.initialize_belief(env.state)
 
     done = False
-
+    i = 0
     while not done:     
-        
+        i += 1
+        print(f"Step: {i}")
         action = planner.search(belief)    
 
         observation, reward, done, info = env.step(action)
@@ -39,7 +40,7 @@ def main():
 
         planner.prune_search_tree(action=action, observation=observation)
         
-        print("Confidence: ", confidence)
+        print(f"Confidence is {confidence}. Threshold: {belief_manager.conf_threshold}")
         print("==================\n")
 
 

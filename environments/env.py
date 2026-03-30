@@ -206,15 +206,18 @@ class Environment:
 
     def _check_done(self) -> bool:
         """Goal 달성 또는 max_step 초과 시 episode 종료"""
-
-        # 1. step limit
-        if self.step_count >= self.max_step:
-            return True
-
-        # 2. goal 달성 여부
+        # 1. goal 달성 여부
         if self.goal:
             if all(self.state.has_fact(f) for f in self.goal.facts):
+                print("Goal Done")
                 return True
+            
+        # 2. step limit
+        if self.step_count >= self.max_step:
+            print("MAX STEP Done")
+            return True
+
+
 
         return False
 

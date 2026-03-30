@@ -82,9 +82,7 @@ class RewardTomato:
         # 2) 토마토 탐지 보상
         reward += self._tomato_reward(state=state, next_state=next_state)
         
-        # 비어있는 곳에서 자꾸 detect 하면 패널티
-        # 다 되어있는 곳에서 detect를 자꾸 하게 되니까 이걸 패널티를 따로 해줘야 할까? 아니면 걍 detect action의 패널티를 높일까?
-        # 4) detect가 아무 새 정보도 못 얻었으면 패널티
+        # 3) detect or scan 액션이 아무 새 정보도 못 얻었으면 패널티
         if action.name.startswith("detect("):
             if len(new_observed) == 0:
                 reward -= 3.0
@@ -92,5 +90,8 @@ class RewardTomato:
         if action.name.startswith("scan("):
             if len(added) == 0:
                 reward -= 2.0
+        
+        # 4) dockstation 도착 보상
+        
         
         return reward

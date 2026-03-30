@@ -17,9 +17,9 @@ class TransitionTomato:
 
         self.navigate_success_rate = 0.90
         self.prepare_nav_success_rate = 0.98
-        self.detect_success_rate = 0.80
+        self.detect_success_rate = 0.85
         self.pick_success_rate = 0.75
-        self.scan_success_rate = 0.8
+        self.scan_success_rate = 0.85
         self.place_success_rate = 0.90
         self.discard_success_rate = 0.95
 
