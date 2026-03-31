@@ -41,7 +41,7 @@ class RewardTomato:
                 if tomato == "t1" or tomato == "t2" or tomato == "t4":  # ripe
                     t_reward += 15.0
                 elif tomato == "t5":    # rotten
-                    t_reward -= 15.0
+                    t_reward -= 10.0
                 elif tomato == "t3":    # unripe
                     t_reward -= 10.0
                     
