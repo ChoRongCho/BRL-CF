@@ -120,8 +120,10 @@ predicates:
   - predicate: compressed(W)
     arity: [W]
     meaning: "Waste item W has been compressed by the gripper"
+  
 
 rule:
+  # bin
   - head: "bin(B)"
     body:
       - "plastic_bin(B)"
@@ -142,10 +144,12 @@ rule:
     body:
       - "hazardous_bin(B)"
 
+  # ??
   - head: "location(L)"
     body:
       - "bin_at(B,L)"
 
+  # compression
   - head: "compression_target(W)"
     body:
       - "plastic(W)"
@@ -156,6 +160,7 @@ rule:
       - "can(W)"
       - "soft(W)"
 
+  # direct
   - head: "direct_placeable(W)"
     body:
       - "plastic(W)"
@@ -178,6 +183,7 @@ rule:
     body:
       - "hazardous(W)"
 
+
 choice_rules:
   - elements:
       - atom: "plastic(W)"
@@ -196,13 +202,7 @@ choice_rules:
       - "waste(W)"
     cardinality: "1..1"
 
-  - elements:
-      - atom: "at(W,sorting_table)"
-    given:
-      - "waste(W)"
-      - "not observed(W)"
-    cardinality: "1..1"
-
+  # location choice
   - elements:
       - atom: "at(W,L)"
         over:
@@ -215,9 +215,10 @@ choice_rules:
           - "bin(B)"
     given:
       - "waste(W)"
-      - "observed(W)"
     cardinality: "1..1"
 
+
+  # bin must be in one location
   - elements:
       - atom: "bin_at(B,L)"
         over:
@@ -225,6 +226,8 @@ choice_rules:
     given:
       - "bin(B)"
     cardinality: "1..1"
+
+
 
 constraint:
   - body:
@@ -253,6 +256,7 @@ constraint:
       - "in_bin(W,B)"
     meaning: "Waste item cannot be at a location and in a bin simultaneously"
 
+  # material-bin consistency
   - body:
       - "bin_at(B,L1)"
       - "bin_at(B,L2)"
@@ -260,45 +264,17 @@ constraint:
     meaning: "Each bin must have exactly one location"
 
   - body:
-      - "plastic(W)"
-      - "in_bin(W,B)"
-      - "not plastic_bin(B)"
-    meaning: "Plastic waste must go to a plastic bin"
-
-  - body:
-      - "can(W)"
-      - "in_bin(W,B)"
-      - "not can_bin(B)"
-    meaning: "Can waste must go to a can bin"
-
-  - body:
-      - "glass(W)"
-      - "in_bin(W,B)"
-      - "not glass_bin(B)"
-    meaning: "Glass waste must go to a glass bin"
-
-  - body:
-      - "general(W)"
-      - "in_bin(W,B)"
-      - "not general_bin(B)"
-    meaning: "General waste must go to a general bin"
-
-  - body:
-      - "hazardous(W)"
-      - "in_bin(W,B)"
-      - "not hazardous_bin(B)"
-    meaning: "Hazardous waste must go to a hazardous bin"
-
-  - body:
-      - "compression_target(W)"
-      - "in_bin(W,B)"
-      - "not compressed(W)"
-    meaning: "Compression-target waste must be compressed before placement"
-
-  - body:
       - "compressed(W)"
       - "not compression_target(W)"
     meaning: "Only compression-target waste may be compressed"
+
+  # - body:
+  #     - "observed(W)"
+  #     - "not 1 { plastic(W); can(W); glass(W); general(W); hazardous(W) } 1"
+  #   meaning: "If a waste is observed, it must have exactly one material label"
+
+
+
 
 show:
   - "#show robot/1"

@@ -18,19 +18,25 @@ DOMAIN = ["tomato", "blocksworld", "wastesorting"]
 
 def main():
 
-    args = parse_args("tomato")
+    args = parse_args("wastesorting")
     env = Environment(args)
+    
+    return 0
+    
     belief_manager = BeliefManager(env.transition_model, env.observation_model, env.asp_bridge)
     planner = POMCPPlanner(args=args, env=env, belief_manager=belief_manager)
     
-    # print(env.transition_model.transition_table)
-    # ㅁㄴㅇㄹ
+    
+    
     observation = env.reset()
     
     belief = belief_manager.initialize_belief(env.state)
 
     done = False
     i = 0
+    
+    
+    
     while not done:     
         i += 1
         print(f"Step: {i}")

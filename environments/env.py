@@ -48,34 +48,40 @@ class Environment:
         action_dicts = self._load_config(self.robot_skill_path).get("actions", []) or []
         self.actions = get_actions(action_dicts, self.state, self.obj_type)
         
-        # Transition Model
-        self.transition_model = TransitionModel(
-            domain=self.domain_name,
-            actions=self.actions,
-            obj_type=self.obj_type,
-            true_state=self.gt_init_state
-        )
+        for fact in self.state.facts:
+            print(fact)
         
-        # Observation Model
-        self.observation_model = ObservationModel(
-            domain=self.domain_name,
-            actions=self.actions,
-            obj_type=self.obj_type,
-            noise=0.05,
-        )
+        # Wastesorting debug
         
-        # Reward Model TODO
-        self.reward_model = RewardModel(
-            self.domain_name,
-            self.goal,
-        )
         
-        # self.transition_model.pretty_print()
-        # self.observation_model.pretty_print_candidates()     
+        # # Transition Model
+        # self.transition_model = TransitionModel(
+        #     domain=self.domain_name,
+        #     actions=self.actions,
+        #     obj_type=self.obj_type,
+        #     true_state=self.gt_init_state
+        # )
         
-        # reset
-        self.done = False
-        self.step_count = 0
+        # # Observation Model
+        # self.observation_model = ObservationModel(
+        #     domain=self.domain_name,
+        #     actions=self.actions,
+        #     obj_type=self.obj_type,
+        #     noise=0.05,
+        # )
+        
+        # # Reward Model TODO
+        # self.reward_model = RewardModel(
+        #     self.domain_name,
+        #     self.goal,
+        # )
+        
+        # # self.transition_model.pretty_print()
+        # # self.observation_model.pretty_print_candidates()     
+        
+        # # reset
+        # self.done = False
+        # self.step_count = 0
 
 
     @staticmethod
