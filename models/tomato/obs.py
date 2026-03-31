@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 from itertools import product
 import re
 
+from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
 from models.action import Action
 from models.observation import Observation, ObservationOutcome
@@ -21,26 +22,9 @@ class ObservationTomato:
         self.scan_success_rate = 0.95
         self.navigate_success_rate = 0.90
 
-    @staticmethod
-    def _format_fact(pred: str, args: List[str]) -> str:
-        return f"{pred}({','.join(args)})"
-
-    @staticmethod
-    def _parse_fact(fact: str) -> Tuple[str, List[str]]:
-        fact = fact.replace(" ", "")
-        m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)", fact)
-        if not m:
-            raise ValueError(f"Invalid fact format: {fact}")
-        pred = m.group(1)
-        args = [x.strip() for x in m.group(2).split(",")]
-        return pred, args
-
-    @staticmethod
-    def _dedup_facts(facts: List[str]) -> List[str]:
-        return list(dict.fromkeys(f.replace(" ", "") for f in facts))
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
-        pred, args = self._parse_fact(fact)
+        pred, args = _parse_fact(fact)
 
         variable_positions = []
         variable_domains = []
@@ -60,7 +44,7 @@ class ObservationTomato:
 
         def backtrack(depth: int, current_args: List[str]):
             if depth == len(variable_positions):
-                expanded.append(self._format_fact(pred, current_args))
+                expanded.append(_format_fact(pred, current_args))
                 return
             pos = variable_positions[depth]
             for obj in variable_domains[depth]:
@@ -71,12 +55,14 @@ class ObservationTomato:
         backtrack(0, args[:])
         return expanded
 
+    # observation.py <- obs.py
     def build_candidates(self, action: Action) -> List[str]:
         expanded = []
         for obs in action.observation:
             expanded.extend(self._expand_free_variables_in_fact(obs))
-        return self._dedup_facts(expanded)
+        return _dedup_facts(expanded)
 
+    # observation.py <- obs.py
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         action_name = action.name.split("(")[0]
 
@@ -132,7 +118,7 @@ class ObservationTomato:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         true_label = true_ripeness[0]
-        _, args = self._parse_fact(true_label)
+        _, args = _parse_fact(true_label)
         tomato = args[0]
 
         all_labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
@@ -158,7 +144,7 @@ class ObservationTomato:
 
         tomato_groups = []
         for at_fact in at_facts:
-            _, args = self._parse_fact(at_fact)
+            _, args = _parse_fact(at_fact)
             tomato = args[0]
 
             # labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
@@ -190,7 +176,7 @@ class ObservationTomato:
         success_facts = []
         for local in tomato_groups:
             success_facts.extend(local[1])
-        success_facts = self._dedup_facts(success_facts)
+        success_facts = _dedup_facts(success_facts)
 
         outcomes = [ObservationOutcome(facts=success_facts, probability=self.detect_success_rate)]
 
@@ -199,7 +185,7 @@ class ObservationTomato:
             flat = []
             for part in combo:
                 flat.extend(part)
-            flat = self._dedup_facts(flat)
+            flat = _dedup_facts(flat)
             if set(flat) == set(success_facts):
                 continue
             alternatives.append(flat)

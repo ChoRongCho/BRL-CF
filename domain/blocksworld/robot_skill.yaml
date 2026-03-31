@@ -1,11 +1,104 @@
 actions:
-  - name: move
-    type: task
-    parameters: []
+  - name: observe_block
+    type: observe
+    parameters: [B]
     cost: 1.0
-    preconditions: []
+    preconditions:
+      - block(B)
 
-    add_effects: []
+    add_effects:
+      - visible(B)
     del_effects: []
-    observation: []
+    observation:
+      - visible(B)
+      - on(B, S)
+      - clear(B)
+      - holding(B)
 
+  - name: pickup
+    type: task
+    parameters: [B]
+    cost: 1.0
+    preconditions:
+      - block(B)
+      - visible(B)
+      - on(B, table)
+      - clear(B)
+      - handempty
+
+    add_effects:
+      - holding(B)
+    del_effects:
+      - on(B, table)
+      - handempty
+    observation:
+      - holding(B)
+      - on(B, table)
+      - handempty
+
+  - name: unstack
+    type: task
+    parameters: [B, S]
+    cost: 1.0
+    preconditions:
+      - block(B)
+      - block(S)
+      - visible(B)
+      - visible(S)
+      - on(B, S)
+      - clear(B)
+      - handempty
+
+    add_effects:
+      - holding(B)
+      - clear(S)
+    del_effects:
+      - on(B, S)
+      - handempty
+    observation:
+      - holding(B)
+      - on(B, S)
+      - clear(S)
+
+  - name: putdown
+    type: task
+    parameters: [B]
+    cost: 1.0
+    preconditions:
+      - block(B)
+      - holding(B)
+
+    add_effects:
+      - on(B, table)
+      - handempty
+      - visible(B)
+    del_effects:
+      - holding(B)
+    observation:
+      - on(B, table)
+      - handempty
+      - holding(B)
+
+  - name: stack
+    type: task
+    parameters: [B, S]
+    cost: 1.0
+    preconditions:
+      - block(B)
+      - block(S)
+      - holding(B)
+      - visible(S)
+      - clear(S)
+
+    add_effects:
+      - on(B, S)
+      - handempty
+      - visible(B)
+    del_effects:
+      - holding(B)
+      - clear(S)
+    observation:
+      - on(B, S)
+      - handempty
+      - holding(B)
+      - clear(S)

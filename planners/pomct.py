@@ -31,9 +31,9 @@ class POMCPPlanner:
         
         # set parameters
         self.n_simulations = args.n_simulations
-        self.gamma = 0.95
-        self.epsilon = 0.005
-        self.c = 1.0
+        self.gamma = args.gamma
+        self.epsilon = args.epsilon
+        self.c = args.c
         
         # call tree manager
         self.tree = POMDPTree()

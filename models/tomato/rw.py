@@ -26,6 +26,7 @@ class RewardTomato:
         facts = self._to_fact_set(state)
         return sum(1 for g in self.goal.facts if g in facts)
 
+
     def _tomato_reward(self, state, next_state):
         
         t_reward = 0
@@ -33,29 +34,45 @@ class RewardTomato:
         s_facts = self._to_fact_set(state)
         ns_facts = self._to_fact_set(next_state)
         added = ns_facts - s_facts
-        
-        # positive t_reward
+
+        # helper: tomato 상태 판별
+        def get_tomato_state(tomato, facts):
+            if f"ripe({tomato})" in facts:
+                return "ripe"
+            elif f"unripe({tomato})" in facts:
+                return "unripe"
+            elif f"rotten({tomato})" in facts:
+                return "rotten"
+            return None
+
         for fact in added:
+            
+            # loaded
             if fact.startswith("loaded("):
                 tomato = fact[len("loaded("):-1].split(",")[0].strip()
-                if tomato == "t1" or tomato == "t2" or tomato == "t4":  # ripe
+                state_type = get_tomato_state(tomato, ns_facts)
+
+                if state_type == "ripe":
                     t_reward += 15.0
-                elif tomato == "t5":    # rotten
+                elif state_type == "rotten":
                     t_reward -= 10.0
-                elif tomato == "t3":    # unripe
+                elif state_type == "unripe":
                     t_reward -= 10.0
-                    
-        # for fact in added:
+
+            # discarded
             if fact.startswith("discarded("):
                 tomato = fact[len("discarded("):-1].split(",")[0].strip()
-                if tomato == "t1" or tomato == "t2" or tomato == "t4":  # ripe
+                state_type = get_tomato_state(tomato, ns_facts)
+
+                if state_type == "ripe":
                     t_reward -= 15.0
-                elif tomato == "t5":    # rotten
+                elif state_type == "rotten":
                     t_reward += 15.0
-                elif tomato == "t3":    # unripe
+                elif state_type == "unripe":
                     t_reward -= 10.0
-        
+
         return t_reward
+
     
     def calculate_reward(self, state: State, action: Action, next_state: State) -> float:
         reward = 0.0
@@ -88,7 +105,7 @@ class RewardTomato:
                 reward -= 3.0
 
         if action.name.startswith("scan("):
-            if len(added) == 0:
+            if len(added) == 0 and len(deled) == 0:
                 reward -= 2.0
         
         # 4) dockstation 도착 보상

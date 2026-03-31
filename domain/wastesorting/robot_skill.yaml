@@ -1,11 +1,228 @@
 actions:
-  - name: move
-    type: task
-    parameters: []
-    cost: 1.0
-    preconditions: []
+  - name: detect
+    type: observe
+    parameters: [R, W]
+    cost: 0.5
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - at(W, sorting_table)
+      - handempty(R)
+    add_effects:
+      - observed(W)
+    del_effects: []
+    observation:
+      - observed(W)
+      - at(W, sorting_table)
 
+  - name: pick
+    type: task
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - observed(W)
+      - at(W, sorting_table)
+      - handempty(R)
+    add_effects:
+      - holding(R, W)
+    del_effects:
+      - at(W, sorting_table)
+      - handempty(R)
+    observation:
+      - holding(R, W)
+      - at(W, sorting_table)
+
+  - name: scan_material
+    type: observe
+    parameters: [R, W]
+    cost: 0.5
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
     add_effects: []
     del_effects: []
-    observation: []
+    observation:
+      - plastic(W)
+      - can(W)
+      - glass(W)
+      - general(W)
+      - hazardous(W)
 
+  - name: probe_hardness
+    type: observe
+    parameters: [R, W]
+    cost: 0.5
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - soft(W)
+      - hard(W)
+
+  - name: compress_item
+    type: task
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+      - compression_target(W)
+    add_effects:
+      - compressed(W)
+    del_effects: []
+    observation:
+      - compressed(W)
+
+  - name: place_compressed_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - compressed(W)
+      - plastic(W)
+      - plastic_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_compressed_can_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - compressed(W)
+      - can(W)
+      - can_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_direct_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - direct_placeable(W)
+      - plastic(W)
+      - plastic_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_direct_can_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - direct_placeable(W)
+      - can(W)
+      - can_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_direct_glass_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - direct_placeable(W)
+      - glass(W)
+      - glass_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_direct_general_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - direct_placeable(W)
+      - general(W)
+      - general_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+
+  - name: place_direct_hazardous_in_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - bin(B)
+      - holding(R, W)
+      - direct_placeable(W)
+      - hazardous(W)
+      - hazardous_bin(B)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)

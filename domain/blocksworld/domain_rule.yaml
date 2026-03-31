@@ -14,13 +14,21 @@ predicates:
     arity: [S]
     meaning: "S is a legal support; either table or a block"
 
-  - predicate: visible(B)
-    arity: [B]
-    meaning: "B is directly observed"
+  - predicate: visible(X)
+    arity: [X]
+    meaning: "X is directly observed"
 
   - predicate: on(B, S)
     arity: [B, S]
     meaning: "World-state fluent: block B is on support S"
+
+  - predicate: handempty
+    arity: []
+    meaning: "The manipulator is empty"
+
+  - predicate: holding(B)
+    arity: [B]
+    meaning: "The manipulator is holding block B"
 
   - predicate: clear(X)
     arity: [X]
@@ -65,6 +73,7 @@ choice_rules:
       - atom: "on(B, S)"
         over:
           - "support(S)"
+      - atom: "holding(B)"
     given:
       - "block(B)"
     cardinality: "1..1"
@@ -87,6 +96,17 @@ constraint:
       - "above(B, B)"
     meaning: "No cycles in the support graph"
 
+  - body:
+      - "holding(B)"
+      - "handempty"
+    meaning: "Cannot be empty-handed while holding a block"
+
+  - body:
+      - "holding(B1)"
+      - "holding(B2)"
+      - "B1 != B2"
+    meaning: "At most one block can be held at a time"
+
 
 
 show:
@@ -94,6 +114,8 @@ show:
   - "#show support/1"
   - "#show visible/1"
   - "#show on/2"
+  - "#show handempty/0"
+  - "#show holding/1"
   - "#show clear/1"
   - "#show above/2"
   - "#show block_count/1"

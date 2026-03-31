@@ -89,13 +89,11 @@ class TransitionModel:
             else:
                 raise ValueError("Domain is wrong")
         
-        # for key, value in self.transition_table.items():
-        #     print(key)
-        #     for trans_outcome in value:
-        #         print("    ", trans_outcome)
+
 
     def sample_next_state(self, state: State, action: Action) -> State:
-        
+        """
+        """        
         outcomes = self.transition_table[action.name]
 
         # Exeception Handler
@@ -111,7 +109,11 @@ class TransitionModel:
 
         return self._apply_outcome(state, outcomes[-1])
 
+
+
     def get_next_state_distribution(self, state: State, action: Action) -> List[NextStateOutcome]:
+        """
+        """
         outcomes = self.transition_table[action.name]
         result = []
 
@@ -126,40 +128,4 @@ class TransitionModel:
 
         return result
     
-    def pretty_print(self, sort_keys: bool = True):
-        print("\n========== Transition Table ==========\n")
-
-        action_names = list(self.transition_table.keys())
-        if sort_keys:
-            action_names.sort()
-
-        for action_name in action_names:
-            outcomes = self.transition_table[action_name]
-            
-            # Changmin add
-            if "detect" in action_name or "scan" in action_name:
-                print(f"[ACTION] {action_name}")
-                print(f"  #outcomes: {len(outcomes)}")
-
-                total_prob = sum(o.probability for o in outcomes)
-
-                for i, o in enumerate(outcomes):
-                    print(f"    ({i}) p = {o.probability:.4f}")
-
-                    if o.add_facts:
-                        print(f"        + add:")
-                        for f in o.add_facts:
-                            print(f"            {f}")
-
-                    if o.del_facts:
-                        print(f"        - del:")
-                        for f in o.del_facts:
-                            print(f"            {f}")
-
-                # 확률 sanity check
-                if abs(total_prob - 1.0) > 1e-6:
-                    print("  [WARNING] probabilities do not sum to 1.0")
-
-                print("-" * 50)
-
-        print("\n======================================\n")
+    

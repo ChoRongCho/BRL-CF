@@ -82,14 +82,14 @@ def parse_args(domain: str):
     parser.add_argument(
         "--n_simulations",
         type=int,
-        default=100,
+        default=50,
         help="Number of Monte Carlo simulations (tree traversals) per planning step."
     )
     parser.add_argument(
-        "--n_particles",
+        "--epsilon",
         type=int,
-        default=100,
-        help="Number of particles sampled from belief to approximate the state distribution."
+        default=0.005,
+        help=""
     )
     
     args = parser.parse_args()

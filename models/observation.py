@@ -38,12 +38,15 @@ class ObservationModel:
         self.domain = domain
         self.noise = noise
         self.obj_type = obj_type
+        self.actions = actions
 
         self.type_map = self._build_type_map()
         self.domain_model = self._build_domain_model()
         self.action_observation_space: Dict[str, List[str]] = {}
 
-        self._build_from_actions(actions)
+        # build from actions
+        for action in self.actions:
+            self.action_observation_space[action.name] = self.domain_model.build_candidates(action)
 
     def _build_type_map(self) -> Dict[str, List[str]]:
         type_map = {}
@@ -70,17 +73,17 @@ class ObservationModel:
         else:
             raise ValueError(f"Unknown domain: {self.domain}")
 
-    def _build_from_actions(self, actions: List[Action]) -> None:
-        for action in actions:
-            self.action_observation_space[action.name] = self.domain_model.build_candidates(action)
-
-    def get_observation_candidates(self, action: Action) -> List[str]:
-        return self.action_observation_space.get(action.name, [])
 
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
-        return self.domain_model.get_observation_distribution(state, action)
+        """
+        """
+        list_outcomes = self.domain_model.get_observation_distribution(state, action)
+        return list_outcomes
+
 
     def sample(self, state: State, action: Action) -> Observation:
+        """
+        """
         outcomes = self.get_observation_distribution(state, action)
 
         if not outcomes:
@@ -107,68 +110,9 @@ class ObservationModel:
         outcomes = self.get_observation_distribution(state, action)
         
         obs_set = set(observation.facts.facts)
-        
-        # Debug        
-        # print("[] Action: ", action)
-        # print("[] outcomes: ", outcomes)
-        # print("[] obs_set: ", obs_set)
-        # print()
 
         for outcome in outcomes:
             if set(outcome.facts) == obs_set:
                 return outcome.probability
         return self.noise
     
-    
-    
-    def pretty_print_candidates(self, sort_keys: bool = True):
-        print("\n========== Observation Candidates ==========\n")
-
-        action_names = list(self.action_observation_space.keys())
-        if sort_keys:
-            action_names.sort()
-
-        for action_name in action_names:
-            candidates = self.action_observation_space[action_name]
-
-            print(f"[ACTION] {action_name}")
-            print(f"  #candidates: {len(candidates)}")
-
-            for i, fact in enumerate(candidates):
-                print(f"    ({i}) {fact}")
-
-            print("-" * 50)
-
-        print("\n============================================\n")
-        
-        
-    def pretty_print_distribution(self, state: State, action: Action):
-        print("\n========== Observation Distribution ==========\n")
-
-        print(f"[ACTION] {action.name}")
-        print(f"[STATE] {state}\n")
-
-        outcomes = self.get_observation_distribution(state, action)
-
-        if not outcomes:
-            print("  (no outcomes)")
-            return
-
-        total_prob = sum(o.probability for o in outcomes)
-
-        for i, o in enumerate(outcomes):
-            print(f"  ({i}) p = {o.probability:.4f}")
-
-            if o.facts:
-                print("      facts:")
-                for f in o.facts:
-                    print(f"          {f}")
-            else:
-                print("      (empty)")
-
-        print(f"\n  total_prob = {total_prob:.4f}")
-
-        if abs(total_prob - 1.0) > 1e-6:
-            print("  [WARNING] probabilities do not sum to 1.0")
-
-        print("\n=============================================\n")

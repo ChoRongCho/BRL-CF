@@ -3,8 +3,9 @@
 from __future__ import annotations
 from itertools import product
 from typing import List, Dict, Tuple
-import re
 
+import re
+from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
 from models.action import Action
 from models.transition import TransitionOutcome
@@ -23,22 +24,9 @@ class TransitionTomato:
         self.place_success_rate = 0.90
         self.discard_success_rate = 0.95
 
-    @staticmethod
-    def _format_fact(pred: str, args: List[str]) -> str:
-        return f"{pred}({','.join(args)})"
-
-    @staticmethod
-    def _parse_fact(fact: str) -> Tuple[str, List[str]]:
-        fact = fact.replace(" ", "")
-        m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)", fact)
-        if not m:
-            raise ValueError(f"Invalid fact format: {fact}")
-        pred = m.group(1)
-        args = [x.strip() for x in m.group(2).split(",")]
-        return pred, args
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
-        pred, args = self._parse_fact(fact)
+        pred, args = _parse_fact(fact)
 
         variable_positions = []
         variable_domains = []
@@ -58,7 +46,7 @@ class TransitionTomato:
 
         def backtrack(depth: int, current_args: List[str]):
             if depth == len(variable_positions):
-                expanded.append(self._format_fact(pred, current_args))
+                expanded.append(_format_fact(pred, current_args))
                 return
 
             pos = variable_positions[depth]
@@ -69,10 +57,6 @@ class TransitionTomato:
 
         backtrack(0, args[:])
         return expanded
-
-    @staticmethod
-    def _dedup_facts(facts: List[str]) -> List[str]:
-        return list(dict.fromkeys(f.replace(" ", "") for f in facts))
 
     @staticmethod
     def _make_outcome(add_facts: List[str], del_facts: List[str], probability: float) -> TransitionOutcome:
@@ -92,14 +76,14 @@ class TransitionTomato:
         expanded_obs = []
         for obs in action.observation:
             expanded_obs.extend(self._expand_free_variables_in_fact(obs))
-        expanded_obs = self._dedup_facts(expanded_obs)
+        expanded_obs = _dedup_facts(expanded_obs)
         return [f for f in expanded_obs if f.startswith("located(")]
 
     def _extract_true_facts_from_observation(self, action: Action) -> List[str]:
         expanded_obs = []
         for obs in action.observation:
             expanded_obs.extend(self._expand_free_variables_in_fact(obs))
-        expanded_obs = self._dedup_facts(expanded_obs)
+        expanded_obs = _dedup_facts(expanded_obs)
         
         true_facts = []
         for fact in expanded_obs:
@@ -151,7 +135,7 @@ class TransitionTomato:
                 if not remove_fact:
                     filtered_add_facts.append(fact)
 
-            filtered_add_facts = self._dedup_facts(filtered_add_facts)
+            filtered_add_facts = _dedup_facts(filtered_add_facts)
             key = (tuple(sorted(filtered_add_facts)), tuple(sorted(outcome.del_facts)))
 
             if key not in merged:
@@ -260,7 +244,7 @@ class TransitionTomato:
 
         tomato_entries = []
         for fact in at_facts:
-            predicate, arity = self._parse_fact(fact)
+            predicate, arity = _parse_fact(fact)
             if predicate != "at":
                 continue
 
@@ -355,7 +339,7 @@ class TransitionTomato:
                 add_facts.extend(facts_part)
                 prob *= part_prob
 
-            add_facts = self._dedup_facts(add_facts)
+            add_facts = _dedup_facts(add_facts)
             key = tuple(sorted(add_facts))
 
             if key in outcome_map:
@@ -442,7 +426,7 @@ class TransitionTomato:
         alternatives = []
 
         for true_label in ripeness_facts:
-            predicate, arity = self._parse_fact(true_label)
+            predicate, arity = _parse_fact(true_label)
             tomato = arity[0]
 
             all_labels = [
