@@ -14,8 +14,17 @@ from models.transition import TransitionModel, TransitionOutcome, NextStateOutco
 from collections import defaultdict
 
 class FeedbackManger:
-    def __init__(self, conf_threshold):
+    def __init__(self, args, conf_threshold):
+        self.args = args
         self.conf_threshold = conf_threshold
+        
+        # ablation study
+        """
+        f_strategy: int = "1: no, 2: all, 3: ours, 4:random"
+        q_strategy: int = "1: ours, 2: entropy"
+        """
+        self.f_strategy = self.args.f_strategy
+        self.q_strategy = self.args.q_strategy
         
 
     def compute_confidence(self, weights: np.ndarray) -> float:
@@ -156,6 +165,33 @@ class FeedbackManger:
         belief.frontier_weights = self.normalize(np.array(new_weights, dtype=float))
 
         return belief
+    
+    
+    # def get_new_observation(self, belief: Belief):
+    #     if self.f_strategy
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
     def get_new_observation(self, belief: Belief):

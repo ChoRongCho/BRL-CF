@@ -18,15 +18,17 @@ DOMAIN = ["tomato", "blocksworld", "wastesorting"]
 
 def main():
 
-    args = parse_args("wastesorting")
+    args = parse_args("tomato")
     env = Environment(args)
     
-    return 0
+    belief_manager = BeliefManager(args,
+                                   env.transition_model, 
+                                   env.observation_model, 
+                                   env.asp_bridge)
     
-    belief_manager = BeliefManager(env.transition_model, env.observation_model, env.asp_bridge)
-    planner = POMCPPlanner(args=args, env=env, belief_manager=belief_manager)
-    
-    
+    planner = POMCPPlanner(args=args, 
+                           env=env, 
+                           belief_manager=belief_manager)
     
     observation = env.reset()
     
@@ -34,8 +36,6 @@ def main():
 
     done = False
     i = 0
-    
-    
     
     while not done:     
         i += 1
