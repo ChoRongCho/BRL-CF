@@ -28,7 +28,7 @@ def parse_args(domain: str):
     
     # Ablation study
     parser.add_argument("--f_strategy", type=int, default=1, help="1: no, 2: all, 3: ours, 4:random")
-    parser.add_argument("--q_strategy", type=int, default=1, help="1: ours, 2: entropy")
+    parser.add_argument("--q_strategy", type=int, default=1, help="1: ours 2: LLM")
     
     args = parser.parse_args()
 
