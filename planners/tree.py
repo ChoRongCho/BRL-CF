@@ -5,6 +5,7 @@ Refactored auxiliary code for POMCP-style tree search.
 """
 
 from dataclasses import dataclass, field
+import random
 from typing import Any, Dict, List, Optional, Tuple
 
 from models.state import State
@@ -186,17 +187,15 @@ class POMDPTree:
         if edge_key in parent_node.children:
             return parent_node.children[edge_key]
 
-        return self.add_node(
-            parent_id=parent,
-            node_type=node_type,
-            edge_key=edge_key,
-            edge_data=edge_data
-        )
+        return self.add_node(parent_id=parent, node_type=node_type, 
+                             edge_key=edge_key, edge_data=edge_data)
+
 
     def increment_visit(self, node_id: int, amount: int = 1) -> None:
         if node_id not in self.nodes:
             raise KeyError(f"Node {node_id} does not exist.")
         self.nodes[node_id].visits += amount
+
 
     def set_value_if_first(self, node_id: int, value: float) -> None:
         """
@@ -210,8 +209,10 @@ class POMDPTree:
         if node.visits == 1:
             node.value = value
 
+
     def get_observation_node(self, action_node_id: int, observation) -> int:
         return self.expand_tree_from(action_node_id, observation, is_action=False)
+
 
     def update_action_value(self, action_node_id: int, total_return: float) -> None:
         """
@@ -243,6 +244,25 @@ class POMDPTree:
     def get_value(self, node_id: int) -> float:
         return self.get_node(node_id).value
 
+    def add_particle(self, node_id: int, state: State, max_particles: Optional[int] = None) -> None:
+        node = self.get_node(node_id)
+        if not node.is_observation_node:
+            raise TypeError(f"Node {node_id} is not an observation node.")
+
+        node.frontiers.append(state.copy())
+        node.knowledge = state.copy()
+
+        if max_particles is not None and max_particles > 0 and len(node.frontiers) > max_particles:
+            node.frontiers = random.sample(node.frontiers, max_particles)
+
+    def sample_particle(self, node_id: int) -> Optional[State]:
+        node = self.get_node(node_id)
+        if not node.is_observation_node:
+            raise TypeError(f"Node {node_id} is not an observation node.")
+        if not node.frontiers:
+            return None
+        return random.choice(node.frontiers).copy()
+
     def _make_action_key(self, action: Action):
         """
         Action 객체를 tree edge key로 변환.
@@ -255,6 +275,16 @@ class POMDPTree:
         Observation 또는 이미 hashable한 관측 키를 edge key로 변환.
         """
         if isinstance(observation, Observation):
+            if hasattr(observation, "state"):
+                facts_key = tuple(sorted(observation.state.facts))
+                fluents_key = tuple(
+                    sorted(
+                        (obj, key, float(value))
+                        for obj, values in observation.state.fluents.items()
+                        for key, value in values.items()
+                    )
+                )
+                return (facts_key, fluents_key)
             if hasattr(observation, "facts") and hasattr(observation.facts, "facts"):
                 return tuple(sorted(observation.facts.facts))
             if hasattr(observation, "facts"):
@@ -320,3 +350,80 @@ class POMDPTree:
 
         # 선택된 observation node를 새 root로 승격
         self.make_new_root(new_root_id)
+
+    def debugging(self):
+        root = self.get_node(self.root_id)
+        observation_nodes = [node for node in self.nodes.values() if node.is_observation_node]
+        action_nodes = [node for node in self.nodes.values() if node.is_action_node]
+        leaf_nodes = [node for node in self.nodes.values() if node.visits == 0]
+
+        print("\n===== TREE DEBUG =====")
+        print(
+            f"root={self.root_id} total={len(self.nodes)} "
+            f"obs={len(observation_nodes)} act={len(action_nodes)} leaf={len(leaf_nodes)}"
+        )
+        print(
+            f"root_visits={root.visits} root_value={root.value:.4f} "
+            f"root_particles={len(root.frontiers)} root_children={len(root.children)}"
+        )
+
+        root_knowledge = []
+        if root.knowledge is not None:
+            root_knowledge = sorted(root.knowledge.facts)
+        print(f"root_knowledge={root_knowledge}")
+
+        depth_map: Dict[int, List[int]] = {}
+        stack = [(self.root_id, 0)]
+        visited = set()
+        while stack:
+            node_id, depth = stack.pop()
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+            depth_map.setdefault(depth, []).append(node_id)
+            node = self.nodes[node_id]
+            for child_id in node.children.values():
+                stack.append((child_id, depth + 1))
+
+        print("[Depth Summary]")
+        for depth in sorted(depth_map):
+            node_ids = depth_map[depth]
+            visit_sum = sum(self.nodes[node_id].visits for node_id in node_ids)
+            print(f"depth={depth} nodes={len(node_ids)} total_visits={visit_sum}")
+
+        print("[Root Actions]")
+        root_actions = self.get_action_children(self.root_id)
+        if not root_actions:
+            print("  none")
+        else:
+            ranked_root_actions = sorted(
+                root_actions,
+                key=lambda item: (
+                    self.get_visit(item[1]),
+                    self.get_value(item[1]),
+                ),
+                reverse=True,
+            )
+            for action, node_id in ranked_root_actions:
+                obs_count = len(self.get_observation_children(node_id))
+                print(
+                    f"  action={action.name} node={node_id} "
+                    f"visits={self.get_visit(node_id)} value={self.get_value(node_id):.4f} "
+                    f"obs_children={obs_count}"
+                )
+
+        print("[Top Visited Nodes]")
+        ranked_nodes = sorted(
+            self.nodes.values(),
+            key=lambda node: (node.visits, node.value),
+            reverse=True,
+        )
+        for node in ranked_nodes[:10]:
+            depth = next((d for d, ids in depth_map.items() if node.id in ids), None)
+            print(
+                f"  node={node.id} type={node.node_type} depth={depth} "
+                f"parent={node.parent_id} visits={node.visits} value={node.value:.4f} "
+                f"children={len(node.children)} particles={len(node.frontiers)}"
+            )
+
+        

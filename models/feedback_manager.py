@@ -173,28 +173,12 @@ class FeedbackManger:
     
     
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     def get_new_observation(self, belief: Belief):
+        
+        # for i in belief.frontier:
+        #     print(i)
+        
+        # print(np.sum(belief.frontier_weights))
         
         confidence = self.compute_confidence(belief.frontier_weights)
         print(f"[FM] Initial confidence is {confidence}")    
@@ -219,10 +203,6 @@ class FeedbackManger:
             belief = self.apply_fact_answer_to_belief(belief, target_fact, answer)
             
             confidence = self.compute_confidence(belief.frontier_weights)
-            
-
-            for f, w in zip(belief.frontier, belief.frontier_weights):
-                print(f, w)
             
             print(f"[FM] Confidence is {confidence}")    
         

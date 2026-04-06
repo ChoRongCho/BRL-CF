@@ -14,12 +14,13 @@ from models.observation import Observation, ObservationOutcome
 
 
 class ObservationTomato:
-    def __init__(self, type_map: Dict[str, List[str]], noise: float = 0.05):
+    def __init__(self, type_map: Dict[str, List[str]], noise: float = 0.05, true_state: State | None = None):
         self.type_map = type_map
         self.noise = noise
+        self.true_state = true_state
 
         self.detect_success_rate = 0.85
-        self.scan_success_rate = 0.95
+        self.scan_success_rate = 0.97
         self.navigate_success_rate = 0.90
 
 
@@ -61,6 +62,38 @@ class ObservationTomato:
         for obs in action.observation:
             expanded.extend(self._expand_free_variables_in_fact(obs))
         return _dedup_facts(expanded)
+
+    def build_fluent_candidates(self, action: Action) -> List[str]:
+        expanded = []
+        for obs in action.observation_fluents:
+            expanded.extend(self._expand_free_variables_in_fact(obs))
+        return _dedup_facts(expanded)
+
+    @staticmethod
+    def _parse_fluent_candidate(expr: str):
+        predicate, args = _parse_fact(expr.replace(" ", ""))
+        if not args:
+            return None, None
+        return args[0], predicate
+
+    def _get_observed_fluents(self, tomato: str, action: Action) -> Dict[str, Dict[str, float]]:
+        if self.true_state is None:
+            return {}
+        if tomato not in self.true_state.fluents:
+            return {}
+
+        fluent_values = {}
+        for candidate in self.build_fluent_candidates(action):
+            obj, key = self._parse_fluent_candidate(candidate)
+            if obj != tomato:
+                continue
+            if key in self.true_state.fluents[tomato]:
+                fluent_values[key] = self.true_state.fluents[tomato][key]
+
+        if not fluent_values:
+            return {}
+
+        return {tomato: fluent_values}
 
     # observation.py <- obs.py
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
@@ -124,9 +157,10 @@ class ObservationTomato:
         all_labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
         wrong_labels = [x for x in all_labels if x != true_label]
 
-        outcomes = [ObservationOutcome(facts=[true_label], probability=self.scan_success_rate)]
+        correct_prob = self.scan_success_rate if true_label.startswith(("ripe(", "rotten(")) else 0.95
+        outcomes = [ObservationOutcome(facts=[true_label], probability=correct_prob)]
 
-        remain = 1.0 - self.scan_success_rate
+        remain = 1.0 - correct_prob
         alt_prob = remain / (len(wrong_labels) + 1)
 
         for wrong in wrong_labels:
@@ -147,61 +181,68 @@ class ObservationTomato:
             _, args = _parse_fact(at_fact)
             tomato = args[0]
 
-            # labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
             labels = [f"ripe({tomato})", f"unripe({tomato})"]
             true_label = None
-            for lbl in labels:
-                if state.has_fact(lbl):
-                    true_label = lbl
-                    break
+            if state.has_fact(f"unripe({tomato})"):
+                true_label = f"unripe({tomato})"
+            elif state.has_fact(f"ripe({tomato})") or state.has_fact(f"rotten({tomato})"):
+                # detect cannot distinguish ripe from rotten
+                true_label = f"ripe({tomato})"
 
             if true_label is None:
-                tomato_groups.append([[at_fact], []])
+                tomato_groups.append([
+                    {"facts": [at_fact, f"observed({tomato})"], "fluents": self._get_observed_fluents(tomato, action)},
+                    {"facts": [], "fluents": {}},
+                ])
             else:
                 wrong_labels = [x for x in labels if x != true_label]
-                # local = [
-                #     [],
-                #     [at_fact, true_label],
-                #     [at_fact, wrong_labels[0]],
-                #     [at_fact, wrong_labels[1]],
-                # ]
                 local = [
-                    [],
-                    [at_fact, true_label],
-                    [at_fact, wrong_labels[0]],
-                    # [at_fact, wrong_labels[1]],
+                    {"facts": [], "fluents": {}},
+                    {"facts": [at_fact, f"observed({tomato})", true_label], "fluents": self._get_observed_fluents(tomato, action)},
+                    {"facts": [at_fact, f"observed({tomato})", wrong_labels[0]], "fluents": self._get_observed_fluents(tomato, action)},
                 ]
                 tomato_groups.append(local)
 
         success_facts = []
+        success_fluents = {}
         for local in tomato_groups:
-            success_facts.extend(local[1])
+            success_facts.extend(local[1]["facts"])
+            success_fluents.update(local[1]["fluents"])
         success_facts = _dedup_facts(success_facts)
 
-        outcomes = [ObservationOutcome(facts=success_facts, probability=self.detect_success_rate)]
+        outcomes = [ObservationOutcome(facts=success_facts, fluents=success_fluents, probability=self.detect_success_rate)]
 
         alternatives = []
         for combo in product(*tomato_groups):
             flat = []
+            flat_fluents = {}
             for part in combo:
-                flat.extend(part)
+                flat.extend(part["facts"])
+                flat_fluents.update(part["fluents"])
             flat = _dedup_facts(flat)
-            if set(flat) == set(success_facts):
+            if set(flat) == set(success_facts) and flat_fluents == success_fluents:
                 continue
-            alternatives.append(flat)
+            alternatives.append((flat, flat_fluents))
 
         unique = []
         seen = set()
-        for alt in alternatives:
-            key = tuple(sorted(alt))
+        for alt_facts, alt_fluents in alternatives:
+            fluent_key = tuple(
+                sorted(
+                    (obj, key, float(value))
+                    for obj, values in alt_fluents.items()
+                    for key, value in values.items()
+                )
+            )
+            key = (tuple(sorted(alt_facts)), fluent_key)
             if key not in seen:
                 seen.add(key)
-                unique.append(alt)
+                unique.append((alt_facts, alt_fluents))
 
         if unique:
             alt_prob = (1.0 - self.detect_success_rate) / len(unique)
-            for alt in unique:
-                outcomes.append(ObservationOutcome(facts=alt, probability=alt_prob))
+            for alt_facts, alt_fluents in unique:
+                outcomes.append(ObservationOutcome(facts=alt_facts, fluents=alt_fluents, probability=alt_prob))
         else:
             outcomes[0].probability = 1.0
 

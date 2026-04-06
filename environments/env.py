@@ -34,6 +34,9 @@ class Environment:
         # Domain rule: initially imported to the DomainRuleBridge
         self.asp_bridge = DomainRuleBridge()
         self.asp_bridge.load(self.domain_rule_path)
+        
+        
+        
         self.domain_rule = self.asp_bridge.build_possible_worlds()
         
         # Get (initial) state, hidden_init_state, and goal state
@@ -62,6 +65,7 @@ class Environment:
             actions=self.actions,
             obj_type=self.obj_type,
             noise=0.05,
+            true_state=self.gt_init_state,
         )
         
         # Reward Model TODO
@@ -168,10 +172,11 @@ class Environment:
         if self.done:
             raise RuntimeError("Episode is done. Call reset() before step().")
 
+        prev_state = copy.deepcopy(self.state)
         self._apply_action(action)
         # _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
         
-        reward = self._compute_reward(action)
+        reward = self.reward_model.get_reward(prev_state, action, self.state)
         self.step_count += 1
         self.done = self._check_done()
 
@@ -196,10 +201,6 @@ class Environment:
             return copy.deepcopy(self.state)
 
         return self.observation_model.sample(self.state, action)
-
-    # TODO: reward shaping
-    def _compute_reward(self, action: Dict[str, Any]) -> float:
-        return -1.0
 
     def _check_done(self) -> bool:
         """Goal 달성 또는 max_step 초과 시 episode 종료"""

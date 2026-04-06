@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List
 import re
 import random
@@ -11,19 +11,24 @@ from models.action import Action
 
 @dataclass(slots=True)
 class Observation:
-    facts: State
+    state: State
 
     def is_empty(self) -> bool:
-        return len(self.facts) == 0
+        return len(self.state.facts) == 0 and len(self.state.fluents) == 0
+
+    @property
+    def facts(self) -> State:
+        return self.state
 
     def __repr__(self) -> str:
-        return f"Observation({self.facts})"
+        return f"Observation({self.state})"
 
 
 @dataclass(slots=True)
 class ObservationOutcome:
     facts: List[str]
     probability: float
+    fluents: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
 
 
@@ -33,12 +38,14 @@ class ObservationModel:
         domain: str,
         actions: List[Action],
         obj_type: Dict[str, List[str]],
-        noise: float = 0.15
+        noise: float = 0.15,
+        true_state: State | None = None,
     ):
         self.domain = domain
         self.noise = noise
         self.obj_type = obj_type
         self.actions = actions
+        self.true_state = true_state
 
         self.type_map = self._build_type_map()
         self.domain_model = self._build_domain_model()
@@ -60,7 +67,7 @@ class ObservationModel:
     def _build_domain_model(self):
         if self.domain == "tomato":
             from models.tomato.obs import ObservationTomato
-            return ObservationTomato(type_map=self.type_map, noise=self.noise)
+            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
 
         elif self.domain == "blocksworld":
             from models.blocksworld.obs import ObservationBlocksworld
@@ -98,21 +105,28 @@ class ObservationModel:
                 obs_state = State()
                 for fact in outcome.facts:
                     obs_state.add_fact(fact)
+                for obj, values in outcome.fluents.items():
+                    for key, value in values.items():
+                        obs_state.set_fluent(obj, key, value)
                 return Observation(obs_state)
 
         obs_state = State()
         for fact in outcomes[-1].facts:
             obs_state.add_fact(fact)
+        for obj, values in outcomes[-1].fluents.items():
+            for key, value in values.items():
+                obs_state.set_fluent(obj, key, value)
         return Observation(obs_state)
 
 
     def likelihood(self, observation: Observation, state: State, action: Action) -> float:
         outcomes = self.get_observation_distribution(state, action)
         
-        obs_set = set(observation.facts.facts)
+        obs_set = set(observation.state.facts)
+        obs_fluents = observation.state.fluents
 
         for outcome in outcomes:
-            if set(outcome.facts) == obs_set:
+            if set(outcome.facts) == obs_set and outcome.fluents == obs_fluents:
                 return outcome.probability
         return self.noise
     

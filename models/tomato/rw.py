@@ -37,12 +37,12 @@ class RewardTomato:
 
         # helper: tomato 상태 판별
         def get_tomato_state(tomato, facts):
-            if f"ripe({tomato})" in facts:
-                return "ripe"
+            if f"rotten({tomato})" in facts:
+                return "rotten"
             elif f"unripe({tomato})" in facts:
                 return "unripe"
-            elif f"rotten({tomato})" in facts:
-                return "rotten"
+            elif f"ripe({tomato})" in facts:
+                return "ripe"
             return None
 
         for fact in added:
@@ -98,16 +98,38 @@ class RewardTomato:
 
         # 2) 토마토 탐지 보상
         reward += self._tomato_reward(state=state, next_state=next_state)
-        
+
+        # 2-1) scan으로 새 정보를 얻으면 보상
+        new_scanned = [fact for fact in added if fact.startswith("scanned(")]
+        reward += 4.0 * len(new_scanned)
+        new_rotten = [fact for fact in added if fact.startswith("rotten(")]
+        reward += 6.0 * len(new_rotten)
+        new_unripe = [fact for fact in added if fact.startswith("unripe(")]
+        reward += 2.0 * len(new_unripe)
+
         # 3) detect or scan 액션이 아무 새 정보도 못 얻었으면 패널티
         if action.name.startswith("detect("):
             if len(new_observed) == 0:
-                reward -= 3.0
+                reward -= 5.0
 
         if action.name.startswith("scan("):
-            if len(added) == 0 and len(deled) == 0:
-                reward -= 2.0
-        
+            if len(new_scanned) == 0:
+                reward -= 4.0
+
+        # # 3-1) scan 없이 성급하게 place/discard 하면 패널티
+        # if action.name.startswith("place(") or action.name.startswith("discard("):
+        #     tomato = action.name.split("(")[1].split(",")[1].strip()
+        #     is_scanned = f"scanned({tomato})" in s_facts
+        #     knows_rotten = f"rotten({tomato})" in s_facts
+        #     knows_unripe = f"unripe({tomato})" in s_facts
+
+        #     if not is_scanned and not knows_rotten and not knows_unripe:
+        #         reward -= 12.0
+
+        # 3-2) 의미 없는 prepare_nav/detect 반복 억제
+        if action.name.startswith("prepare_nav(") and "navprepared(changmin)" in s_facts:
+            reward -= 4.0
+
         # 4) dockstation 도착 보상
         
         

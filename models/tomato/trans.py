@@ -17,12 +17,12 @@ class TransitionTomato:
         self.true_state = true_state
 
         self.navigate_success_rate = 0.90
-        self.prepare_nav_success_rate = 0.98
-        self.detect_success_rate = 0.85
-        self.pick_success_rate = 0.75
-        self.scan_success_rate = 0.85
-        self.place_success_rate = 0.90
-        self.discard_success_rate = 0.95
+        self.prepare_nav_success_rate = 1.0
+        self.detect_success_rate = 0.90
+        self.pick_success_rate = 0.88
+        self.scan_success_rate = 0.97
+        self.place_success_rate = 0.99
+        self.discard_success_rate = 0.99
 
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
@@ -59,11 +59,47 @@ class TransitionTomato:
         return expanded
 
     @staticmethod
-    def _make_outcome(add_facts: List[str], del_facts: List[str], probability: float) -> TransitionOutcome:
+    def _fluent_effect_to_state_update(effect) -> Dict[str, Dict[str, float]]:
+        if not isinstance(effect, dict):
+            return {}
+
+        updates: Dict[str, Dict[str, float]] = {}
+        for expr, value in effect.items():
+            predicate, args = _parse_fact(str(expr).replace(" ", ""))
+            if not args:
+                continue
+
+            obj = args[0]
+            if obj not in updates:
+                updates[obj] = {}
+            updates[obj][predicate] = float(value)
+
+        return updates
+
+    @classmethod
+    def _fluent_effects_to_state_update(cls, effects) -> Dict[str, Dict[str, float]]:
+        updates: Dict[str, Dict[str, float]] = {}
+
+        for effect in effects or []:
+            for obj, values in cls._fluent_effect_to_state_update(effect).items():
+                if obj not in updates:
+                    updates[obj] = {}
+                updates[obj].update(values)
+
+        return updates
+
+    @staticmethod
+    def _make_outcome(
+        add_facts: List[str],
+        del_facts: List[str],
+        probability: float,
+        fluent_effects: Dict[str, Dict[str, float]] | None = None,
+    ) -> TransitionOutcome:
         return TransitionOutcome(
             add_facts=list(dict.fromkeys(f.replace(" ", "") for f in add_facts)),
             del_facts=list(dict.fromkeys(f.replace(" ", "") for f in del_facts)),
-            probability=probability
+            probability=probability,
+            fluent_effects=fluent_effects or {},
         )
 
     def _true_has_fact(self, fact: str) -> bool:
@@ -92,7 +128,6 @@ class TransitionTomato:
         return true_facts
 
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
-        
         current_facts = set(state.facts)
         
         if not action.name.startswith("detect("):
@@ -142,7 +177,8 @@ class TransitionTomato:
                 merged[key] = TransitionOutcome(
                     add_facts=filtered_add_facts,
                     del_facts=outcome.del_facts,
-                    probability=outcome.probability
+                    probability=outcome.probability,
+                    fluent_effects=outcome.fluent_effects,
                 )
             else:
                 merged[key].probability += outcome.probability
@@ -235,8 +271,9 @@ class TransitionTomato:
         """
         detect:
         각 tomato에 대해
-        - 0.9 확률로 발견: observed(T), at(T,S), true ripeness
-        - 0.1 확률로 미발견: 아무 정보도 못 얻음
+        - 기존 detection 성공률은 유지한다.
+        - 성공한 경우 quality label(ripe/unripe)은 동일 확률로 둔다.
+        - 실패한 경우 아무 정보도 못 얻음.
         """
 
         true_facts = self._extract_true_facts_from_observation(action)
@@ -251,25 +288,11 @@ class TransitionTomato:
             tomato = arity[0]
             location = arity[1]
 
-            true_label = None
-            for c in [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]:
-            # for c in [f"ripe({tomato})", f"unripe({tomato})"]:
-                if self._true_has_fact(c):
-                    if c.startswith("rotten"):
-                        true_label = f"ripe({tomato})"
-                    else:
-                        true_label = c  
-                    break
-
-            if true_label is None:
-                continue
-
             tomato_entries.append({
                 "tomato": tomato,
                 "location": location,
                 "at_fact": fact.replace(" ", ""),
                 "observed_fact": f"observed({tomato})",
-                "true_label": true_label
             })
 
         # stem에 tomato가 하나도 없으면 detect 결과는 빈 outcome 1개
@@ -282,46 +305,39 @@ class TransitionTomato:
                 )
             ]
 
-        # 각 tomato별 local choice:
-        # 1) 발견 성공: observed + at + true_label
-        # 2) 발견 실패: []
         per_tomato_choices = []
 
-        
-        p_true = 0.8
-        p_false = 0.15
+        p_detect = 0.95
         p_miss = 0.05
         
         for entry in tomato_entries:
             tomato = entry["tomato"]
-            true_label = entry["true_label"]
+            quality_del_facts = [
+                f"ripe({tomato})",
+                f"unripe({tomato})",
+                f"rotten({tomato})",
+            ]
 
             # 가능한 label들
             all_labels = [
                 f"ripe({tomato})",
                 f"unripe({tomato})",
-                f"rotten({tomato})"
             ]
             
-            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
             local_choices = []
+            label_prob = p_detect / len(all_labels)
             
-            # 1. True detection
-            local_choices.append((
-                [entry["observed_fact"], entry["at_fact"], true_label],
-                p_true
-            ))
-            
-             # 2. False detection (label만 틀림)
-            false_prob_each = p_false / len(wrong_labels)
-            for wrong_label in wrong_labels:
+            # 1. Detection success: observed + at + one unbiased quality label.
+            for label in all_labels:
                 local_choices.append((
-                    [entry["observed_fact"], entry["at_fact"], wrong_label],
-                    false_prob_each
+                    [entry["observed_fact"], entry["at_fact"], label],
+                    quality_del_facts,
+                    label_prob
                 ))
 
-            # 3. Miss detection
+            # 2. Detection failure.
             local_choices.append((
+                [],
                 [],
                 p_miss
             ))
@@ -333,25 +349,28 @@ class TransitionTomato:
         # 전체 조합 생성
         for combo in product(*per_tomato_choices):
             add_facts = []
+            del_facts = []
             prob = 1.0
 
-            for facts_part, part_prob in combo:
+            for facts_part, del_part, part_prob in combo:
                 add_facts.extend(facts_part)
+                del_facts.extend(del_part)
                 prob *= part_prob
 
             add_facts = _dedup_facts(add_facts)
-            key = tuple(sorted(add_facts))
+            del_facts = _dedup_facts(del_facts)
+            key = (tuple(sorted(add_facts)), tuple(sorted(del_facts)))
 
             if key in outcome_map:
                 outcome_map[key] += prob
             else:
                 outcome_map[key] = prob
 
-        for add_key, prob in outcome_map.items():
+        for (add_key, del_key), prob in outcome_map.items():
             outcomes.append(
                 self._make_outcome(
                     add_facts=list(add_key),
-                    del_facts=[],
+                    del_facts=list(del_key),
                     probability=prob
                 )
             )
@@ -360,11 +379,11 @@ class TransitionTomato:
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:
         prob = self.pick_success_rate
-
         success = self._make_outcome(
             add_facts=action.add_effects,
             del_facts=action.del_effects,
-            probability=prob
+            probability=prob,
+            fluent_effects=self._fluent_effects_to_state_update(action.del_effect_fluents),
         )
 
         failure_add = []
@@ -383,86 +402,31 @@ class TransitionTomato:
 
     def _build_scan_outcomes(self, action: Action) -> List[TransitionOutcome]:
         """
-        scan은 observation 후보 중 true_state에 실제 있는 fact를 기반으로 결과를 만든다.
-        성공 시 true ripeness를 반환하고,
-        실패 alternatives에서는 wrong ripeness 또는 empty observation을 반환한다.
+        scan은 항상 성공하며 scanned(T)를 반환한다.
+        quality label은 ripe/rotten만 동일 확률로 구분한다.
         """
-        true_facts = self._extract_true_facts_from_observation(action)
-        prob = self.scan_success_rate
+        _, args = _parse_fact(action.name)
+        tomato = args[1]
+        quality_facts = [
+            f"ripe({tomato})",
+            f"unripe({tomato})",
+            f"rotten({tomato})",
+        ]
+        scanned_fact = f"scanned({tomato})"
 
-        # scan에서 ripeness 관련 fact만 뽑기
-        ripeness_facts = []
-        for fact in true_facts:
-            if fact.startswith("ripe(") or fact.startswith("unripe(") or fact.startswith("rotten("):
-                ripeness_facts.append(fact)
-
-        # true ripeness가 없으면 기존 방식 fallback
-        if not ripeness_facts:
-            success_add = true_facts if true_facts else action.add_effects
-            return [
-                self._make_outcome(
-                    add_facts=success_add,
-                    del_facts=action.del_effects,
-                    probability=prob
-                ),
-                self._make_outcome(
-                    add_facts=[],
-                    del_facts=[],
-                    probability=1.0 - prob
-                )
-            ]
-
-        # 성공 outcome
-        success_add = ripeness_facts
-        outcomes = [
-            self._make_outcome(
-                add_facts=success_add,
-                del_facts=action.del_effects,
-                probability=prob
-            )
+        labels = [
+            f"ripe({tomato})",
+            f"rotten({tomato})",
         ]
 
-        # 실패 alternatives 생성
-        alternatives = []
-
-        for true_label in ripeness_facts:
-            predicate, arity = _parse_fact(true_label)
-            tomato = arity[0]
-
-            all_labels = [
-                f"ripe({tomato})",
-                f"unripe({tomato})",
-                f"rotten({tomato})"
-            ]
-
-            wrong_labels = [lbl for lbl in all_labels if lbl != true_label]
-            for wrong_label in wrong_labels:
-                alternatives.append([wrong_label])
-
-        # 완전 실패: 아무 것도 못 얻음
-        alternatives.append([])
-
-        # 중복 제거
-        unique_alternatives = []
-        seen = set()
-        for alt in alternatives:
-            key = tuple(sorted(alt))
-            if key not in seen:
-                seen.add(key)
-                unique_alternatives.append(alt)
-
-        alt_prob = (1.0 - prob) / len(unique_alternatives)
-
-        for alt in unique_alternatives:
-            outcomes.append(
-                self._make_outcome(
-                    add_facts=alt,
-                    del_facts=[],
-                    probability=alt_prob
-                )
+        return [
+            self._make_outcome(
+                add_facts=[label, scanned_fact],
+                del_facts=quality_facts,
+                probability=1.0 / len(labels)
             )
-
-        return outcomes
+            for label in labels
+        ]
 
     def _build_place_outcomes(self, action: Action) -> List[TransitionOutcome]:
         prob = self.place_success_rate

@@ -91,20 +91,6 @@ predicates:
     meaning: "R is prepared for navigation"
   
 
-fluents:
-  - fluent: pose_x(T)
-    arity: [T]
-    meaning: "The x pose of the tomato"
-
-  - fluent: pose_y(T)
-    arity: [T]
-    meaning: "The x pose of the tomato"
-
-  - fluent: pose_z(T)
-    arity: [T]
-    meaning: "The x pose of the tomato"
-
-
 rule:
   - head: "location(S)"
     body:
@@ -119,9 +105,70 @@ rule:
       - "N = #count { T,R : loaded(T, R) }"
 
 choice_rules:
+  # Tomato must be in one physical state
+  - elements:
+      - atom: "at(T,S)"
+        over:
+          - "stem(S)"
+      - atom: "holded(T,R)"
+        over:
+          - "robot(R)"
+      - atom: "discarded(T)"
+      - atom: "loaded(T,R)"
+        over:
+          - "robot(R)"
+    given:
+      - "tomato(T)"
+      - "observed(T)"
+    cardinality: "1..1"
+
+  # Tomato must have one property state
+  - elements:
+      - atom: "ripe(T)"
+      - atom: "unripe(T)"
+      - atom: "rotten(T)"
+    given:
+      - "tomato(T)"
+    cardinality: "1..1"
+
+  # Tomato must be in the stem if it not observed
+  - elements:
+      - atom: "at(T, S)"
+        over: 
+          - "stem(S)"
+    given:
+      - "tomato(T)"
+      - "not observed(T)"
+    cardinality: "1..1"
 
 
 constraint:
+  - body:
+      - "holded(T, R)"
+      - "not holding(R, T)"
+    meaning: "If a tomato is held by a robot, the robot must be holding it"
+
+  - body:
+      - "holding(R, T)"
+      - "handempty(R)"
+    meaning: "A robot cannot be holding a tomato and have an empty hand at the same time"
+
+  - body:
+      - "holding(R, T1)"
+      - "holding(R, T2)"
+      - "T1 != T2"
+    meaning: "A robot cannot hold two different tomatoes simultaneously"
+
+  - body:
+      - "robot(R)"
+      - "not 1 { located(R, L) : location(L) } 1"
+    meaning: "Each robot must have exactly one location"
+
+  # 창민 add
+  - body:
+      - "observed(T)"
+      - "not 1 { ripe(T); unripe(T); rotten(T) } 1"
+    meaning: "If a tomato is observed, it must have exactly one ripeness label"
 
 
 
@@ -142,3 +189,5 @@ show: # show all states
   - "#show handempty/1"
   - "#show navprepared/1"
   - "#show holding/2"
+  - "#show tomato_count/1"
+  - "#show tomato_harvested/1"

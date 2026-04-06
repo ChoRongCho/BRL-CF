@@ -1,8 +1,7 @@
-
 from __future__ import annotations
 import numpy as np
 import copy
-from typing import Any, Dict, List, Optional, Iterable, Tuple
+from typing import Any, List, Optional, Iterable, Tuple
 
 
 from utils.asp import DomainRuleBridge, solve_asp
@@ -10,7 +9,7 @@ from models.belief import Belief
 from models.state import State
 from models.action import Action
 from models.observation import ObservationModel, Observation
-from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
+from models.transition import TransitionModel, NextStateOutcome
 from models.feedback_manager import FeedbackManger
 
 
@@ -36,9 +35,11 @@ class BeliefManager:
         
         
     def initialize_belief(self, init_state: State):
-        self.belief = Belief(knowledge=init_state,
-                             frontier=[State()],
-                             frontier_weights=np.array([self.initial_belief], dtype=float))
+        self.belief = Belief(
+            knowledge=init_state,
+            particles=[State()],
+            particle_weights=np.array([self.initial_belief], dtype=float),
+        )
         return self.belief
            
     def get_belief(self) -> Belief:
@@ -62,7 +63,6 @@ class BeliefManager:
         value = self.observation_model.likelihood(obs, state, action)
         return max(0.0, float(value))
 
-    
     @staticmethod
     def _state_to_key(state: State) -> str:
         if hasattr(state, "facts"):
@@ -71,6 +71,34 @@ class BeliefManager:
             except Exception:
                 pass
         return repr(state)
+
+    @staticmethod
+    def _merge_fluents_separately(belief: Belief, prior_knowledge: State, obs: Observation) -> Belief:
+        """
+        Facts are updated through the symbolic frontier. Fluents are kept separate
+        and merged into the selected knowledge state without expanding particles.
+        """
+        merged_fluents = copy.deepcopy(getattr(prior_knowledge, "fluents", {}))
+
+        # Keep any fluent effect that the selected transition outcome already has.
+        for obj, values in getattr(belief.knowledge, "fluents", {}).items():
+            merged_fluents[obj] = copy.deepcopy(values)
+
+        # Observation fluents overwrite the prior fluent values directly.
+        if obs is not None and hasattr(obs, "state"):
+            for obj, values in getattr(obs.state, "fluents", {}).items():
+                if obj not in merged_fluents:
+                    merged_fluents[obj] = {}
+                for key, value in values.items():
+                    merged_fluents[obj][key] = float(value)
+
+        belief.knowledge.fluents = merged_fluents
+
+        # advance_observation() resets belief to the selected knowledge state.
+        if len(belief.frontier) == 1:
+            belief.frontier[0].fluents = copy.deepcopy(merged_fluents)
+
+        return belief
     
     @staticmethod
     def get_changed_facts_from_knowledge(knowledge, frontier):
@@ -170,7 +198,6 @@ class BeliefManager:
             belief.knowledge = max_frontier
             belief.reset_belief()
 
-
         return belief
     
     
@@ -181,8 +208,14 @@ class BeliefManager:
             raise ValueError("b_prev is None. 초기 belief를 먼저 설정하세요.")
 
         if belief.is_empty():
-            self.belief = Belief(frontier=[], weights=np.array([], dtype=float))
+            self.belief = Belief(
+                knowledge=State(),
+                particles=[],
+                particle_weights=np.array([], dtype=float),
+            )
             return self.belief
+
+        prior_knowledge = belief.knowledge.copy()
         
         # 1-1. Transition expansion from knowledge base
         # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
@@ -210,14 +243,15 @@ class BeliefManager:
         # 2. Update belief, posterior ∝ transition * observation
         unnormalized = transition_matrix * observation_matrix
         weights = self.feedback_manager.normalize(unnormalized)
-        b_next = Belief(knowledge=belief.knowledge, frontier=frontiers, frontier_weights=weights)
-        
-        # 3. verify frontier
-        b_next = self.verify_frontier(belief=b_next)
+        b_next = Belief(
+            knowledge=belief.knowledge,
+            particles=frontiers,
+            particle_weights=weights,
+        )
         
         # 4. append belief into the knowledge / expand knowledge
         b_next = self.advance_observation(belief=b_next)
-        self.verify_knowledge(belief=b_next)
+        b_next = self._merge_fluents_separately(b_next, prior_knowledge, obs)
         
         self.belief = b_next
         

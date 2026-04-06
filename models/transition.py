@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict
 import random
 import re
@@ -16,6 +16,7 @@ class TransitionOutcome:
     add_facts: List[str]
     del_facts: List[str]
     probability: float
+    fluent_effects: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -60,6 +61,10 @@ class TransitionModel:
 
         for fact in outcome.add_facts:
             next_state.add_fact(fact)
+
+        for obj, values in outcome.fluent_effects.items():
+            for key, value in values.items():
+                next_state.set_fluent(obj, key, value)
 
         return next_state
     # ==========================================================================
@@ -116,6 +121,7 @@ class TransitionModel:
         """
         """
         outcomes = self.transition_table[action.name]
+        outcomes = self.trans_model.handle_exeception(state, action, outcomes)
         result = []
 
         for outcome in outcomes:

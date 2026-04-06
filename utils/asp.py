@@ -38,6 +38,7 @@ class DomainRuleBridge:
         self.domain_name: str = "unknown"
         self.meta_data: Dict[str, Any] = {}
         self.predicate_schemas: List[Dict[str, Any]] = []
+        self.fluent_schemas: List[Dict[str, Any]] = []
 
         self.facts: List[str] = []
         self.rules: List[str] = []
@@ -50,13 +51,17 @@ class DomainRuleBridge:
         self.runtime_constraints: List[str] = []
         self.runtime_shows: List[str] = []
 
+
     def load(self, yaml_path: Union[str, Path]) -> None:
+        yaml_path = Path(yaml_path)
+
         with yaml_path.open("r", encoding="utf-8") as f:
             self.raw_data = yaml.safe_load(f) or {}
 
         self.domain_name = str(self.raw_data.get("domain", "unknown"))
         self.meta_data = self.raw_data.get("meta_data", {}) or {}
         self.predicate_schemas = self.raw_data.get("predicates", []) or []
+        self.fluent_schemas = self.raw_data.get("fluents", []) or []
 
         self.facts = self._parse_fact_section(self.raw_data.get("facts", []))
         self.rules = self._parse_rule_section(self.raw_data.get("rule", []))

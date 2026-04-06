@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Tuple
 
 import numpy as np
@@ -9,72 +9,97 @@ from models.state import State
 
 
 
+
+
+
+
 @dataclass
 class Belief:
     knowledge: State
-    frontier: List[State]                   # reachable states (support)
-    frontier_weights: np.ndarray                     # 각 state의 확률 (normalize됨)
+    particles: List[State]
+    particle_weights: np.ndarray
 
-    def __post_init__(self):  # @dataclass의 __init__
-        if not isinstance(self.frontier, list):
-            self.frontier = list(self.frontier)
+    def __post_init__(self):
+        if not isinstance(self.particles, list):
+            self.particles = list(self.particles)
 
-        if not isinstance(self.frontier_weights, np.ndarray):
-            self.frontier_weights = np.array(self.frontier_weights, dtype=float)
+        if not isinstance(self.particle_weights, np.ndarray):
+            self.particle_weights = np.array(self.particle_weights, dtype=float)
         else:
-            self.frontier_weights = self.frontier_weights.astype(float)
+            self.particle_weights = self.particle_weights.astype(float)
 
-        if len(self.frontier) != len(self.frontier_weights):
+        if len(self.particles) != len(self.particle_weights):
             raise ValueError(
-                f"Belief mismatch: len(frontier)={len(self.frontier)} "
-                f"!= len(weights)={len(self.frontier_weights)}"
+                f"Belief mismatch: len(particles)={len(self.particles)} "
+                f"!= len(weights)={len(self.particle_weights)}"
             )
 
-        if len(self.frontier) == 0:
-            self.weights = np.array([], dtype=float)
+        if self.is_empty():
+            self.particle_weights = np.array([], dtype=float)
             return
 
         self.normalize()
 
+
+
+
+
+
+    @property
+    def frontier(self) -> List[State]:
+        return self.particles
+
+    @frontier.setter
+    def frontier(self, value: List[State]) -> None:
+        self.particles = list(value)
+
+    @property
+    def frontier_weights(self) -> np.ndarray:
+        return self.particle_weights
+
+    @frontier_weights.setter
+    def frontier_weights(self, value) -> None:
+        self.particle_weights = np.array(value, dtype=float)
+
     def normalize(self) -> None:
-        """
-        # 모든 확률이 0이 되면 균등분포로 fallback
-        
-        :param self: Description
-        """
-        if len(self.frontier_weights) == 0:
+        if len(self.particle_weights) == 0:
             return
 
-        total = float(np.sum(self.frontier_weights))
+        total = float(np.sum(self.particle_weights))
         if total <= 0.0:
-            self.frontier_weights = np.ones(len(self.frontier), dtype=float) / len(self.frontier)
+            self.particle_weights = np.ones(len(self.particles), dtype=float) / len(self.particles)
         else:
-            self.frontier_weights = self.frontier_weights / total
+            self.particle_weights = self.particle_weights / total
 
-    def reset_belief(self):
-        self.frontier = [State()]
-        self.frontier_weights = np.array([1.0])
-    
-    
+    def reset_belief(self) -> None:
+        self.particles = [self.knowledge.copy()]
+        self.particle_weights = np.array([1.0], dtype=float)
+
     def is_empty(self) -> bool:
-        return len(self.frontier) == 0
+        return len(self.particles) == 0
+
+
+    def sync_knowledge_to_map(self) -> None:
+        if self.is_empty():
+            return State()
+
+        idx = int(np.argmax(self.particle_weights))
+        self.knowledge = self.particles[idx].copy()
 
 
     def pretty_print(self, digits: int = 4) -> str:
         if self.is_empty():
             return "Belief(empty)"
 
-        lines = ["Belief:"]
-        for i, (state, w) in enumerate(zip(self.frontier, self.frontier_weights)):
+        lines = [f"Belief(knowledge={self.knowledge})"]
+        for i, (state, w) in enumerate(zip(self.particles, self.particle_weights)):
             lines.append(f"  [{i}] p={w:.{digits}f} | {state}")
         return "\n".join(lines)
-
 
     def topk(self, k: int = 5) -> List[Tuple[State, float]]:
         if self.is_empty():
             return []
 
-        pairs = list(zip(self.frontier, self.frontier_weights))
+        pairs = list(zip(self.particles, self.particle_weights))
         pairs.sort(key=lambda x: x[1], reverse=True)
         return pairs[:k]
-

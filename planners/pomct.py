@@ -1,245 +1,186 @@
 from __future__ import annotations
 
 import random
-import numpy as np
-from numpy.random import binomial, choice
-from typing import List
 
 from models.state import State
 from models.action import Action
 from models.belief import Belief
 from models.belief_update import BeliefManager
 from models.transition import TransitionModel
-from models.observation import ObservationModel, Observation
+from models.observation import ObservationModel
 from models.reward import RewardModel
 from planners.tree import POMDPTree
 from environments.env import Environment
 
-
-
-def UCB(N, n, V, c=1.0):
-    if n == 0:
-        return float("inf")   # exploration 우선
-
-    return V + c * np.sqrt(np.log(max(1, N)) / n)
-
+DEBUG = False
 
 class POMCPPlanner:
-    
     def __init__(self, args, env: Environment, belief_manager: BeliefManager):
         self.args = args
-        
-        # set parameters
+
         self.n_simulations = args.n_simulations
         self.gamma = args.gamma
         self.epsilon = args.epsilon
         self.c = args.c
-        
-        # call tree manager
+        self.max_node_particles = getattr(args, "max_node_particles", 128)
+
         self.tree = POMDPTree()
-        
-        # all grounded actions
+
         self.actions = env.actions
         self.action_map = {action.name: action for action in self.actions}
         self.belief: Belief = None
-        
-        # model settings
+
         self.env: Environment = env
         self.belief_manager: BeliefManager = belief_manager
         self.transition_model: TransitionModel = self.belief_manager.transition_model
         self.observation_model: ObservationModel = self.belief_manager.observation_model
         self.reward_model: RewardModel = self.env.reward_model
-        
-        self.initialize(self.env.state)    
-    
-    def get_applicable_actions(self, knowledge):
-        applicable_actions = [a for a in self.actions if a.is_applicable(knowledge)]    
-        if not applicable_actions:
-            return []
-        else:
-            return applicable_actions
-    
+
+        self.initialize(self.env.state)
+
+    def get_applicable_actions(self, knowledge: State):
+        return [action for action in self.actions if action.is_applicable(knowledge)]
+
     def initialize(self, init_state: State):
         self.belief = self.belief_manager.initialize_belief(init_state)
-    
-    
-    def _ensure_applicable_children(self, history, state):
+        self.tree.add_particle(self.tree.root_id, init_state, self.max_node_particles)
+
+    def _filter_existing_children(self, history: int, state: State):
+        candidates = self.tree.get_action_children(history)
+        if state is None:
+            return candidates
+
+        applicable_names = {action.name for action in self.get_applicable_actions(state)}
+        return [(action, node_id) for action, node_id in candidates if action.name in applicable_names]
+
+    def _sample_unexpanded_action(self, history: int, state: State):
         applicable = self.get_applicable_actions(state)
-        existing = self.tree.get_action_children(history)
-        existing_names = {a.name for a, _ in existing}
+        if not applicable:
+            return None, None
 
+        existing_names = {action.name for action, _ in self.tree.get_action_children(history)}
+        unexpanded = [action for action in applicable if action.name not in existing_names]
+
+        if not unexpanded:
+            return None, None
+
+        action = random.choice(unexpanded)
+        action_node = self.tree.expand_tree_from(history, action, is_action=True)
+        return action, action_node
+
+    def _expand_applicable_actions(self, history: int, state: State):
+        applicable = self.get_applicable_actions(state)
         for action in applicable:
-            if action.name not in existing_names:
-                self.tree.expand_tree_from(history, action, is_action=True)
-                
+            self.tree.expand_tree_from(history, action, is_action=True)
+        return applicable
+
     def search(self, belief: Belief):
-        
-        # self.tree.reset() # <- 원래라면 없어야 함
+        """
+        The planner reasons only over the current symbolic knowledge state.
+        The full belief frontier is maintained outside the tree for belief
+        update and entropy/information calculations.
+        """
+        history = self.tree.root_id
 
-        history = self.tree.root_id # pruning을 했기 때문에 항상 root id로 시작
         knowledge = belief.knowledge.copy()
+        root = self.tree.get_node(history)
+        root.knowledge = knowledge.copy()
         
-        # Repeat simulations until timeout
+        # if not root.frontiers:
+        #     root.frontiers = [particle.copy() for particle in belief.particles]
+
+        # Repeat Simulations until timeout
         for _ in range(self.n_simulations):
-            self.simulate(state=knowledge, history=history, depth=0)
-        
-        
-        # # ====== 🔥 TREE EXPANSION DEBUG ======
-        # total_nodes = len(self.tree.nodes)
+            sampled_root_state = self.tree.sample_particle(history)
+            if sampled_root_state is None:
+                sampled_root_state = knowledge.copy()
+            self.simulate(state=sampled_root_state, history=history, depth=0)
 
-        # action_nodes = sum(1 for n in self.tree.nodes.values() if n.is_action_node)
-        # obs_nodes = sum(1 for n in self.tree.nodes.values() if n.is_observation_node)
+        # DEBUG
+        if DEBUG:
+            # history debugging
+            self._debugging(history=history)
 
-        # print("\n===== 🔥 TREE DEBUG 🔥 =====")
-        # print(f"Total nodes: {total_nodes}")
-        # print(f"Action nodes: {action_nodes}")
-        # print(f"Observation nodes: {obs_nodes}")
-
-        # # root branching factor
-        # root_children = self.tree.get_action_children(history)
-        # print(f"Root branching factor: {len(root_children)}")
-
-        # # depth 계산
-        # max_depth = 0
-        # depth_count = {}
-
-        # for node_id, node in self.tree.nodes.items():
-        #     depth = 0
-        #     current = node
-
-        #     while current.parent_id is not None:
-        #         depth += 1
-        #         current = self.tree.get_node(current.parent_id)
-
-        #     max_depth = max(max_depth, depth)
-        #     depth_count[depth] = depth_count.get(depth, 0) + 1
-
-        # print(f"Max depth: {max_depth}")
-        # print("Nodes per depth:", depth_count)
-
-        # print("======================\n")
-
-        # for fact in belief.knowledge.facts:
-        #     print(fact)
-        # print("======================\n")
-        
-        # candidates = self.tree.get_action_children(history)
-        # for action, node_id in candidates:
-        #     print(
-        #         f"[ROOT] action={action.name} "
-        #         f"visits={self.tree.get_visit(node_id)} "
-        #         f"value={self.tree.get_value(node_id):.4f}"
-        #     )
-            
-        # ====================================
-        best_action, _ = self.search_best(history, knowledge, use_ucb=False)        
+        best_action = self._select_action(history, knowledge)
         print("Selected:", best_action.name if best_action else None)
-        
         return best_action
-                
-    
-    def simulate(self, state, history, depth):
+
+    def simulate(self, state: State, history: int, depth: int):
         """
         Docstring for simulate
-        
-        :param state: 지금 시뮬레이션이 깔고 있는 상태가 무엇인가
-        :param history: 현재 search tree의 어느 노드인가
-        :param depth: Description
         """
-        # 1. stopping condition
+        
+        if DEBUG:
+            self.tree.debugging()
+        
+        # 1. Check significance of update
         if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
             return 0.0
-        
-        # 2. leaf expansion
-        self._ensure_applicable_children(history, state)
 
-        candidates = self.tree.get_action_children(history)
-        if not candidates:
+        # 2. Filter actions by applicability in the current sampled state.
+        applicable = self.get_applicable_actions(state)
+        if not applicable:
+            # 3. If nothing is applicable, treat this observation node as terminal.
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, 0.0)
             return 0.0
-        
-        # 3. selection
-        action, action_node = self.search_best(history, state)
+
+        # 4. On the first visit, expand all applicable actions and initialize by rollout.
+        if self.tree.is_leaf_node(history):
+            self._expand_applicable_actions(history, state)
+            new_value = self.rollout(state, depth)
+            self.tree.increment_visit(history)
+            self.tree.set_value_if_first(history, new_value)
+            return new_value
+
+        # 5. Otherwise select the best existing action child with UCB.
+        action, action_node = self.search_best(history, state, use_ucb=True)
         if action is None:
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, 0.0)
             return 0.0
-                
-        # 4. generative model
-        # TODO
+
+        # 6. Sample transition, observation, and immediate reward.
         next_state = self.transition_model.sample_next_state(state, action)
         observation = self.observation_model.sample(next_state, action)
         reward = self.reward_model.get_reward(state, action, next_state)
-        
-        # 5. observation child
-        obs_node = self.tree.get_observation_node(action_node, observation)        
-    
-        # 6. recursive simulation
-        future = self.simulate(next_state, obs_node, depth + 1)
-        total_return = reward + self.gamma * future
 
-        # 7. backup
+        # 7. Move to the matching observation child and recurse.
+        obs_node = self.tree.get_observation_node(action_node, observation)
+        total_return = reward + self.gamma*self.simulate(next_state, obs_node, depth+1)
+
+        # 8. Backtrack
+        self.tree.add_particle(history, state, self.max_node_particles)
         self.tree.increment_visit(history)
         self.tree.increment_visit(action_node)
         self.tree.update_action_value(action_node, total_return)
-
-
-        # print(
-        #     f"[SIM] depth={depth} action={action.name} "
-        #     f"reward={reward:.4f} future={future:.4f} total={total_return:.4f} "
-        #     f"Q={self.tree.get_value(action_node):.4f} N={self.tree.get_visit(action_node)}"
-        # )
-
+        
         return total_return
     
-        
-    
-    def rollout(self, state, depth):
+
+    def rollout(self, state: State, depth: int):
         if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
             return 0.0
 
         applicable_actions = self.get_applicable_actions(state)
         if not applicable_actions:
-            return 0.0        
-        
+            return 0.0
+
         action = random.choice(applicable_actions)
-        
         sample_state = self.transition_model.sample_next_state(state, action)
         reward = self.reward_model.get_reward(state, action, sample_state)
 
-        return_val = reward + self.gamma * self.rollout(sample_state, depth + 1)
-        
-        
-        return return_val
-    
-    
-    def search_best(self, h, state, use_ucb=True) -> Action:
-        
-        candidates = self.tree.get_action_children(h)
+        return reward + self.gamma * self.rollout(sample_state, depth + 1)
+
+    def search_best(self, history: int, state: State, use_ucb: bool = True):
+        candidates = self._filter_existing_children(history, state)
         if not candidates:
-            print("There is no candidates")
-        
-        if state is not None:
-            applicable = self.get_applicable_actions(state)
-            applicable_names = {a.name for a in applicable}
-            
-            candidates = [(a, nid) for a, nid in candidates if a.name in applicable_names]
-        
-        if not candidates:
-            print("There is no candidates")
-            for a in applicable:
-                print(a)
-                
-            print("Original Candidate")
-            candidates = self.tree.get_action_children(h)
-            print(candidates)
             return None, None
-            
+
         if use_ucb:
-            parent_visits = max(1, self.tree.get_visit(h))
-            best_score = float("-inf")
+            parent_visits = max(1, self.tree.get_visit(history))
             best = None
+            best_score = float("-inf")
 
             for action, node_id in candidates:
                 child_visits = self.tree.get_visit(node_id)
@@ -256,11 +197,36 @@ class POMCPPlanner:
 
             return best
 
-        else:
-            best = max(candidates, key=lambda x: self.tree.get_value(x[1]))
-            return best
-        
+        return max(candidates, key=lambda item: self.tree.get_value(item[1]))
+
+    def prune_search_tree(self, action: Action, observation):
+        self.tree.prune_after_action(action, observation)
+
     
-    # TODO
-    def prune_search_tree(self, action, observation):
-        self.tree.prune_after_action(action, observation) 
+    def _select_action(self, history, knowledge):
+        best_action, _ = self.search_best(history, knowledge, use_ucb=False)
+        if best_action is not None:
+            return best_action
+
+        unexpanded_action, _ = self._sample_unexpanded_action(history, knowledge)
+        if unexpanded_action is not None:
+            return unexpanded_action
+
+        applicable_actions = self.get_applicable_actions(knowledge)
+        if applicable_actions:
+            return random.choice(applicable_actions)
+
+        return None
+    
+    def _debugging(self, history):
+        root_action_children = self.tree.get_action_children(history)
+        action_node_ids = [node_id for _, node_id in root_action_children]
+        obs_node_ids = []
+        for _, action_node_id in root_action_children:
+            obs_node_ids.extend(child_id for _, child_id in self.tree.get_observation_children(action_node_id))
+        print(
+            f"[TREE] root_id={history} "
+            f"action_nodes={action_node_ids[:10]} "
+            f"obs_nodes={obs_node_ids[:10]} "
+            f"total_nodes={len(self.tree.nodes)}"
+        )

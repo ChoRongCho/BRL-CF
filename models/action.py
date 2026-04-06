@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Set
+from typing import Any, Dict, List, Tuple, Set
 from itertools import product
 import random
 import re
@@ -18,9 +18,12 @@ class ActionSchema:
     name: str
     parameters: List[str] = field(default_factory=list)
     preconditions: List[str] = field(default_factory=list)
+    precondition_fluents: List[str] = field(default_factory=list)
     add_effects: List[str] = field(default_factory=list)
     del_effects: List[str] = field(default_factory=list)
+    del_effect_fluents: List[Any] = field(default_factory=list)
     observation: List[str] = field(default_factory=list)
+    observation_fluents: List[str] = field(default_factory=list)
     cost: float = 1.0
     action_type: str = "task"
     
@@ -30,9 +33,12 @@ class ActionSchema:
 class Action:
     name: str
     preconditions: List[str] = field(default_factory=list)
+    precondition_fluents: List[str] = field(default_factory=list)
     add_effects: List[str] = field(default_factory=list)
     del_effects: List[str] = field(default_factory=list)
+    del_effect_fluents: List[Any] = field(default_factory=list)
     observation: List[str] = field(default_factory=list)
+    observation_fluents: List[str] = field(default_factory=list)
     cost: float = 1.0
 
     def is_applicable(self, state: State) -> bool:
@@ -76,6 +82,19 @@ class Grounding:
         for var in sorted(binding.keys(), key=len, reverse=True):
             result = re.sub(rf"\b{re.escape(var)}\b", binding[var], result)
         return result.replace(" ", "")
+
+    @classmethod
+    def substitute_fluent_effect(cls, binding, effect):
+        if isinstance(effect, str):
+            return cls.substitute(binding, effect)
+
+        if isinstance(effect, dict):
+            return {
+                cls.substitute(binding, str(key)): value
+                for key, value in effect.items()
+            }
+
+        return effect
     
     
     def _is_valid_binding(self, schema: ActionSchema, 
@@ -139,9 +158,15 @@ class Grounding:
                 grounded_action = Action(
                     name=grounded_name,
                     preconditions=[self.substitute(binding, p) for p in schema.preconditions],
+                    precondition_fluents=[self.substitute(binding, p) for p in schema.precondition_fluents],
                     add_effects=[self.substitute(binding, a) for a in schema.add_effects],
                     del_effects=[self.substitute(binding, d) for d in schema.del_effects],
+                    del_effect_fluents=[
+                        self.substitute_fluent_effect(binding, d)
+                        for d in schema.del_effect_fluents
+                    ],
                     observation=[self.substitute(binding, o) for o in schema.observation],
+                    observation_fluents=[self.substitute(binding, o) for o in schema.observation_fluents],
                     cost=schema.cost
                 )
                 
@@ -181,9 +206,12 @@ def get_actions(action_dicts, state: State, obj_type: Dict):
             name=a["name"],
             parameters=a.get("parameters", []),
             preconditions=a.get("preconditions", []) or [],
+            precondition_fluents=a.get("precondition_fluents", []) or [],
             add_effects=a.get("add_effects", []) or [],
             del_effects=[x for x in (a.get("del_effects", []) or []) if x and x != "null"],
+            del_effect_fluents=a.get("del_effect_fluents", []) or [],
             observation=a.get("observation", []) or [],
+            observation_fluents=a.get("observation_fluents", []) or [],
             cost=float(a.get("cost", 1.0)),
             action_type=a.get("type", "task"),
         )
@@ -198,4 +226,3 @@ def get_actions(action_dicts, state: State, obj_type: Dict):
     
     actions = action_grounder.generate_action_set()
     return actions
-

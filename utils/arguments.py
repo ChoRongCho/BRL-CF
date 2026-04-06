@@ -24,7 +24,12 @@ def parse_args(domain: str):
     
     # Experiments settings
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
-    parser.add_argument("--max_step", type=int, default=30, help="Maximum steps per episode")
+    parser.add_argument("--max_step", type=int, default=20, help="Maximum steps per episode")
+    parser.add_argument("--max_particles", type=int, default=50, help="Maximum number of belief particles to keep after update")
+    parser.add_argument("--fluent_sample_sigma", type=float, default=0.05, help="Gaussian support width for observed fluent particles")
+    parser.add_argument("--pick_fluent_sigma", type=float, default=0.05, help="Execution tolerance for comparing commanded and particle fluent values")
+    parser.add_argument("--pick_success_rate", type=float, default=0.88, help="Nominal pick success probability at the ML fluent command")
+    parser.add_argument("--pick_success_floor", type=float, default=0.05, help="Minimum pick success probability for distant fluent particles")
     
     # Ablation study
     parser.add_argument("--f_strategy", type=int, default=1, help="1: no, 2: all, 3: ours, 4:random")
