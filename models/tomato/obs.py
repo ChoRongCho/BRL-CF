@@ -19,7 +19,8 @@ class ObservationTomato:
         self.noise = noise
         self.true_state = true_state
 
-        self.detect_success_rate = 0.85
+        self.detect_observed_success_rate = 1.00
+        self.detect_classification_success_rate = 0.90
         self.scan_success_rate = 0.97
         self.navigate_success_rate = 0.90
 
@@ -75,6 +76,29 @@ class ObservationTomato:
         if not args:
             return None, None
         return args[0], predicate
+
+    @staticmethod
+    def _get_action_args(action: Action) -> List[str]:
+        _, args = _parse_fact(action.name.replace(" ", ""))
+        return args
+
+    def _build_detect_tomato_entries(self, action: Action) -> List[Dict[str, str]]:
+        """Build detect candidates for all tomatoes at the action target stem."""
+        args = self._get_action_args(action)
+        if len(args) < 2:
+            return []
+
+        target_location = args[1]
+        tomatoes = self.type_map.get("T", [])
+        entries = []
+        for tomato in tomatoes:
+            entries.append({
+                "tomato": tomato,
+                "location": target_location,
+                "at_fact": f"at({tomato},{target_location})",
+                "observed_fact": f"observed({tomato})",
+            })
+        return entries
 
     def _get_observed_fluents(self, tomato: str, action: Action) -> Dict[str, Dict[str, float]]:
         if self.true_state is None:
@@ -170,18 +194,18 @@ class ObservationTomato:
         return outcomes
 
     def _build_detect_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
-        candidates = self.build_candidates(action)
-        at_facts = [f for f in candidates if f.startswith("at(") and state.has_fact(f)]
-
-        if not at_facts:
+        tomato_entries = self._build_detect_tomato_entries(action)
+        if not tomato_entries:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         tomato_groups = []
-        for at_fact in at_facts:
-            _, args = _parse_fact(at_fact)
-            tomato = args[0]
+        for entry in tomato_entries:
+            tomato = entry["tomato"]
+            observed_fluents = self._get_observed_fluents(tomato, action)
+            observed_fact = entry["observed_fact"]
+            at_fact = entry["at_fact"]
 
-            labels = [f"ripe({tomato})", f"unripe({tomato})"]
+            has_observed = state.has_fact(observed_fact) and state.has_fact(at_fact)
             true_label = None
             if state.has_fact(f"unripe({tomato})"):
                 true_label = f"unripe({tomato})"
@@ -189,61 +213,65 @@ class ObservationTomato:
                 # detect cannot distinguish ripe from rotten
                 true_label = f"ripe({tomato})"
 
-            if true_label is None:
-                tomato_groups.append([
-                    {"facts": [at_fact, f"observed({tomato})"], "fluents": self._get_observed_fluents(tomato, action)},
-                    {"facts": [], "fluents": {}},
-                ])
-            else:
-                wrong_labels = [x for x in labels if x != true_label]
-                local = [
-                    {"facts": [], "fluents": {}},
-                    {"facts": [at_fact, f"observed({tomato})", true_label], "fluents": self._get_observed_fluents(tomato, action)},
-                    {"facts": [at_fact, f"observed({tomato})", wrong_labels[0]], "fluents": self._get_observed_fluents(tomato, action)},
-                ]
-                tomato_groups.append(local)
-
-        success_facts = []
-        success_fluents = {}
-        for local in tomato_groups:
-            success_facts.extend(local[1]["facts"])
-            success_fluents.update(local[1]["fluents"])
-        success_facts = _dedup_facts(success_facts)
-
-        outcomes = [ObservationOutcome(facts=success_facts, fluents=success_fluents, probability=self.detect_success_rate)]
-
-        alternatives = []
-        for combo in product(*tomato_groups):
-            flat = []
-            flat_fluents = {}
-            for part in combo:
-                flat.extend(part["facts"])
-                flat_fluents.update(part["fluents"])
-            flat = _dedup_facts(flat)
-            if set(flat) == set(success_facts) and flat_fluents == success_fluents:
+            if not has_observed:
+                tomato_groups.append([{"facts": [], "fluents": {}, "probability": 1.0}])
                 continue
-            alternatives.append((flat, flat_fluents))
 
-        unique = []
-        seen = set()
-        for alt_facts, alt_fluents in alternatives:
+            p_detect = self.detect_observed_success_rate
+            p_miss = 1.0 - p_detect
+
+            local = [
+                {"facts": [], "fluents": {}, "probability": p_miss},
+            ]
+
+            if true_label is None:
+                local.append({
+                    "facts": [at_fact, observed_fact],
+                    "fluents": observed_fluents,
+                    "probability": p_detect,
+                })
+            else:
+                wrong_label = f"ripe({tomato})" if true_label == f"unripe({tomato})" else f"unripe({tomato})"
+                p_label = self.detect_classification_success_rate
+                local.append({
+                    "facts": [at_fact, observed_fact, true_label],
+                    "fluents": observed_fluents,
+                    "probability": p_detect * p_label,
+                })
+                local.append({
+                    "facts": [at_fact, observed_fact, wrong_label],
+                    "fluents": observed_fluents,
+                    "probability": p_detect * (1.0 - p_label),
+                })
+
+            tomato_groups.append(local)
+
+        outcome_map = {}
+        for combo in product(*tomato_groups):
+            flat_facts = []
+            flat_fluents = {}
+            prob = 1.0
+            for part in combo:
+                flat_facts.extend(part["facts"])
+                flat_fluents.update(part["fluents"])
+                prob *= part["probability"]
+
+            flat_facts = _dedup_facts(flat_facts)
             fluent_key = tuple(
                 sorted(
                     (obj, key, float(value))
-                    for obj, values in alt_fluents.items()
+                    for obj, values in flat_fluents.items()
                     for key, value in values.items()
                 )
             )
-            key = (tuple(sorted(alt_facts)), fluent_key)
-            if key not in seen:
-                seen.add(key)
-                unique.append((alt_facts, alt_fluents))
+            key = (tuple(sorted(flat_facts)), fluent_key)
+            outcome_map[key] = outcome_map.get(key, 0.0) + prob
 
-        if unique:
-            alt_prob = (1.0 - self.detect_success_rate) / len(unique)
-            for alt_facts, alt_fluents in unique:
-                outcomes.append(ObservationOutcome(facts=alt_facts, fluents=alt_fluents, probability=alt_prob))
-        else:
-            outcomes[0].probability = 1.0
+        outcomes = []
+        for (facts_key, fluent_key), prob in outcome_map.items():
+            fluents = {}
+            for obj, key, value in fluent_key:
+                fluents.setdefault(obj, {})[key] = value
+            outcomes.append(ObservationOutcome(facts=list(facts_key), fluents=fluents, probability=prob))
 
         return outcomes

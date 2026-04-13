@@ -12,7 +12,7 @@ from models.reward import RewardModel
 from planners.tree import POMDPTree
 from environments.env import Environment
 
-DEBUG = False
+DEBUG = True
 
 class POMCPPlanner:
     def __init__(self, args, env: Environment, belief_manager: BeliefManager):
@@ -102,16 +102,18 @@ class POMCPPlanner:
             self._debugging(history=history)
 
         best_action = self._select_action(history, knowledge)
-        print("Selected:", best_action.name if best_action else None)
+        # print("Selected:", best_action.name if best_action else None)
         return best_action
+
+
 
     def simulate(self, state: State, history: int, depth: int):
         """
         Docstring for simulate
         """
         
-        if DEBUG:
-            self.tree.debugging()
+        # if DEBUG:
+        #     self.tree.debugging()
         
         # 1. Check significance of update
         if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
@@ -199,6 +201,7 @@ class POMCPPlanner:
 
         return max(candidates, key=lambda item: self.tree.get_value(item[1]))
 
+
     def prune_search_tree(self, action: Action, observation):
         self.tree.prune_after_action(action, observation)
 
@@ -208,13 +211,13 @@ class POMCPPlanner:
         if best_action is not None:
             return best_action
 
-        unexpanded_action, _ = self._sample_unexpanded_action(history, knowledge)
-        if unexpanded_action is not None:
-            return unexpanded_action
+        # unexpanded_action, _ = self._sample_unexpanded_action(history, knowledge)
+        # if unexpanded_action is not None:
+        #     return unexpanded_action
 
-        applicable_actions = self.get_applicable_actions(knowledge)
-        if applicable_actions:
-            return random.choice(applicable_actions)
+        # applicable_actions = self.get_applicable_actions(knowledge)
+        # if applicable_actions:
+        #     return random.choice(applicable_actions)
 
         return None
     

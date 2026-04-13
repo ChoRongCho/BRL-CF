@@ -29,7 +29,7 @@ class BeliefManager:
 
         self.belief: Belief = None
         self.initial_belief = 1.0
-        self.conf_threshold = 0.7
+        self.conf_threshold = args.threshold
         
         self.feedback_manager = FeedbackManger(self.args, self.conf_threshold)
         
@@ -99,6 +99,30 @@ class BeliefManager:
             belief.frontier[0].fluents = copy.deepcopy(merged_fluents)
 
         return belief
+
+    @staticmethod
+    def _build_refined_observation(
+        prior_knowledge: State,
+        resolved_knowledge: State,
+        obs: Observation,
+    ) -> Observation:
+        """
+        Build the observation that should be used for tree pruning after
+        feedback/query refinement. It keeps the original sensed observation and
+        adds newly confirmed symbolic facts from the resolved knowledge.
+        """
+        refined_state = State()
+
+        if obs is not None:
+            refined_state.merge_state(obs.state)
+
+        prior_facts = prior_knowledge.facts
+        for fact in resolved_knowledge.facts:
+            if fact not in prior_facts:
+                refined_state.add_fact(fact)
+
+        return Observation(refined_state)
+    
     
     @staticmethod
     def get_changed_facts_from_knowledge(knowledge, frontier):
@@ -201,7 +225,7 @@ class BeliefManager:
         return belief
     
     
-    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> Belief:
+    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> tuple[Belief, Observation]:
         """
         """
         if belief is None:
@@ -213,7 +237,7 @@ class BeliefManager:
                 particles=[],
                 particle_weights=np.array([], dtype=float),
             )
-            return self.belief
+            return self.belief, Observation(State())
 
         prior_knowledge = belief.knowledge.copy()
         
@@ -240,6 +264,7 @@ class BeliefManager:
         if transition_matrix.size != observation_matrix.size:
             raise SystemError("The size of Transition and Observation is Different. Modify code!!!")
         
+        
         # 2. Update belief, posterior ∝ transition * observation
         unnormalized = transition_matrix * observation_matrix
         weights = self.feedback_manager.normalize(unnormalized)
@@ -250,9 +275,18 @@ class BeliefManager:
         )
         
         # 4. append belief into the knowledge / expand knowledge
+        print("[BeliefManager] prob. distribution: ", b_next.frontier_weights)
+        # 5. Call query
         b_next = self.advance_observation(belief=b_next)
         b_next = self._merge_fluents_separately(b_next, prior_knowledge, obs)
         
+        
+        refined_observation = self._build_refined_observation(
+            prior_knowledge=prior_knowledge,
+            resolved_knowledge=b_next.knowledge,
+            obs=obs,
+        )
+        
         self.belief = b_next
         
-        return b_next
+        return b_next, refined_observation

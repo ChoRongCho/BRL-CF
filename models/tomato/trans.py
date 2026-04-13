@@ -18,7 +18,7 @@ class TransitionTomato:
 
         self.navigate_success_rate = 0.90
         self.prepare_nav_success_rate = 1.0
-        self.detect_success_rate = 0.90
+        self.detect_success_rate = 0.95
         self.pick_success_rate = 0.88
         self.scan_success_rate = 0.97
         self.place_success_rate = 0.99
@@ -120,12 +120,30 @@ class TransitionTomato:
         for obs in action.observation:
             expanded_obs.extend(self._expand_free_variables_in_fact(obs))
         expanded_obs = _dedup_facts(expanded_obs)
-        
-        true_facts = []
-        for fact in expanded_obs:
-            if self._true_has_fact(fact):
-                true_facts.append(fact)
-        return true_facts
+        return expanded_obs
+
+    @staticmethod
+    def _get_action_args(action: Action) -> List[str]:
+        _, args = _parse_fact(action.name.replace(" ", ""))
+        return args
+
+    def _build_detect_tomato_entries(self, action: Action) -> List[Dict[str, str]]:
+        """Build detect candidates for all tomatoes at the action target stem."""
+        args = self._get_action_args(action)
+        if len(args) < 2:
+            return []
+
+        target_location = args[1]
+        tomatoes = self.type_map.get("T", [])
+        entries = []
+        for tomato in tomatoes:
+            entries.append({
+                "tomato": tomato,
+                "location": target_location,
+                "at_fact": f"at({tomato},{target_location})",
+                "observed_fact": f"observed({tomato})",
+            })
+        return entries
 
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
         current_facts = set(state.facts)
@@ -276,24 +294,7 @@ class TransitionTomato:
         - 실패한 경우 아무 정보도 못 얻음.
         """
 
-        true_facts = self._extract_true_facts_from_observation(action)
-        at_facts = [f for f in true_facts if f.startswith("at(")]
-
-        tomato_entries = []
-        for fact in at_facts:
-            predicate, arity = _parse_fact(fact)
-            if predicate != "at":
-                continue
-
-            tomato = arity[0]
-            location = arity[1]
-
-            tomato_entries.append({
-                "tomato": tomato,
-                "location": location,
-                "at_fact": fact.replace(" ", ""),
-                "observed_fact": f"observed({tomato})",
-            })
+        tomato_entries = self._build_detect_tomato_entries(action)
 
         # stem에 tomato가 하나도 없으면 detect 결과는 빈 outcome 1개
         if not tomato_entries:
@@ -307,8 +308,8 @@ class TransitionTomato:
 
         per_tomato_choices = []
 
-        p_detect = 0.95
-        p_miss = 0.05
+        p_detect = self.detect_success_rate
+        p_miss = 1.0 - p_detect
         
         for entry in tomato_entries:
             tomato = entry["tomato"]

@@ -65,9 +65,9 @@ class RewardTomato:
                 state_type = get_tomato_state(tomato, ns_facts)
 
                 if state_type == "ripe":
-                    t_reward -= 15.0
+                    t_reward -= 30.0
                 elif state_type == "rotten":
-                    t_reward += 15.0
+                    t_reward += 20.0
                 elif state_type == "unripe":
                     t_reward -= 10.0
 

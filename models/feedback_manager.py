@@ -17,7 +17,7 @@ class FeedbackManger:
     def __init__(self, args, conf_threshold):
         self.args = args
         self.conf_threshold = conf_threshold
-        
+        self.num_of_query = 0
         # ablation study
         """
         f_strategy: int = "1: no, 2: all, 3: ours, 4:random"
@@ -28,23 +28,15 @@ class FeedbackManger:
         
 
     def compute_confidence(self, weights: np.ndarray) -> float:
-        if len(weights) == 0:
-            return 1.0
-
-        weights = np.array(weights, dtype=float)
-        s = weights.sum()
-        if s <= 0:
-            return 0.0
-
-        weights = weights / s
-
-        if len(weights) == 1:
+        if len(weights) == 0 or len(weights) == 1:
             return 1.0
 
         theta = np.log2(len(weights))
-        eps = 1e-12
+        eps = 1e-5
         h = -np.sum(weights * np.log2(weights + eps))
+        
         confidence = 1.0 - (h / theta)
+        
         return float(confidence)
 
 
@@ -151,19 +143,26 @@ class FeedbackManger:
         for state, w in zip(belief.frontier, belief.frontier_weights):
             has_fact = self.fact_in_state(state, fact)
 
+
             if answer is True and has_fact:
                 new_frontier.append(state)
                 new_weights.append(w)
+            
+                
             elif answer is False and not has_fact:
                 new_frontier.append(state)
                 new_weights.append(w)
+                
 
         if len(new_frontier) == 0:
             return belief
 
+        
+        
         belief.frontier = new_frontier
         belief.frontier_weights = self.normalize(np.array(new_weights, dtype=float))
-
+        
+        
         return belief
     
     
@@ -179,6 +178,8 @@ class FeedbackManger:
         #     print(i)
         
         # print(np.sum(belief.frontier_weights))
+        
+        
         
         confidence = self.compute_confidence(belief.frontier_weights)
         print(f"[FM] Initial confidence is {confidence}")    
@@ -199,11 +200,16 @@ class FeedbackManger:
             
             
             answer = self.query_to_llm(target_fact)
+            self.num_of_query += 1
+            
             print("[FM] LLM Answer: ", answer)
             belief = self.apply_fact_answer_to_belief(belief, target_fact, answer)
             
+            
+            print(belief.frontier_weights)
             confidence = self.compute_confidence(belief.frontier_weights)
             
+
             print(f"[FM] Confidence is {confidence}")    
         
         return belief

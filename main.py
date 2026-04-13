@@ -80,33 +80,38 @@ def main():
         i += 1
         print(f"Step: {i}")
         search_start = time()
+        
         action = planner.search(belief)
+        
         action_log.append(action.name)
         search_elapsed = time() - search_start
         total_search_time += search_elapsed
         print(f"[ACTION] {action.name}")
         
-        # asdf
 
         step_start = time()
+        # 
         observation, reward, done, info = env.step(action)
         step_elapsed = time() - step_start
         total_step_time += step_elapsed
-        # print_fluents("env.state after step", env.state.fluents, tomato_objects)
-        # print_fluents("observation", observation.state.fluents, tomato_objects)
+        
         
         update_start = time()
-        belief = belief_manager.update_belief(belief, observation, action)
+        
+        belief, refined_observation = belief_manager.update_belief(belief, observation, action)
         update_elapsed = time() - update_start
         total_update_time += update_elapsed
-        # print_fluents("belief.knowledge after update", belief.knowledge.fluents, tomato_objects)
+        
 
         prune_start = time()
-        planner.prune_search_tree(action=action, observation=observation)
+        
+        planner.prune_search_tree(action=action, observation=refined_observation)
         prune_elapsed = time() - prune_start
         total_prune_time += prune_elapsed
         
         print("==================\n")
+        print("Total Query", belief_manager.feedback_manager.num_of_query)
+
 
     if i > 0:
         print("[TIME SUMMARY]")
@@ -124,6 +129,9 @@ def main():
             print(s)
         for key, value in belief.knowledge.fluents.items():
             print(key, value)
+            
+        print("=============Query=============")
+        print("Total Query", belief_manager.feedback_manager.num_of_query)
 
 
 if __name__ == "__main__":
