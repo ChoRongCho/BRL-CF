@@ -34,14 +34,13 @@ class Environment:
         # Domain rule: initially imported to the DomainRuleBridge
         self.asp_bridge = DomainRuleBridge()
         self.asp_bridge.load(self.domain_rule_path)
-        
-        
-        
         self.domain_rule = self.asp_bridge.build_possible_worlds()
         
         # Get (initial) state, hidden_init_state, and goal state
         init_config = self._load_config(self.initial_state_path) 
         self.state, self.gt_init_state, self.goal = get_state(init_config) # a list of facts
+        self.exec_init_state = self.state.copy()
+        self.true_state = self.gt_init_state.copy()
         self.obj_type = get_types(init_config)
         
         # generate possible worlds and clear runtime
@@ -56,7 +55,7 @@ class Environment:
             domain=self.domain_name,
             actions=self.actions,
             obj_type=self.obj_type,
-            true_state=self.gt_init_state
+            true_state=self.true_state
         )
         
         # Observation Model
@@ -65,7 +64,7 @@ class Environment:
             actions=self.actions,
             obj_type=self.obj_type,
             noise=0.05,
-            true_state=self.gt_init_state,
+            true_state=self.true_state,
         )
         
         # Reward Model TODO
@@ -158,8 +157,11 @@ class Environment:
         """
         self.done = False
         self.step_count = 0
+        self.state = self.exec_init_state.copy()
+        self.true_state = self.gt_init_state.copy()
+        self._sync_models_with_state()
 
-        observation = self._get_observation()
+        observation = copy.deepcopy(self.state)
         return observation
 
 
@@ -179,8 +181,12 @@ class Environment:
         reward = self.reward_model.get_reward(prev_state, action, self.state)
         self.step_count += 1
         self.done = self._check_done()
-
-        observation = self._get_observation(action)
+        
+        # get observation        
+        if action is None:
+            observation =  copy.deepcopy(self.state)
+        observation = self.observation_model.sample(self.state, action)
+        
         info = self._get_info()
         
         # self.transition_model.load_transition(state=self.state)
@@ -190,29 +196,61 @@ class Environment:
 
     def _apply_action(self, action: Dict[str, Any]) -> None:        
         self.state = self.transition_model.sample_next_state(self.state, action)
+        self._update_true_state_from_execution(action)
+        self._sync_models_with_state()
 
+    def _update_true_state_from_execution(self, action: Action) -> None:
+        action_name = action.name.split("(")[0]
+        if action_name not in {"navigate", "prepare_nav", "pick", "place", "discard"}:
+            return
 
-    def _get_observation(self, action: Action | None = None) -> Any:
+        dynamic_prefixes = (
+            "at(",
+            "located(",
+            "handempty(",
+            "holding(",
+            "holded(",
+            "loaded(",
+            "discarded(",
+            "navprepared(",
+        )
+
+        self.true_state.facts = [
+            fact for fact in self.true_state.facts
+            if not fact.startswith(dynamic_prefixes)
+        ]
+        for fact in self.state.facts:
+            if fact.startswith(dynamic_prefixes):
+                self.true_state.add_fact(fact)
+
+        for obj, values in self.state.fluents.items():
+            for key, value in values.items():
+                if float(value) != -1.0:
+                    self.true_state.set_fluent(obj, key, value)
+
+    def _sync_models_with_state(self) -> None:
         """
-        action이 주어지면 observation model 기반 관측을 생성하고,
-        reset 직후처럼 action이 없으면 현재 state 전체를 그대로 반환한다.
+        Keep transition/observation models aligned with the maintained hidden true state.
         """
-        if action is None:
-            return copy.deepcopy(self.state)
+        self.transition_model.true_state = self.true_state
+        self.transition_model.load_transition(state=self.true_state)
 
-        return self.observation_model.sample(self.state, action)
+        self.observation_model.true_state = self.true_state
+        if hasattr(self.observation_model, "domain_model"):
+            self.observation_model.domain_model.true_state = self.true_state
+
 
     def _check_done(self) -> bool:
         """Goal 달성 또는 max_step 초과 시 episode 종료"""
         # 1. goal 달성 여부
         if self.goal:
             if all(self.state.has_fact(f) for f in self.goal.facts):
-                print("Goal Done")
+                print("[Planner] Goal Done")
                 return True
             
         # 2. step limit
         if self.step_count >= self.max_step:
-            print("MAX STEP Done")
+            print("[Planner] MAX STEP Done")
             return True
 
 

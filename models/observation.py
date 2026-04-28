@@ -83,9 +83,10 @@ class ObservationModel:
 
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         """
+        list_outcomes
         """
-        list_outcomes = self.domain_model.get_observation_distribution(state, action)
-        return list_outcomes
+        return self.domain_model.get_observation_distribution(state, action)
+
 
 
     def sample(self, state: State, action: Action) -> Observation:
@@ -98,29 +99,32 @@ class ObservationModel:
 
         r = random.random()
         cum = 0.0
+        selected = outcomes[-1]
 
         for outcome in outcomes:
             cum += outcome.probability
             if r <= cum:
-                obs_state = State()
-                for fact in outcome.facts:
-                    obs_state.add_fact(fact)
-                for obj, values in outcome.fluents.items():
-                    for key, value in values.items():
-                        obs_state.set_fluent(obj, key, value)
-                return Observation(obs_state)
+                selected = outcome
+                break
 
         obs_state = State()
-        for fact in outcomes[-1].facts:
+        for fact in selected.facts:
             obs_state.add_fact(fact)
-        for obj, values in outcomes[-1].fluents.items():
+            
+        for obj, values in selected.fluents.items():
             for key, value in values.items():
                 obs_state.set_fluent(obj, key, value)
+
+        
+        
         return Observation(obs_state)
 
 
     def likelihood(self, observation: Observation, state: State, action: Action) -> float:
-        outcomes = self.get_observation_distribution(state, action)
+        if hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
+            outcomes = self.domain_model.get_observation_distribution_for_likelihood(state, action)
+        else:
+            outcomes = self.get_observation_distribution(state, action)
         
         obs_set = set(observation.state.facts)
         obs_fluents = observation.state.fluents

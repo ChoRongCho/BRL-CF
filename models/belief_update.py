@@ -177,7 +177,7 @@ class BeliefManager:
         worlds = solve_asp(program)
         
         if not len(worlds)==1:
-            print(f"The knowledge is not possible.")
+            # print(f"The knowledge is not possible.")
             self.asp_bridge.clear_runtime()
             raise ValueError("지식기반이 스스로 모순에 빠졌다. 불가능한 상태이다.")
         
@@ -197,7 +197,7 @@ class BeliefManager:
             worlds = solve_asp(program)
             
             if not len(worlds)==1:
-                print(f"The {i}th worlds is not possible. Avaialble: {len(worlds)}")
+                # print(f"The {i}th worlds is not possible. Avaialble: {len(worlds)}")
                 belief.frontier_weights[i] = 0.0 + 1e-12
             else:
                 pass
@@ -244,7 +244,7 @@ class BeliefManager:
         # 1-1. Transition expansion from knowledge base
         # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
         outcomes = self._get_transition_outcomes(belief.knowledge, action)
-        
+                        
         tran_row = []
         obs_row = []
         frontiers = []
@@ -257,6 +257,8 @@ class BeliefManager:
             # 1-2. Observation            
             obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
             obs_row.append(obs_likelihood)
+        
+
             
         transition_matrix = np.array(tran_row)
         observation_matrix = np.array(obs_row)
@@ -266,6 +268,8 @@ class BeliefManager:
         
         
         # 2. Update belief, posterior ∝ transition * observation
+        # print("[Belief manager] Obs Dist. :", observation_matrix)
+        
         unnormalized = transition_matrix * observation_matrix
         weights = self.feedback_manager.normalize(unnormalized)
         b_next = Belief(
@@ -275,11 +279,13 @@ class BeliefManager:
         )
         
         # 4. append belief into the knowledge / expand knowledge
-        print("[BeliefManager] prob. distribution: ", b_next.frontier_weights)
+        # print("[BeliefManager] Prob. Dist. : ", b_next.frontier_weights)
         # 5. Call query
-        b_next = self.advance_observation(belief=b_next)
-        b_next = self._merge_fluents_separately(b_next, prior_knowledge, obs)
+        # b_next = self.advance_observation(belief=b_next)
         
+        b_next = self._merge_fluents_separately(b_next, prior_knowledge, obs)
+        self.belief = b_next
+        return b_next
         
         refined_observation = self._build_refined_observation(
             prior_knowledge=prior_knowledge,

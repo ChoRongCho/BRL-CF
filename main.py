@@ -8,7 +8,7 @@ from utils.asp import solve_asp
 from environments.env import Environment
 from models.belief_update import BeliefManager
 from models.action import Action
-from planners.pomct import POMCPPlanner
+from planners.pomcp import POMCPPlanner
 
 
 # available domain
@@ -36,16 +36,8 @@ def print_fluents(tag, fluents, objects=None):
 
 
 def main():
-
     args = parse_args("tomato")
     env = Environment(args)
-    
-    # for key, values in env.transition_model.transition_table.items():
-    #     print()
-    #     print(key)
-    #     for val in values:
-    #         print(val.add_facts, val.probability)
-        
     
     belief_manager = BeliefManager(args,
                                    env.transition_model, 
@@ -67,71 +59,69 @@ def main():
     total_update_time = 0.0
     total_prune_time = 0.0
     action_log = []
-    tomato_objects = env.obj_type.get("tomato(T)", [])
     
-    
-    # print_fluents("initial env.state", env.state.fluents, tomato_objects)
-    # print_fluents("initial belief.knowledge", belief.knowledge.fluents, tomato_objects)
-
-    # for fact in env.state.facts:
-    #     print(fact)
-    # asdf
     while not done:     
         i += 1
         print(f"Step: {i}")
         search_start = time()
         
+        # =========== 1. Select action ===========
         action = planner.search(belief)
+        if action:
+            action_log.append(action.name)
+            search_elapsed = time() - search_start
+            total_search_time += search_elapsed
+            print(f"[Planner] Selected action: {action.name}")
+        else:
+            print("[Planner] Dead-End")
+            break
         
-        action_log.append(action.name)
-        search_elapsed = time() - search_start
-        total_search_time += search_elapsed
-        print(f"[ACTION] {action.name}")
-        
-
+        # =========== 2. excute action and get observation ===========
         step_start = time()
-        # 
         observation, reward, done, info = env.step(action)
         step_elapsed = time() - step_start
         total_step_time += step_elapsed
         
         
+        # =========== 3. Update belief and Query ===========
         update_start = time()
-        
-        belief, refined_observation = belief_manager.update_belief(belief, observation, action)
+        belief= belief_manager.update_belief(belief, observation, action)
         update_elapsed = time() - update_start
         total_update_time += update_elapsed
         
 
-        prune_start = time()
-        
-        planner.prune_search_tree(action=action, observation=refined_observation)
-        prune_elapsed = time() - prune_start
-        total_prune_time += prune_elapsed
+        # =========== 4. compute confidence and human ask ===========
+        belief = belief_manager.feedback_manager.get_new_observation(belief=belief)
         
         print("==================\n")
-        print("Total Query", belief_manager.feedback_manager.num_of_query)
+        # print("Total Query", belief_manager.feedback_manager.num_of_query)
 
 
-    if i > 0:
-        print("[TIME SUMMARY]")
-        print(f"avg search: {total_search_time / i:.4f}s")
-        print(f"avg env.step: {total_step_time / i:.4f}s")
-        print(f"avg update_belief: {total_update_time / i:.4f}s")
-        print(f"avg prune_search_tree: {total_prune_time / i:.4f}s")
+        # =========== 5. Pruning belief ===========
+        prune_start = time()
+        planner.prune_search_tree(action=action, obs=belief.knowledge)
+        prune_elapsed = time() - prune_start
+        total_prune_time += prune_elapsed
+
+    # Log
+    print("[TIME SUMMARY]")
+    print(f"avg search: {total_search_time / i:.4f}s")
+    print(f"avg env.step: {total_step_time / i:.4f}s")
+    print(f"avg update_belief: {total_update_time / i:.4f}s")
+    print(f"avg prune_search_tree: {total_prune_time / i:.4f}s")
+    
+    print("=============Action Log=============")
+    for j, a in enumerate(action_log):
+        print(f"[STEP {j+1}]: {a}")
+    
+    print("=============Final Knowledge=============")
+    for s in sorted(belief.knowledge.facts):
+        print(s)
+    for key, value in belief.knowledge.fluents.items():
+        print(key, value)
         
-        print("=============Action Log=============")
-        for j, a in enumerate(action_log):
-            print(f"[STEP {j+1}]: {a}")
-        
-        print("=============Final Knowledge=============")
-        for s in sorted(belief.knowledge.facts):
-            print(s)
-        for key, value in belief.knowledge.fluents.items():
-            print(key, value)
-            
-        print("=============Query=============")
-        print("Total Query", belief_manager.feedback_manager.num_of_query)
+    print("=============Query=============")
+    print("Total Query", belief_manager.feedback_manager.num_of_query)
 
 
 if __name__ == "__main__":

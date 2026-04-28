@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import random
-
+import numpy as np
 from models.state import State
 from models.action import Action
 from models.belief import Belief
 from models.belief_update import BeliefManager
 from models.transition import TransitionModel
-from models.observation import ObservationModel
+from models.observation import ObservationModel, Observation
 from models.reward import RewardModel
 from planners.tree import POMDPTree
 from environments.env import Environment
+import time
 
-DEBUG = True
+DEBUG = False
 
 class POMCPPlanner:
     def __init__(self, args, env: Environment, belief_manager: BeliefManager):
         self.args = args
 
         self.n_simulations = args.n_simulations
+        self.max_depth = args.max_depth
         self.gamma = args.gamma
         self.epsilon = args.epsilon
         self.c = args.c
@@ -37,6 +39,13 @@ class POMCPPlanner:
         self.reward_model: RewardModel = self.env.reward_model
 
         self.initialize(self.env.state)
+
+    def _should_stop(self, depth: int) -> bool:
+        if depth != 0 and self.max_depth is not None and depth >= self.max_depth:
+            return True
+        if depth != 0 and (self.gamma == 0 or self.gamma ** depth < self.epsilon):
+            return True
+        return False
 
     def get_applicable_actions(self, knowledge: State):
         return [action for action in self.actions if action.is_applicable(knowledge)]
@@ -90,18 +99,30 @@ class POMCPPlanner:
         #     root.frontiers = [particle.copy() for particle in belief.particles]
 
         # Repeat Simulations until timeout
+        time1 = time.time()
         for _ in range(self.n_simulations):
+            
             sampled_root_state = self.tree.sample_particle(history)
             if sampled_root_state is None:
                 sampled_root_state = knowledge.copy()
+                
             self.simulate(state=sampled_root_state, history=history, depth=0)
-
+        
+        time2 = time.time()
+        con = round((time2-time1)/self.n_simulations, 4)
+        print("[POMCP] Average simulation time: ", con)
+        
         # DEBUG
         if DEBUG:
             # history debugging
             self._debugging(history=history)
 
+        time3 = time.time()
         best_action = self._select_action(history, knowledge)
+        time4 = time.time()
+        con = round((time4-time3), 4)
+        print("[POMCP] Average select time: ", con)
+        
         # print("Selected:", best_action.name if best_action else None)
         return best_action
 
@@ -116,7 +137,7 @@ class POMCPPlanner:
         #     self.tree.debugging()
         
         # 1. Check significance of update
-        if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
+        if self._should_stop(depth):
             return 0.0
 
         # 2. Filter actions by applicability in the current sampled state.
@@ -130,7 +151,10 @@ class POMCPPlanner:
         # 4. On the first visit, expand all applicable actions and initialize by rollout.
         if self.tree.is_leaf_node(history):
             self._expand_applicable_actions(history, state)
+            time1 = time.time()
             new_value = self.rollout(state, depth)
+            time2 = time.time()
+            # print("[ROLLOUT time]", round(time2-time1, 4))
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, new_value)
             return new_value
@@ -161,17 +185,23 @@ class POMCPPlanner:
     
 
     def rollout(self, state: State, depth: int):
-        if (self.gamma ** depth < self.epsilon or self.gamma == 0) and depth != 0:
+        
+        if self._should_stop(depth):
             return 0.0
-
+        
+        time_1 = time.time()
         applicable_actions = self.get_applicable_actions(state)
         if not applicable_actions:
             return 0.0
-
         action = random.choice(applicable_actions)
+        
+        time_2 = time.time()
         sample_state = self.transition_model.sample_next_state(state, action)
+        time_3 = time.time()
         reward = self.reward_model.get_reward(state, action, sample_state)
+        time_4 = time.time()
 
+        # print(f"     [ROLLOUT time] action: {round(time_2-time_1, 4)} | sample: {round(time_3-time_2, 4)} | reward: {round(time_4-time_3, 4)}")
         return reward + self.gamma * self.rollout(sample_state, depth + 1)
 
     def search_best(self, history: int, state: State, use_ucb: bool = True):
@@ -191,7 +221,8 @@ class POMCPPlanner:
                 if child_visits == 0:
                     score = float("inf")
                 else:
-                    score = child_value + self.c * ((parent_visits ** 0.5) / (1 + child_visits))
+                    score = child_value + self.c * np.sqrt(np.log(parent_visits)/(child_visits))
+                    # score = child_value + self.c * ((parent_visits ** 0.5) / (1 + child_visits))
 
                 if score > best_score:
                     best_score = score
@@ -202,8 +233,9 @@ class POMCPPlanner:
         return max(candidates, key=lambda item: self.tree.get_value(item[1]))
 
 
-    def prune_search_tree(self, action: Action, observation):
-        self.tree.prune_after_action(action, observation)
+    def prune_search_tree(self, action: Action, obs: State):
+        obs = Observation(state=obs)
+        self.tree.prune_after_action(action, obs)
 
     
     def _select_action(self, history, knowledge):

@@ -2,44 +2,23 @@ actions:
   - name: navigate
     type: move
     parameters: [R, L1, L2]
-    cost: 1.0
+    cost: 8.0
     preconditions:
       - robot(R)
       - location(L1)
       - location(L2)
       - located(R, L1)
-      - navprepared(R)
+      # - navprepared(R)
       - handempty(R)
-    precondition_fluents: []
     add_effects:
       - located(R, L2)
     del_effects:
       - located(R, L1)
-      - navprepared(R)
-    del_effect_fluents: []
+      # - navprepared(R)
     observation:
       - located(R, L1)
       - located(R, L2)
       - located(R, L3)
-    observation_fluents: []
-
-
-  - name: prepare_nav
-    type: task
-    parameters: [R]
-    cost: 4.0
-    preconditions:
-      - robot(R)
-      - handempty(R)
-    precondition_fluents: []
-    add_effects:
-      - navprepared(R)
-    del_effects: []
-    del_effect_fluents: []
-    observation:
-      - navprepared(R)
-    observation_fluents: []
-
 
   - name: detect
     type: observe
@@ -50,23 +29,17 @@ actions:
       - robot(R)
       - stem(S)
       - located(R, S)
-    precondition_fluents: []
     add_effects:
       - observed(T)
       - at(T, S)
       - ripe(T)
     del_effects: []
-    del_effect_fluents: []
     observation:
       - observed(T)
       - at(T, S)
       - ripe(T)
       - unripe(T)
       # - rotten(T)
-    observation_fluents:
-      - pose_x(T)
-      - pose_y(T)
-      - pose_z(T)
 
 
   - name: pick
@@ -81,26 +54,17 @@ actions:
       - located(R, S)
       - at(T, S)
       - handempty(R)
-    precondition_fluents:
-      - pose_x(T)
-      - pose_y(T)
-      - pose_z(T)
     add_effects:
       - holding(R, T)
       - holded(T, R)
+      # - scanned(T)
     del_effects:
       - at(T, S)
       - handempty(R)
-    del_effect_fluents:
-      - pose_x(T): -2
-      - pose_y(T): -2
-      - pose_z(T): -2
     observation:
-      - at(T, S)
-      - holding(R, T)
-      - holded(T, R)
-    observation_fluents: []
-
+      - ripe(T)
+      - unripe(T)
+      - rotten(T)
 
   - name: scan
     type: observe
@@ -111,16 +75,14 @@ actions:
       - tomato(T)
       - observed(T)
       - holding(R, T)
-    precondition_fluents: []
     add_effects:
       - ripe(T)
+      - scanned(T)
     del_effects: []
-    del_effect_fluents: []
     observation:
       - ripe(T)
       - unripe(T)
       - rotten(T)
-    observation_fluents: []
 
 
   - name: place
@@ -134,19 +96,16 @@ actions:
       - ripe(T)
       - holding(R, T)
       - holded(T, R)
-    precondition_fluents: []
     add_effects:
       - loaded(T, R)
       - handempty(R)
     del_effects:
       - holding(R, T)
       - holded(T, R)
-    del_effect_fluents: []
     observation:
       - loaded(T, R)
       - handempty(R)
       - holding(R, T)
-    observation_fluents: []
 
 
   - name: discard
@@ -159,16 +118,15 @@ actions:
       - observed(T)
       - holding(R, T)
       - holded(T, R)
-    precondition_fluents: []
     add_effects:
       - discarded(T)
       - handempty(R)
     del_effects:
       - holding(R, T)
       - holded(T, R)
-    del_effect_fluents: []
     observation:
       - discarded(T)
       - handempty(R)
       - holding(R, T)
-    observation_fluents: []
+
+

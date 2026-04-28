@@ -2,7 +2,6 @@ from __future__ import annotations
 import numpy as np
 import copy
 from typing import Any, Dict, List, Optional, Iterable, Tuple
-import random
 
 from utils.asp import DomainRuleBridge, solve_asp
 from models.belief import Belief
@@ -60,21 +59,21 @@ class FeedbackManger:
 
     def get_changed_facts(self, knowledge, frontier):
         """
-        knowledge와 비교해서 frontier들에서 달라지는 fact 후보를 모은다.
+        frontier 내부에서 truth value가 실제로 갈리는 fact 후보를 모은다.
         """
-        knowledge_set = set(knowledge.facts)
-        candidate_facts = set()
+        if not frontier:
+            return []
 
+        fact_counts = defaultdict(int)
         for state in frontier:
-            state_set = set(state.facts)
+            for fact in set(state.facts):
+                fact_counts[fact] += 1
 
-            added = state_set - knowledge_set
-            removed = knowledge_set - state_set
-
-            candidate_facts.update(added)
-            candidate_facts.update(removed)
-
-        return sorted(candidate_facts)
+        num_frontier = len(frontier)
+        return sorted(
+            fact for fact, count in fact_counts.items()
+            if 0 < count < num_frontier
+        )
 
 
     def expected_entropy_after_asking(self, frontier, weights, fact: str) -> float:
@@ -108,10 +107,9 @@ class FeedbackManger:
         frontier = belief.frontier
         weights = self.normalize(belief.frontier_weights)
 
+        # print("[DEBUG] The length of the frontier: ", len(weights), weights)
         candidate_facts = self.get_changed_facts(belief.knowledge, frontier)
-        
-        print("candidate_facts: ", candidate_facts)
-        
+                
         if not candidate_facts:
             return None
 
@@ -166,56 +164,55 @@ class FeedbackManger:
         return belief
     
     
-    # def get_new_observation(self, belief: Belief):
-    #     if self.f_strategy
-    
-    
-    
-    
-    def get_new_observation(self, belief: Belief):
-        
-        # for i in belief.frontier:
-        #     print(i)
-        
-        # print(np.sum(belief.frontier_weights))
+    def get_new_observation(self, belief: Belief) -> Belief:
         
         
-        
+        # ================ compute confidence and human ask ================
         confidence = self.compute_confidence(belief.frontier_weights)
-        print(f"[FM] Initial confidence is {confidence}")    
-
-        
-        # print(belief.frontier)
-        
         while confidence < self.conf_threshold:
+            print(f"    [Planner] Current confidence: {confidence}")
             
-            print()
-            target_fact = self.select_best_fact_to_ask(belief)
-
             # 더 이상 질문할 fact가 없으면 종료
+            target_fact = self.select_best_fact_to_ask(belief)
             if target_fact is None:
                 break
             
-            print(f"[FM] Trigger Query => Is fact '{target_fact}' True?")
-            
-            
-            answer = self.query_to_llm(target_fact)
+            # 질문
+            print(f"    [Query] Q: {target_fact} is True?")
+            answer = self.query_human(target_fact)
             self.num_of_query += 1
+            print(f"    [Query] A: {answer}")
             
-            print("[FM] LLM Answer: ", answer)
+            # 적용 후 다시 계산            
             belief = self.apply_fact_answer_to_belief(belief, target_fact, answer)
-            
-            
-            print(belief.frontier_weights)
             confidence = self.compute_confidence(belief.frontier_weights)
+            print(f"    [Planner] Updated confidence: {confidence}")
             
-
-            print(f"[FM] Confidence is {confidence}")    
+            
+        # expand knowledge
+        if len(belief.frontier) > 0:
+            max_idx = np.argmax(belief.frontier_weights)
+            max_frontier = belief.frontier[max_idx]
+            prev_facts = set(belief.knowledge.facts)
+            final_facts = set(max_frontier.facts)
+            added_facts = [fact for fact in max_frontier.facts if fact not in prev_facts]
+            deleted_facts = [fact for fact in belief.knowledge.facts if fact not in final_facts]
+            belief.knowledge = max_frontier
+            belief.reset_belief()
+            print("    [Belief Diff]")
+            print(f"      + add ({len(added_facts)}): {', '.join(added_facts) if added_facts else '-'}")
+            print(f"      - del ({len(deleted_facts)}): {', '.join(deleted_facts) if deleted_facts else '-'}")
+            
+            
         
         return belief
     
     
-    def query_to_llm(self, target_fact):
-        # return False
-        return True
-        return random.choice([True, False])
+    def query_human(self, target_fact):
+        while True:
+            answer = input("    [Human] Enter t/f: ").strip().lower()
+            if answer == "t":
+                return True
+            if answer == "f":
+                return False
+            print("    [Human] Invalid input. Please enter 't' or 'f'.")

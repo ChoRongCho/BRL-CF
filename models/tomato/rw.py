@@ -10,11 +10,44 @@ from models.action import Action
 class RewardTomato:
     def __init__(self, goal:State=None):
         self.goal = goal or State()
+        self.previous_action_name = None
+        self.repeat_action_penalty = 20.0
 
     def _to_fact_set(self, state: State) -> set[str]:
         if state is None:
             return set()
         return set(state.facts)
+
+    @staticmethod
+    def _normalize_action_name(action: Action) -> str:
+        """Normalize action string so whitespace does not affect repeat checks."""
+        if action is None or not getattr(action, "name", None):
+            return ""
+        return action.name.replace(" ", "")
+
+    def _repeat_action_penalty(self, action: Action) -> float:
+        """
+        Penalize immediately repeating the exact same grounded action.
+
+        Example:
+            pick(changmin,tomato1,stem_01) -> pick(changmin,tomato1,stem_01)
+            receives `repeat_action_penalty`.
+        """
+        current_action_name = self._normalize_action_name(action)
+        if not current_action_name:
+            return 0.0
+        if self.previous_action_name == current_action_name:
+            return self.repeat_action_penalty
+        return 0.0
+
+    def _remember_action(self, action: Action) -> None:
+        current_action_name = self._normalize_action_name(action)
+        if current_action_name:
+            self.previous_action_name = current_action_name
+
+    def reset_action_history(self) -> None:
+        """Clear remembered action history, e.g. when starting a new episode."""
+        self.previous_action_name = None
         
 
     def _new_facts(self, state: State, next_state: State) -> set[str]:
@@ -27,10 +60,10 @@ class RewardTomato:
         return sum(1 for g in self.goal.facts if g in facts)
 
 
-    def _tomato_reward(self, state, next_state):
+    def _tomato_reward(self, state, next_state, action: Action):
         
         t_reward = 0
-        
+        action_name = action.name
         s_facts = self._to_fact_set(state)
         ns_facts = self._to_fact_set(next_state)
         added = ns_facts - s_facts
@@ -45,9 +78,24 @@ class RewardTomato:
                 return "ripe"
             return None
 
-        for fact in added:
+
+
+        if action_name.startswith("pick("):
             
+            # pick_n_scan(robot_name,tomato_name,stem_name)
+            tomato = action_name[len("pick("):-1].split(",")[1].strip()
+            state_type = get_tomato_state(tomato, ns_facts)
+            if state_type == "ripe":
+                t_reward += 2.0
+            elif state_type == "rotten":
+                t_reward += 2.0
+            elif state_type == "unripe":
+                t_reward -= 30.0
+                    
+                    
+        for fact in added:
             # loaded
+            
             if fact.startswith("loaded("):
                 tomato = fact[len("loaded("):-1].split(",")[0].strip()
                 state_type = get_tomato_state(tomato, ns_facts)
@@ -63,11 +111,10 @@ class RewardTomato:
             if fact.startswith("discarded("):
                 tomato = fact[len("discarded("):-1].split(",")[0].strip()
                 state_type = get_tomato_state(tomato, ns_facts)
-
                 if state_type == "ripe":
-                    t_reward -= 30.0
+                    t_reward -= 15.0
                 elif state_type == "rotten":
-                    t_reward += 20.0
+                    t_reward += 15.0
                 elif state_type == "unripe":
                     t_reward -= 10.0
 
@@ -84,7 +131,10 @@ class RewardTomato:
         deled = s_facts - ns_facts
 
         # 기본 step cost: 쓸데없는 반복 방지7
-        reward -= action.cost
+        reward -= (action.cost+2)
+
+        # 같은 grounded action을 바로 다시 선택하면 강한 패널티
+        # reward -= self._repeat_action_penalty(action)
 
         # 1) 새 observed 보상
         new_observed = [fact for fact in added if fact.startswith("observed(")]
@@ -96,41 +146,26 @@ class RewardTomato:
             or fact.startswith("rotten(")
         ]
 
-        # 2) 토마토 탐지 보상
-        reward += self._tomato_reward(state=state, next_state=next_state)
+        # 2) 토마토 보상
+        reward += self._tomato_reward(state=state, next_state=next_state, action=action)
 
-        # 2-1) scan으로 새 정보를 얻으면 보상
+        # 2-1) scan으로 새 정보를 얻으면 보상 
         new_scanned = [fact for fact in added if fact.startswith("scanned(")]
-        reward += 4.0 * len(new_scanned)
-        new_rotten = [fact for fact in added if fact.startswith("rotten(")]
-        reward += 6.0 * len(new_rotten)
-        new_unripe = [fact for fact in added if fact.startswith("unripe(")]
-        reward += 2.0 * len(new_unripe)
+        reward += 8.0 * sum(
+            f"unripe({fact[8:-1]})" not in ns_facts
+            for fact in new_scanned
+        )
 
         # 3) detect or scan 액션이 아무 새 정보도 못 얻었으면 패널티
         if action.name.startswith("detect("):
             if len(new_observed) == 0:
-                reward -= 5.0
+                reward -= 8.0
 
         if action.name.startswith("scan("):
             if len(new_scanned) == 0:
-                reward -= 4.0
+                reward -= 6.0
 
-        # # 3-1) scan 없이 성급하게 place/discard 하면 패널티
-        # if action.name.startswith("place(") or action.name.startswith("discard("):
-        #     tomato = action.name.split("(")[1].split(",")[1].strip()
-        #     is_scanned = f"scanned({tomato})" in s_facts
-        #     knows_rotten = f"rotten({tomato})" in s_facts
-        #     knows_unripe = f"unripe({tomato})" in s_facts
 
-        #     if not is_scanned and not knows_rotten and not knows_unripe:
-        #         reward -= 12.0
 
-        # 3-2) 의미 없는 prepare_nav/detect 반복 억제
-        if action.name.startswith("prepare_nav(") and "navprepared(changmin)" in s_facts:
-            reward -= 4.0
-
-        # 4) dockstation 도착 보상
-        
-        
+        self._remember_action(action)
         return reward

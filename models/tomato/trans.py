@@ -19,8 +19,8 @@ class TransitionTomato:
         self.navigate_success_rate = 0.90
         self.prepare_nav_success_rate = 1.0
         self.detect_success_rate = 0.95
-        self.pick_success_rate = 0.88
-        self.scan_success_rate = 0.97
+        self.pick_success_rate = 0.98
+        self.scan_success_rate = 0.90
         self.place_success_rate = 0.99
         self.discard_success_rate = 0.99
 
@@ -152,49 +152,61 @@ class TransitionTomato:
             return outcomes
         
         observed_tomatoes = set()
+        unavailable_tomatoes = set()
         for fact in current_facts:
-            if fact.startswith("observed(") and fact.endswith(")"):
-                tomato = fact[len("observed("):-1].strip()
+            pred, args = _parse_fact(fact)
+            if not args:
+                continue
+
+            tomato = args[0]
+            if pred == "observed":
                 observed_tomatoes.add(tomato)
-        
+            elif pred in {"loaded", "discarded", "holded"}:
+                unavailable_tomatoes.add(tomato)
+            elif pred == "holding" and len(args) >= 2:
+                unavailable_tomatoes.add(args[1])
         
         if not observed_tomatoes:
             return outcomes
         
         merged = {}
+        observed_unavailable_tomatoes = observed_tomatoes & unavailable_tomatoes
+        quality_predicates = {"ripe", "unripe", "rotten"}
+
         for outcome in outcomes:
             filtered_add_facts = []
+            filtered_del_facts = []
 
             for fact in outcome.add_facts:
                 remove_fact = False
+                pred, args = _parse_fact(fact)
+                tomato = args[0] if args else None
 
-                for tomato in observed_tomatoes:
-                    if fact == f"observed({tomato})":
-                        remove_fact = True
-                        break
-                    if fact == f"ripe({tomato})":
-                        remove_fact = True
-                        break
-                    if fact == f"unripe({tomato})":
-                        remove_fact = True
-                        break
-                    if fact == f"rotten({tomato})":
-                        remove_fact = True
-                        break
-                    if fact.startswith(f"at({tomato},") and fact.endswith(")"):
-                        remove_fact = True
-                        break
+                if tomato in observed_tomatoes and pred in {"observed", "at"}:
+                    remove_fact = True
+                elif tomato in observed_unavailable_tomatoes and pred in quality_predicates:
+                    remove_fact = True
 
                 if not remove_fact:
                     filtered_add_facts.append(fact)
 
+            for fact in outcome.del_facts:
+                pred, args = _parse_fact(fact)
+                tomato = args[0] if args else None
+
+                if tomato in observed_unavailable_tomatoes and pred in quality_predicates:
+                    continue
+
+                filtered_del_facts.append(fact)
+
             filtered_add_facts = _dedup_facts(filtered_add_facts)
-            key = (tuple(sorted(filtered_add_facts)), tuple(sorted(outcome.del_facts)))
+            filtered_del_facts = _dedup_facts(filtered_del_facts)
+            key = (tuple(sorted(filtered_add_facts)), tuple(sorted(filtered_del_facts)))
 
             if key not in merged:
                 merged[key] = TransitionOutcome(
                     add_facts=filtered_add_facts,
-                    del_facts=outcome.del_facts,
+                    del_facts=filtered_del_facts,
                     probability=outcome.probability,
                     fluent_effects=outcome.fluent_effects,
                 )
@@ -216,6 +228,9 @@ class TransitionTomato:
         elif action_name == "detect":
             return self._build_detect_outcomes(action)
 
+        elif action_name == "pick_n_scan":
+            return self._build_pick_n_scan_outcomes(action)
+        
         elif action_name == "pick":
             return self._build_pick_outcomes(action)
 
@@ -377,9 +392,12 @@ class TransitionTomato:
             )
 
         return outcomes
+    
+    
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:
         prob = self.pick_success_rate
+        
         success = self._make_outcome(
             add_facts=action.add_effects,
             del_facts=action.del_effects,
@@ -428,6 +446,43 @@ class TransitionTomato:
             )
             for label in labels
         ]
+
+
+
+    def _build_pick_n_scan_outcomes(self, action: Action) -> List[TransitionOutcome]:
+        """
+        pick_n_scan은 pick의 deterministic effect와 scan outcome을 합친다.
+
+        - pick은 항상 성공한다고 가정한다.
+        - scan 결과 분포는 기존 _build_scan_outcomes를 그대로 사용한다.
+        - robot_skill.yaml에 del_effects가 비어 있어도 pick이 성공하면
+          handempty(R), at(T,S)는 반드시 제거되어야 한다.
+        """
+        args = self._get_action_args(action)
+        if len(args) < 3:
+            return self._build_scan_outcomes(action)
+
+        robot, tomato, stem = args[:3]
+
+        pick_add_facts = list(action.add_effects)
+        pick_del_facts = list(action.del_effects) + [
+            f"handempty({robot})",
+            f"at({tomato},{stem})",
+        ]
+
+        outcomes = []
+        for scan_outcome in self._build_scan_outcomes(action):
+            outcomes.append(
+                self._make_outcome(
+                    add_facts=pick_add_facts + scan_outcome.add_facts,
+                    del_facts=pick_del_facts + scan_outcome.del_facts,
+                    probability=scan_outcome.probability,
+                    fluent_effects=scan_outcome.fluent_effects,
+                )
+            )
+
+        return outcomes
+
 
     def _build_place_outcomes(self, action: Action) -> List[TransitionOutcome]:
         prob = self.place_success_rate
