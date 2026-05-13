@@ -10,6 +10,7 @@ from models.state import State
 from models.action import Action
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
+from models.llm_manager import get_llm_manager
 
 from collections import defaultdict
 
@@ -189,7 +190,6 @@ class FeedbackManger:
                 break
             
             # 질문
-            
             answer = self.query_human(target_fact, action_name)            
             
             
@@ -312,7 +312,15 @@ class FeedbackManger:
     
     # LLM-based refining vs Machine 
     def refining_query(self, target_fact, action_name):
-        
-        print(f"    [Query] Q: {target_fact} is True?")
-        
+        try:
+            question = get_llm_manager().make_refining_query(
+                self.domain_name,
+                str(target_fact).replace(" ", ""),
+                action_name,
+            )
+        except Exception as exc:
+            print(f"    [Query] LLM refining failed: {exc}")
+            question = f"{target_fact} is True?"
+
+        print(f"    [Query] Q: {question}")
         return
