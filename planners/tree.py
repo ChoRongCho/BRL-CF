@@ -214,29 +214,10 @@ class POMDPTree:
         return self.expand_tree_from(action_node_id, observation, is_action=False)
 
 
-    def update_action_value(self, action_node_id: int, total_return: float) -> None:
-        """
-        action node의 평균 value를 incremental mean으로 갱신한다.
-        increment_visit(action_node_id) 이후 호출된다고 가정.
-        """
-        if action_node_id not in self.nodes:
-            raise KeyError(f"Action node {action_node_id} does not exist.")
-
+    def update_action_value(self, action_node_id: int, total_return: float) -> None:        
         node = self.nodes[action_node_id]
-
-        if not node.is_action_node:
-            raise TypeError(
-                f"Node {action_node_id} is not an action node. "
-                f"Current type: {node.node_type}"
-            )
-
-        if node.visits <= 0:
-            raise ValueError(
-                f"Cannot update value for node {action_node_id} because visits={node.visits}. "
-                f"Call increment_visit first."
-            )
-
         node.value += (total_return - node.value) / node.visits
+        
 
     def get_visit(self, node_id: int) -> int:
         return self.get_node(node_id).visits

@@ -11,7 +11,7 @@ from models.action import Action, Grounding, ActionSchema, get_actions
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
 from models.reward import RewardModel
-
+from models.belief import Belief
 
 class Environment:
     def __init__(self, args):
@@ -49,7 +49,13 @@ class Environment:
         # Get all grounded actions
         action_dicts = self._load_config(self.robot_skill_path).get("actions", []) or []
         self.actions = get_actions(action_dicts, self.state, self.obj_type)
-                
+
+        # for f in self.state.facts:
+        #     print("[STATE] ", f)
+        # for a in self.actions:
+        #     print("[ACTION] ", a)
+        # asdf
+        
         # Transition Model
         self.transition_model = TransitionModel(
             domain=self.domain_name,
@@ -76,6 +82,8 @@ class Environment:
         # reset
         self.done = False
         self.step_count = 0
+        
+        
 
 
     @staticmethod
@@ -171,16 +179,12 @@ class Environment:
         observation, reward, done, info 반환.
         """
         
-        if self.done:
-            raise RuntimeError("Episode is done. Call reset() before step().")
-
         prev_state = copy.deepcopy(self.state)
         self._apply_action(action)
         # _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
         
         reward = self.reward_model.get_reward(prev_state, action, self.state)
         self.step_count += 1
-        self.done = self._check_done()
         
         # get observation        
         if action is None:
@@ -201,11 +205,10 @@ class Environment:
 
     def _update_true_state_from_execution(self, action: Action) -> None:
         action_name = action.name.split("(")[0]
-        if action_name not in {"navigate", "prepare_nav", "pick", "place", "discard"}:
+        if action_name not in {"navigate", "prepare_nav", "pick", "pick_n_scan", "place", "discard"}:
             return
 
         dynamic_prefixes = (
-            "at(",
             "located(",
             "handempty(",
             "holding(",
@@ -223,6 +226,19 @@ class Environment:
             if fact.startswith(dynamic_prefixes):
                 self.true_state.add_fact(fact)
 
+        if action_name in {"pick", "pick_n_scan"}:
+            _, args = action.name.replace(" ", "").split("(", 1)
+            action_args = args.rstrip(")").split(",")
+            if len(action_args) >= 3:
+                _, tomato, stem = action_args[:3]
+                robot = action_args[0]
+                pick_succeeded = (
+                    self.true_state.has_fact(f"holding({robot},{tomato})")
+                    or self.true_state.has_fact(f"holded({tomato},{robot})")
+                )
+                if pick_succeeded:
+                    self.true_state.remove_fact(f"at({tomato},{stem})")
+
         for obj, values in self.state.fluents.items():
             for key, value in values.items():
                 if float(value) != -1.0:
@@ -239,21 +255,80 @@ class Environment:
         if hasattr(self.observation_model, "domain_model"):
             self.observation_model.domain_model.true_state = self.true_state
 
-
-    def _check_done(self) -> bool:
+    def check_done(self, belief: Belief):
         """Goal 달성 또는 max_step 초과 시 episode 종료"""
-        # 1. goal 달성 여부
-        if self.goal:
-            if all(self.state.has_fact(f) for f in self.goal.facts):
-                print("[Planner] Goal Done")
-                return True
-            
-        # 2. step limit
+        if self.goal and all(belief.knowledge.has_fact(f) for f in self.goal.facts):
+            return "GOAL DONE"
+
         if self.step_count >= self.max_step:
-            print("[Planner] MAX STEP Done")
-            return True
+            return "MAX STEP"
 
+        def parse_fact(raw_fact):
+            fact = raw_fact.replace(" ", "")
+            if not fact.endswith(")"):
+                return None, ()
 
+            predicate, sep, args = fact[:-1].partition("(")
+            if not sep:
+                return None, ()
+
+            return predicate, tuple(args.split(","))
+
+        if self.domain_name == "tomato":
+            unripe_tomatoes = set()
+            ripe_tomatoes = set()
+            rotten_tomatoes = set()
+            held_tomatoes = set()
+            discarded_tomatoes = set()
+            loaded_tomatoes = set()
+
+            for raw_fact in belief.knowledge.facts:
+                predicate, args = parse_fact(raw_fact)
+                if not args:
+                    continue
+
+                tomato = args[0]
+                if predicate == "unripe":
+                    unripe_tomatoes.add(tomato)
+                elif predicate == "ripe":
+                    ripe_tomatoes.add(tomato)
+                elif predicate == "rotten":
+                    rotten_tomatoes.add(tomato)
+                elif predicate == "holding" and len(args) >= 2:
+                    held_tomatoes.add(args[1])
+                elif predicate == "discarded":
+                    discarded_tomatoes.add(tomato)
+                elif predicate == "loaded":
+                    loaded_tomatoes.add(tomato)
+
+            if (
+                held_tomatoes & unripe_tomatoes
+                or discarded_tomatoes & ripe_tomatoes
+                or loaded_tomatoes & rotten_tomatoes
+            ):
+                return "PLAN FAILURE"
+
+        elif self.domain_name == "wastesorting":
+            goal_bin_by_waste = {}
+
+            if self.goal:
+                for goal_fact in self.goal.facts:
+                    predicate, args = parse_fact(goal_fact)
+                    if predicate == "in_bin" and len(args) >= 2:
+                        goal_bin_by_waste[args[0]] = args[1]
+
+            for raw_fact in belief.knowledge.facts:
+                predicate, args = parse_fact(raw_fact)
+                if not args:
+                    continue
+
+                if predicate != "in_bin" or len(args) < 2:
+                    continue
+
+                waste, bin_name = args[:2]
+                goal_bin = goal_bin_by_waste.get(waste)
+                if goal_bin and bin_name != goal_bin:
+                    return "PLAN FAILURE"
 
         return False
 

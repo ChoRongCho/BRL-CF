@@ -126,7 +126,10 @@ class Grounding:
             m = re.match(r".*\(([A-Z])\)", type_declare)
             if m:
                 type_symbol = m.group(1)
-                type_map[type_symbol] = objects
+                type_map.setdefault(type_symbol, [])
+                for obj in objects:
+                    if obj not in type_map[type_symbol]:
+                        type_map[type_symbol].append(obj)
         return type_map
 
     def generate_action_set(self) -> List[Action]:

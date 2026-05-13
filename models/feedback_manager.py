@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import copy
+import yaml
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 
 from utils.asp import DomainRuleBridge, solve_asp
@@ -15,8 +16,10 @@ from collections import defaultdict
 class FeedbackManger:
     def __init__(self, args, conf_threshold):
         self.args = args
+        self.domain_name = self.args.domain
         self.conf_threshold = conf_threshold
         self.num_of_query = 0
+        self.query_log = []
         # ablation study
         """
         f_strategy: int = "1: no, 2: all, 3: ours, 4:random"
@@ -24,6 +27,13 @@ class FeedbackManger:
         """
         self.f_strategy = self.args.f_strategy
         self.q_strategy = self.args.q_strategy
+        if self.args.answer_type == "auto":
+            self.is_human_answer = False
+        elif self.args.answer_type == "human":
+            self.is_human_answer = True
+        else:
+            raise ValueError(f"Wrong answer type: {self.args.answer_type} | 'auto' or 'human'")
+        self._true_init_facts = None
         
 
     def compute_confidence(self, weights: np.ndarray) -> float:
@@ -164,12 +174,13 @@ class FeedbackManger:
         return belief
     
     
-    def get_new_observation(self, belief: Belief) -> Belief:
+    def get_new_observation(self, belief: Belief, step: int = None, action_name: str = None) -> Belief:
         
         
         # ================ compute confidence and human ask ================
         confidence = self.compute_confidence(belief.frontier_weights)
         while confidence < self.conf_threshold:
+            original_belief = copy.deepcopy(belief)
             print(f"    [Planner] Current confidence: {confidence}")
             
             # 더 이상 질문할 fact가 없으면 종료
@@ -178,17 +189,29 @@ class FeedbackManger:
                 break
             
             # 질문
-            print(f"    [Query] Q: {target_fact} is True?")
-            answer = self.query_human(target_fact)
+            
+            answer = self.query_human(target_fact, action_name)            
+            
+            
             self.num_of_query += 1
             print(f"    [Query] A: {answer}")
             
             # 적용 후 다시 계산            
             belief = self.apply_fact_answer_to_belief(belief, target_fact, answer)
-            confidence = self.compute_confidence(belief.frontier_weights)
-            print(f"    [Planner] Updated confidence: {confidence}")
+            updated_confidence = self.compute_confidence(belief.frontier_weights)
+            self.query_log.append({
+                "step": step,
+                "action": action_name,
+                "question": target_fact,
+                "answer": answer,
+                "confidence_before": confidence,
+                "confidence_after": updated_confidence,
+            })
+            confidence = updated_confidence
+            print(f"    [Planner] Redeuced {len(original_belief.frontier)} --> {len(belief.frontier)}")    
             
             
+        print(f"    [Planner] Updated confidence: {confidence}")    
         # expand knowledge
         if len(belief.frontier) > 0:
             max_idx = np.argmax(belief.frontier_weights)
@@ -203,16 +226,93 @@ class FeedbackManger:
             print(f"      + add ({len(added_facts)}): {', '.join(added_facts) if added_facts else '-'}")
             print(f"      - del ({len(deleted_facts)}): {', '.join(deleted_facts) if deleted_facts else '-'}")
             
-            
-        
         return belief
     
     
-    def query_human(self, target_fact):
-        while True:
-            answer = input("    [Human] Enter t/f: ").strip().lower()
-            if answer == "t":
-                return True
-            if answer == "f":
-                return False
-            print("    [Human] Invalid input. Please enter 't' or 'f'.")
+    def query_human(self, target_fact, action_name):
+        
+        
+        self.refining_query(target_fact, action_name)
+        
+        
+        
+        
+        
+        if self.is_human_answer:
+            """
+            """
+            while True:
+                answer = input("    [Human] Enter t/f: ").strip().lower()
+                if answer == "t":
+                    return True
+                if answer == "f":
+                    return False
+                print("    [Human] Invalid input. Please enter 't' or 'f'.")
+                
+        else:
+            """
+            """
+            if self._true_init_facts is None:
+                yaml_file_path = self.args.initial_state
+                with open(yaml_file_path, "r", encoding="utf-8") as f:
+                    init_config = yaml.safe_load(f) or {}
+                self._true_init_facts = {
+                    str(fact).replace(" ", "")
+                    for fact in init_config.get("true_init", []) or []
+                }
+
+            target_fact = str(target_fact).replace(" ", "")
+            action = "" if action_name is None else str(action_name)
+
+            if self.domain_name == "tomato":
+                if action.startswith("pick") and target_fact.startswith("at("):
+                    # return bool(np.random.random() < 0.1)
+                    return False
+                
+                if action.startswith("detect("):
+                    # detect(R,S)
+                    stem = action[action.rfind(",") + 1:-1].strip()
+                    if target_fact.startswith("ripe("):
+                        tomato = target_fact[len("ripe("):-1]
+                        q_fact = f"at({tomato},{stem})"
+                        if q_fact in self._true_init_facts:
+                            if f"rotten({tomato})" in self._true_init_facts:
+                                return True
+                            else:
+                                return target_fact in self._true_init_facts
+                        else:
+                            return False
+                        
+                    elif target_fact.startswith("unripe("):
+                        tomato = target_fact[len("unripe("):-1]
+                        q_fact = f"at({tomato},{stem})"
+                        if q_fact in self._true_init_facts:
+                            return target_fact in self._true_init_facts
+                        else:
+                            return False
+                        
+                    elif target_fact.startswith("at("):
+                        return target_fact in self._true_init_facts
+                    
+                if action.startswith("scan("):
+                    return target_fact in self._true_init_facts
+                    
+                if (action.startswith("place") or action.startswith("discard")) and target_fact.startswith("handempty("):
+                    # return bool(np.random.random() < 0.8)
+                    return True
+                
+                return bool(np.random.random() < 0.5)
+                
+
+            if self.domain_name == "wastesorting":
+                return target_fact in self._true_init_facts
+
+            return bool(np.random.random() < 0.8)
+
+    
+    # LLM-based refining vs Machine 
+    def refining_query(self, target_fact, action_name):
+        
+        print(f"    [Query] Q: {target_fact} is True?")
+        
+        return

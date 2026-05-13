@@ -16,13 +16,22 @@ class TransitionTomato:
         self.type_map = type_map
         self.true_state = true_state
 
-        self.navigate_success_rate = 0.90
+        # original test
+        # self.navigate_success_rate = 0.90
+        # self.prepare_nav_success_rate = 1.0
+        # self.detect_success_rate = 0.95
+        # self.pick_success_rate = 0.95
+        # self.scan_success_rate = 0.90
+        # self.place_success_rate = 0.99
+        # self.discard_success_rate = 0.99
+        
+        self.navigate_success_rate = 0.85
         self.prepare_nav_success_rate = 1.0
-        self.detect_success_rate = 0.95
-        self.pick_success_rate = 0.98
-        self.scan_success_rate = 0.90
-        self.place_success_rate = 0.99
-        self.discard_success_rate = 0.99
+        self.detect_success_rate = 0.85
+        self.pick_success_rate = 0.85
+        self.scan_success_rate = 0.85
+        self.place_success_rate = 0.85
+        self.discard_success_rate = 0.85
 
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
@@ -170,7 +179,6 @@ class TransitionTomato:
             return outcomes
         
         merged = {}
-        observed_unavailable_tomatoes = observed_tomatoes & unavailable_tomatoes
         quality_predicates = {"ripe", "unripe", "rotten"}
 
         for outcome in outcomes:
@@ -184,7 +192,7 @@ class TransitionTomato:
 
                 if tomato in observed_tomatoes and pred in {"observed", "at"}:
                     remove_fact = True
-                elif tomato in observed_unavailable_tomatoes and pred in quality_predicates:
+                elif tomato in observed_tomatoes and pred in quality_predicates:
                     remove_fact = True
 
                 if not remove_fact:
@@ -194,7 +202,7 @@ class TransitionTomato:
                 pred, args = _parse_fact(fact)
                 tomato = args[0] if args else None
 
-                if tomato in observed_unavailable_tomatoes and pred in quality_predicates:
+                if tomato in observed_tomatoes and pred in quality_predicates:
                     continue
 
                 filtered_del_facts.append(fact)

@@ -37,7 +37,7 @@ class ObservationTomato:
     def __init__(
         self,
         type_map: Dict[str, List[str]],
-        noise: float = 0.05,
+        noise: float = 0.03,
         true_state: State | None = None,
         observation_source: str = "true_init",
     ):
@@ -47,7 +47,7 @@ class ObservationTomato:
         self.observation_source = observation_source
         self.use_true_init_observation = observation_source == "true_init"
 
-        self.detect_observed_success_rate = 0.99
+        self.detect_observed_success_rate = 0.8
         self.detect_classification_success_rate = 0.90
         self.scan_success_rate = 0.70
         self.navigate_success_rate = 0.95
@@ -88,9 +88,33 @@ class ObservationTomato:
         
         if action_name == "navigate":
             return self._build_navigate_distribution(state, action)
+
+        if action_name == "place":
+            return self._build_certain_candidate_distribution(state, action)
         
         else:
             return self._build_default_distribution(state, action)
+
+    def get_observation_distribution_for_likelihood(self, state: State, action: Action) -> List[ObservationOutcome]:
+        """
+        Score observations against a candidate frontier state during belief update.
+
+        Sampling uses hidden true_state as the sensor reference. Likelihood must
+        use the candidate state; otherwise scan observations do not distinguish
+        ripe(T) and rotten(T) frontiers.
+        """
+        action_name = action.name.split("(")[0]
+
+        if action_name == "detect":
+            return self._build_detect_distribution(state, action, use_true_state=False)
+
+        if action_name == "pick_n_scan":
+            return self._build_pick_n_scan_distribution(state, action, use_true_state=False)
+
+        if action_name == "scan":
+            return self._build_scan_distribution(state, action, use_true_state=False)
+
+        return self.get_observation_distribution(state, action)
 
     # ------------------------------------------------------------------
     # Generic fact expansion helpers
@@ -224,6 +248,11 @@ class ObservationTomato:
     # ------------------------------------------------------------------
     # Default / navigate / scan observation models
     # ------------------------------------------------------------------
+    def _build_certain_candidate_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+        candidates = self.build_candidates(action)
+        true_facts = [fact for fact in candidates if state.has_fact(fact)]
+        return [ObservationOutcome(facts=true_facts, probability=1.0)]
+
     def _build_default_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         candidates = self.build_candidates(action)
         true_facts = [fact for fact in candidates if state.has_fact(fact)]
@@ -256,7 +285,12 @@ class ObservationTomato:
 
         return outcomes
 
-    def _build_scan_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+    def _build_scan_distribution(
+        self,
+        state: State,
+        action: Action,
+        use_true_state: bool = True,
+    ) -> List[ObservationOutcome]:
         """
         Scan observes the true ripe/unripe/rotten label for the held tomato.
 
@@ -264,38 +298,42 @@ class ObservationTomato:
         action.observation. This lets pick_n_scan reuse the same scan model even
         when robot_skill.yaml leaves its observation field empty.
         """
-        gt_state = self._tomato_ground_truth_state(state)
+        gt_state = self._tomato_ground_truth_state(state) if use_true_state else state
         args = self._get_action_args(action)
         if len(args) < 2:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         tomato = args[1]
-        all_labels = [f"ripe({tomato})", f"unripe({tomato})", f"rotten({tomato})"]
+        all_labels = [f"ripe({tomato})", f"rotten({tomato})"]
         true_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=False)
 
         if true_label not in all_labels:
-            return [ObservationOutcome(facts=[], probability=1.0)]
+            true_label = f"ripe({tomato})"
 
         wrong_labels = [label for label in all_labels if label != true_label]
 
         correct_prob = self.scan_success_rate
-        miss_or_wrong_prob = (1.0 - correct_prob) / (len(wrong_labels) + 1)
+        wrong_prob = (1.0 - correct_prob) / len(wrong_labels)
 
         outcomes = [ObservationOutcome(facts=[true_label], probability=correct_prob)]
         for label in wrong_labels:
-            outcomes.append(ObservationOutcome(facts=[label], probability=miss_or_wrong_prob))
-        outcomes.append(ObservationOutcome(facts=[], probability=miss_or_wrong_prob))
+            outcomes.append(ObservationOutcome(facts=[label], probability=wrong_prob))
 
         return outcomes
 
-    def _build_pick_n_scan_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+    def _build_pick_n_scan_distribution(
+        self,
+        state: State,
+        action: Action,
+        use_true_state: bool = True,
+    ) -> List[ObservationOutcome]:
         """
         pick_n_scan observes exactly the scan part of the combined skill.
 
         Pick is assumed deterministic in the transition model, so the only
         uncertain observation is the tomato ripeness/classification result.
         """
-        return self._build_scan_distribution(state, action)
+        return self._build_scan_distribution(state, action, use_true_state=use_true_state)
 
     # ------------------------------------------------------------------
     # Detect observation model
@@ -464,11 +502,16 @@ class ObservationTomato:
 
         return outcomes
 
-    def _build_detect_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+    def _build_detect_distribution(
+        self,
+        state: State,
+        action: Action,
+        use_true_state: bool = True,
+    ) -> List[ObservationOutcome]:
         """
         Build P(o | state, detect) as a product of independent tomato factors.
         """
-        gt_state = self._tomato_ground_truth_state(state)
+        gt_state = self._tomato_ground_truth_state(state) if use_true_state else state
         tomato_entries = self._build_detect_tomato_entries(action)
         if not tomato_entries:
             return [ObservationOutcome(facts=[], probability=1.0)]

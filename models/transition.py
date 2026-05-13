@@ -50,7 +50,10 @@ class TransitionModel:
             m = re.match(r".*\(([A-Z])\)", type_declare)
             if m:
                 type_symbol = m.group(1)
-                type_map[type_symbol] = objects
+                type_map.setdefault(type_symbol, [])
+                for obj in objects:
+                    if obj not in type_map[type_symbol]:
+                        type_map[type_symbol].append(obj)
         return type_map
 
     def _apply_outcome(self, state: State, outcome: TransitionOutcome) -> State:
@@ -60,6 +63,14 @@ class TransitionModel:
             next_state.remove_fact(fact)
 
         for fact in outcome.add_facts:
+            located_match = re.fullmatch(r"located\(([^,]+),([^)]+)\)", fact)
+            if located_match:
+                robot = located_match.group(1)
+                next_state.facts = [
+                    existing
+                    for existing in next_state.facts
+                    if not existing.startswith(f"located({robot},")
+                ]
             next_state.add_fact(fact)
 
         for obj, values in outcome.fluent_effects.items():

@@ -1,20 +1,14 @@
 domain: WasteSorting
 
 meta_data:
-  description: "Fixed manipulator waste sorting domain with tactile material and hardness assessment"
+  description: "Simplified manipulator waste sorting domain"
   semantics: "ASP-style world generation under partial observability"
   purpose: "belief state initialization / possible world enumeration"
   assumptions:
-    - "Each waste item has exactly one material category"
-    - "Each waste item has exactly one hardness state"
-    - "Each waste item has exactly one physical state"
-    - "Bin types and bin locations are fully known at planning time"
-    - "Waste existence and position can be revealed through detect"
-    - "Material is identified after grasp through tactile sensing"
-    - "Hardness is identified after stronger grasp through tactile sensing"
-    - "Plastic and can waste may require compression depending on hardness"
-    - "Glass and general waste are placed without compression"
-    - "Hazardous waste is placed into the hazardous bin without compression"
+    - "Each waste item is classified as exactly one of plastic, can, paper, or general after detection"
+    - "Bin types are known at planning time"
+    - "A waste item can be detected, picked, and placed into the matching bin"
+    - "The robot can hold at most one waste item"
 
 predicates:
   # objects
@@ -26,14 +20,6 @@ predicates:
     arity: [W]
     meaning: "W is a waste item"
 
-  - predicate: location(L)
-    arity: [L]
-    meaning: "L is a workspace location"
-
-  - predicate: bin(B)
-    arity: [B]
-    meaning: "B is a disposal bin"
-
   # bin properties
   - predicate: plastic_bin(B)
     arity: [B]
@@ -43,26 +29,18 @@ predicates:
     arity: [B]
     meaning: "B accepts can waste"
 
-  - predicate: glass_bin(B)
+  - predicate: paper_bin(B)
     arity: [B]
-    meaning: "B accepts glass waste"
+    meaning: "B accepts paper waste"
 
   - predicate: general_bin(B)
     arity: [B]
     meaning: "B accepts general waste"
 
-  - predicate: hazardous_bin(B)
-    arity: [B]
-    meaning: "B accepts hazardous waste"
-
-  - predicate: bin_at(B,L)
-    arity: [B,L]
-    meaning: "Bin B is located at workspace location L"
-
   # waste observation and properties
-  - predicate: observed(W)
+  - predicate: detected(W)
     arity: [W]
-    meaning: "W has been detected on the sorting table"
+    meaning: "W has been detected"
 
   - predicate: plastic(W)
     arity: [W]
@@ -72,38 +50,13 @@ predicates:
     arity: [W]
     meaning: "W is can waste"
 
-  - predicate: glass(W)
+  - predicate: paper(W)
     arity: [W]
-    meaning: "W is glass waste"
+    meaning: "W is paper waste"
 
   - predicate: general(W)
     arity: [W]
     meaning: "W is general waste"
-
-  - predicate: hazardous(W)
-    arity: [W]
-    meaning: "W is hazardous waste"
-
-  - predicate: soft(W)
-    arity: [W]
-    meaning: "W is soft enough to be compressed safely"
-
-  - predicate: hard(W)
-    arity: [W]
-    meaning: "W should not be compressed based on hardness"
-
-  - predicate: compression_target(W)
-    arity: [W]
-    meaning: "W should be compressed before placement"
-
-  - predicate: direct_placeable(W)
-    arity: [W]
-    meaning: "W should be placed into a bin without compression"
-
-  # world state
-  - predicate: at(W,L)
-    arity: [W,L]
-    meaning: "Waste item W is at location L"
 
   - predicate: holding(R,W)
     arity: [R,W]
@@ -111,121 +64,11 @@ predicates:
 
   - predicate: handempty(R)
     arity: [R]
-    meaning: "Robot hand is empty"
+    meaning: "Robot R is not holding any waste"
 
   - predicate: in_bin(W,B)
     arity: [W,B]
     meaning: "Waste item W has been placed into bin B"
-
-  - predicate: compressed(W)
-    arity: [W]
-    meaning: "Waste item W has been compressed by the gripper"
-  
-
-rule:
-  # bin
-  - head: "bin(B)"
-    body:
-      - "plastic_bin(B)"
-
-  - head: "bin(B)"
-    body:
-      - "can_bin(B)"
-
-  - head: "bin(B)"
-    body:
-      - "glass_bin(B)"
-
-  - head: "bin(B)"
-    body:
-      - "general_bin(B)"
-
-  - head: "bin(B)"
-    body:
-      - "hazardous_bin(B)"
-
-  # ??
-  - head: "location(L)"
-    body:
-      - "bin_at(B,L)"
-
-  # compression
-  - head: "compression_target(W)"
-    body:
-      - "plastic(W)"
-      - "soft(W)"
-
-  - head: "compression_target(W)"
-    body:
-      - "can(W)"
-      - "soft(W)"
-
-  # direct
-  - head: "direct_placeable(W)"
-    body:
-      - "plastic(W)"
-      - "hard(W)"
-
-  - head: "direct_placeable(W)"
-    body:
-      - "can(W)"
-      - "hard(W)"
-
-  - head: "direct_placeable(W)"
-    body:
-      - "glass(W)"
-
-  - head: "direct_placeable(W)"
-    body:
-      - "general(W)"
-
-  - head: "direct_placeable(W)"
-    body:
-      - "hazardous(W)"
-
-
-choice_rules:
-  - elements:
-      - atom: "plastic(W)"
-      - atom: "can(W)"
-      - atom: "glass(W)"
-      - atom: "general(W)"
-      - atom: "hazardous(W)"
-    given:
-      - "waste(W)"
-    cardinality: "1..1"
-
-  - elements:
-      - atom: "soft(W)"
-      - atom: "hard(W)"
-    given:
-      - "waste(W)"
-    cardinality: "1..1"
-
-  # location choice
-  - elements:
-      - atom: "at(W,L)"
-        over:
-          - "location(L)"
-      - atom: "holding(R,W)"
-        over:
-          - "robot(R)"
-      - atom: "in_bin(W,B)"
-        over:
-          - "bin(B)"
-    given:
-      - "waste(W)"
-    cardinality: "1..1"
-
-
-  # bin must be in one location
-  - elements:
-      - atom: "bin_at(B,L)"
-        over:
-          - "location(L)"
-    given:
-      - "bin(B)"
-    cardinality: "1..1"
 
 
 
@@ -233,7 +76,7 @@ constraint:
   - body:
       - "holding(R,W)"
       - "handempty(R)"
-    meaning: "Robot cannot hold an item while hand is empty"
+    meaning: "Robot cannot hold an item while its hand is empty"
 
   - body:
       - "holding(R,W1)"
@@ -243,62 +86,50 @@ constraint:
 
   - body:
       - "holding(R,W)"
-      - "at(W,L)"
-    meaning: "Waste item cannot be held and placed at a location at the same time"
-
-  - body:
-      - "holding(R,W)"
       - "in_bin(W,B)"
     meaning: "Waste item cannot be held and already be in a bin"
 
   - body:
-      - "at(W,L)"
+      - "detected(W)"
+      - "not 1 { plastic(W); can(W); paper(W); general(W) } 1"
+    meaning: "A detected waste item must have exactly one category"
+
+  - body:
       - "in_bin(W,B)"
-    meaning: "Waste item cannot be at a location and in a bin simultaneously"
-
-  # material-bin consistency
-  - body:
-      - "bin_at(B,L1)"
-      - "bin_at(B,L2)"
-      - "L1 != L2"
-    meaning: "Each bin must have exactly one location"
+      - "plastic(W)"
+      - "not plastic_bin(B)"
+    meaning: "Plastic waste must be placed in a plastic bin"
 
   - body:
-      - "compressed(W)"
-      - "not compression_target(W)"
-    meaning: "Only compression-target waste may be compressed"
+      - "in_bin(W,B)"
+      - "can(W)"
+      - "not can_bin(B)"
+    meaning: "Can waste must be placed in a can bin"
 
-  # - body:
-  #     - "observed(W)"
-  #     - "not 1 { plastic(W); can(W); glass(W); general(W); hazardous(W) } 1"
-  #   meaning: "If a waste is observed, it must have exactly one material label"
+  - body:
+      - "in_bin(W,B)"
+      - "paper(W)"
+      - "not paper_bin(B)"
+    meaning: "Paper waste must be placed in a paper bin"
 
-
-
+  - body:
+      - "in_bin(W,B)"
+      - "general(W)"
+      - "not general_bin(B)"
+    meaning: "General waste must be placed in a general waste bin"
 
 show:
   - "#show robot/1"
   - "#show waste/1"
-  - "#show location/1"
-  - "#show bin/1"
   - "#show plastic_bin/1"
   - "#show can_bin/1"
-  - "#show glass_bin/1"
+  - "#show paper_bin/1"
   - "#show general_bin/1"
-  - "#show hazardous_bin/1"
-  - "#show bin_at/2"
-  - "#show observed/1"
+  - "#show detected/1"
   - "#show plastic/1"
   - "#show can/1"
-  - "#show glass/1"
+  - "#show paper/1"
   - "#show general/1"
-  - "#show hazardous/1"
-  - "#show soft/1"
-  - "#show hard/1"
-  - "#show compression_target/1"
-  - "#show direct_placeable/1"
-  - "#show at/2"
   - "#show holding/2"
   - "#show handempty/1"
   - "#show in_bin/2"
-  - "#show compressed/1"

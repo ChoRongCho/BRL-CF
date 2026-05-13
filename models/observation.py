@@ -61,7 +61,10 @@ class ObservationModel:
             m = re.match(r".*\(([A-Z])\)", type_declare)
             if m:
                 type_symbol = m.group(1)
-                type_map[type_symbol] = objects
+                type_map.setdefault(type_symbol, [])
+                for obj in objects:
+                    if obj not in type_map[type_symbol]:
+                        type_map[type_symbol].append(obj)
         return type_map
 
     def _build_domain_model(self):
@@ -75,7 +78,7 @@ class ObservationModel:
 
         elif self.domain == "wastesorting":
             from models.wastesorting.obs import ObservationWastesorting
-            return ObservationWastesorting(type_map=self.type_map, noise=self.noise)
+            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
 
         else:
             raise ValueError(f"Unknown domain: {self.domain}")

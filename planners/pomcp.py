@@ -95,9 +95,6 @@ class POMCPPlanner:
         root = self.tree.get_node(history)
         root.knowledge = knowledge.copy()
         
-        # if not root.frontiers:
-        #     root.frontiers = [particle.copy() for particle in belief.particles]
-
         # Repeat Simulations until timeout
         time1 = time.time()
         for _ in range(self.n_simulations):
@@ -189,22 +186,19 @@ class POMCPPlanner:
         if self._should_stop(depth):
             return 0.0
         
-        time_1 = time.time()
         applicable_actions = self.get_applicable_actions(state)
         if not applicable_actions:
             return 0.0
         action = random.choice(applicable_actions)
         
-        time_2 = time.time()
+        # Rollout
         sample_state = self.transition_model.sample_next_state(state, action)
-        time_3 = time.time()
         reward = self.reward_model.get_reward(state, action, sample_state)
-        time_4 = time.time()
-
-        # print(f"     [ROLLOUT time] action: {round(time_2-time_1, 4)} | sample: {round(time_3-time_2, 4)} | reward: {round(time_4-time_3, 4)}")
+        
         return reward + self.gamma * self.rollout(sample_state, depth + 1)
 
     def search_best(self, history: int, state: State, use_ucb: bool = True):
+        
         candidates = self._filter_existing_children(history, state)
         if not candidates:
             return None, None
@@ -222,13 +216,19 @@ class POMCPPlanner:
                     score = float("inf")
                 else:
                     score = child_value + self.c * np.sqrt(np.log(parent_visits)/(child_visits))
-                    # score = child_value + self.c * ((parent_visits ** 0.5) / (1 + child_visits))
 
                 if score > best_score:
                     best_score = score
                     best = (action, node_id)
 
             return best
+        
+        print("[POMCP] applicable values:")
+        for action, node_id in candidates:
+
+            print(f"        {action.name}: {self.tree.get_value(node_id)}")
+        print()
+            
 
         return max(candidates, key=lambda item: self.tree.get_value(item[1]))
 
@@ -242,14 +242,6 @@ class POMCPPlanner:
         best_action, _ = self.search_best(history, knowledge, use_ucb=False)
         if best_action is not None:
             return best_action
-
-        # unexpanded_action, _ = self._sample_unexpanded_action(history, knowledge)
-        # if unexpanded_action is not None:
-        #     return unexpanded_action
-
-        # applicable_actions = self.get_applicable_actions(knowledge)
-        # if applicable_actions:
-        #     return random.choice(applicable_actions)
 
         return None
     
