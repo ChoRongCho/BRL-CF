@@ -1,25 +1,30 @@
-
 class Prompt:
     def __init__(self):
         pass
 
     def refining_query_prompt(self, target_fact, action_name=None):
+        predicate_descriptions = """
+- detected(W): waste item W has been detected.
+- plastic(W): waste item W is plastic.
+- can(W): waste item W is a can.
+- paper(W): waste item W is paper.
+- general(W): waste item W is general waste.
+- holding(R, W): robot R is holding waste item W.
+- handempty(R): robot R's hand is empty.
+- in_bin(W, B): waste item W is in bin B.
+""".strip()
+
         return [
             (
                 "system",
-                "You convert symbolic waste-sorting facts into one concise natural-language yes/no question. "
-                "Ask only the question. Do not explain.",
+                "Convert a symbolic waste-sorting fact into one concise natural-language yes/no question. "
+                "Use the object names exactly as given. Ask only the question.",
             ),
             (
                 "human",
                 f"Action: {action_name or 'unknown'}\n"
                 f"Fact: {target_fact}\n\n"
-                "Predicate meanings:\n"
-                "- plastic(waste): the waste item is plastic.\n"
-                "- can(waste): the waste item is a can.\n"
-                "- paper(waste): the waste item is paper.\n"
-                "- general(waste): the waste item is general waste.\n"
-                "- in_bin(waste, bin): the waste item is in the bin.\n\n"
+                f"Predicate meanings:\n{predicate_descriptions}\n\n"
                 "Question:",
             ),
         ]

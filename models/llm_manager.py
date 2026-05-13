@@ -79,8 +79,7 @@ class LLMManager:
         }
     
     def get_model(self,
-                #   model_name: str = "Qwen/Qwen3-VL-30B-A3B-Instruct", # [변경] 기본 모델 Qwen으로 변경
-                  model_name: str = "Qwen/Qwen3-VL-30B-A3B-Instruct", # [변경] Qwen3.5로 업데이트
+                  model_name: str = "gpt-5.0",
                   temperature: float = 0.0,
                   enable_thinking: bool = False,
                   stop: Optional[list] = None,
