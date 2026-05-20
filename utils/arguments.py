@@ -26,7 +26,7 @@ def parse_args(domain: str):
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--max_step", type=int, default=20, help="Maximum steps per episode")
     parser.add_argument("--max_particles", type=int, default=100, help="Maximum number of belief particles to keep after update")
-    parser.add_argument("--threshold", type=float, default=1.0, help="")
+    parser.add_argument("--threshold", type=float, default=0.8, help="")
     parser.add_argument("--log_dir", type=str, default="logs", help="Directory where planning logs are saved")
     
     # Numeric fluents settings

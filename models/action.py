@@ -115,7 +115,7 @@ class Grounding:
     
     def _build_type_map(self) -> Dict[str, List[str]]:
         """
-        type_map = {}  # "robot(R)" -> type_symbol = R, objects=["changmin"]
+        type_map = {}  # "robot(R)" -> type_symbol = R, objects=["brl_robot"]
         
         :param self: Description
         :return: Description
@@ -139,7 +139,7 @@ class Grounding:
         
         for schema in self.action_schemas:
             # 2. schema parameter별 domain 만들기
-            # 예: ["R", "L1", "L2"] -> [["changmin"], ["dockstation", ...], ["dockstation", ...]]
+            # 예: ["R", "L1", "L2"] -> [["brl_robot"], ["dockstation", ...], ["dockstation", ...]]
             param_domains = []
             param_type_symbols = []
             for param in schema.parameters:

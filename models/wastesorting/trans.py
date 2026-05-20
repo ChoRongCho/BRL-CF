@@ -43,7 +43,7 @@ class TransitionWastesorting:
     
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
         """
-        예: 'located(changmin,L3)' -> ['located(changmin,dockstation)', 'located(changmin,stem1)', ...]
+        예: 'located(brl_robot,L3)' -> ['located(brl_robot,dockstation)', 'located(brl_robot,stem1)', ...]
         """
         pred, args = _parse_fact(fact)
 

@@ -16,8 +16,56 @@ from utils.logger import logger_exp
 DOMAIN = ["tomato", "wastesorting"]
 
 
+def action_schema_name(action_name):
+    return action_name.replace(" ", "").split("(", 1)[0]
+
+
+def build_action_schema_summary(step_logs, query_logs):
+    summary = {}
+    queried_action_runs = set()
+
+    for step_log in step_logs:
+        schema = action_schema_name(step_log["action"])
+        step_log["action_schema"] = schema
+        summary.setdefault(schema, {
+            "action_count": 0,
+            "question_count": 0,
+            "actions_with_question": 0,
+            "question_probability": 0.0,
+            "questions_per_action": 0.0,
+        })
+        summary[schema]["action_count"] += 1
+
+    for query_log in query_logs:
+        action_name = query_log.get("action")
+        if not action_name:
+            continue
+        schema = action_schema_name(action_name)
+        summary.setdefault(schema, {
+            "action_count": 0,
+            "question_count": 0,
+            "actions_with_question": 0,
+            "question_probability": 0.0,
+            "questions_per_action": 0.0,
+        })
+        summary[schema]["question_count"] += 1
+        queried_action_runs.add((query_log.get("step"), schema))
+
+    for step, schema in queried_action_runs:
+        if schema in summary:
+            summary[schema]["actions_with_question"] += 1
+
+    for schema_stats in summary.values():
+        action_count = schema_stats["action_count"]
+        if action_count > 0:
+            schema_stats["question_probability"] = schema_stats["actions_with_question"] / action_count
+            schema_stats["questions_per_action"] = schema_stats["question_count"] / action_count
+
+    return dict(sorted(summary.items()))
+
+
 def main():
-    args = parse_args("wastesorting")
+    args = parse_args("tomato")
     
     env = Environment(args)
     
@@ -44,6 +92,7 @@ def main():
     action_log = []
     step_logs = []
     plan_success = False
+    plan_end_reason = None
     wall_start = time()
     cumulated_reward = 0.0
     
@@ -70,6 +119,7 @@ def main():
             print(f"[Planner] Selected action: {action.name}")
         else:
             print("[Planner] Dead-End")
+            plan_end_reason = "DEAD END"
             break
         
         # =========== 2. excute action and get observation ===========
@@ -107,16 +157,19 @@ def main():
         done = env.check_done(belief=belief)
         if done == "GOAL DONE":
             plan_success = True
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
         elif done == "MAX STEP":
             plan_success = False
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
         elif done == "PLAN FAILURE":
             plan_success = False
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
@@ -136,7 +189,11 @@ def main():
 
     total_wall_time = time() - wall_start
     executed_steps = max(len(step_logs), 1)
-    log_path = logger_exp({
+    action_schema_summary = build_action_schema_summary(
+        step_logs,
+        belief_manager.feedback_manager.query_log,
+    )
+    log_data = {
         "meta": {
             "domain": args.domain,
             "initial_state": args.initial_state,
@@ -152,6 +209,7 @@ def main():
             "epsilon": args.epsilon,
         },
         "success": plan_success,
+        "end_reason": plan_end_reason,
         "steps": len(step_logs),
         "reward": {
             "cumulated": cumulated_reward,
@@ -182,11 +240,15 @@ def main():
         },
         "questions": belief_manager.feedback_manager.query_log,
         "total_questions": belief_manager.feedback_manager.num_of_query,
+        "action_schema_summary": action_schema_summary,
         "final_knowledge": {
             "facts": sorted(belief.knowledge.facts),
             "fluents": belief.knowledge.fluents,
         },
-    }, log_dir=args.log_dir)
+    }
+    log_path = None
+    if plan_end_reason != "MAX STEP":
+        log_path = logger_exp(log_data, log_dir=args.log_dir)
 
     print("[TIME SUMMARY]")
     print(f"avg search: {total_search_time / executed_steps:.4f}s")
@@ -208,8 +270,15 @@ def main():
         
     print("=============Query=============")
     print("Total Query", belief_manager.feedback_manager.num_of_query)
+    print("=============Action Schema Summary=============")
+    for schema, stats in action_schema_summary.items():
+        print(
+            f"{schema}: actions={stats['action_count']}, "
+            f"questions={stats['question_count']}, "
+            f"expected_questions_per_action={stats['questions_per_action']:.4f}"
+        )
     print("=============Log File=============")
-    print(log_path)
+    print(log_path if log_path is not None else "Skipped because plan ended by MAX STEP")
 
 
 if __name__ == "__main__":

@@ -79,8 +79,8 @@ class LLMManager:
         }
     
     def get_model(self,
-                  model_name: str = "gpt-5.0",
-                  temperature: float = 0.0,
+                  model_name: str = "gpt-5.5",
+                  temperature: float = 0.8,
                   enable_thinking: bool = False,
                   stop: Optional[list] = None,
                   max_tokens: Optional[int] = None) -> ChatOpenAI:
@@ -181,7 +181,9 @@ class LLMManager:
     def make_refining_query(self, domain_name: str, target_fact: str, action_name: Optional[str] = None) -> str:
         """Convert a symbolic fact query into a natural-language yes/no question."""
         prompt = self._load_domain_prompt(domain_name)
+
         messages = prompt.refining_query_prompt(target_fact, action_name)
+        
         model = self.get_model(temperature=0.0, max_tokens=80)
         response = model.invoke(messages)
         return response.content.strip()

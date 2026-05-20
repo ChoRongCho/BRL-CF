@@ -23,7 +23,13 @@ STRATEGY_NAMES = {
 }
 
 
-def _should_trigger_query(strategy: int, confidence: float, threshold: float, random_query_prob: float) -> bool:
+def _should_trigger_query(
+    strategy: int,
+    confidence: float,
+    threshold: float,
+    random_query_prob: float,
+    random_query_rng: random.Random,
+) -> bool:
     if strategy == 1:
         return False
     if strategy == 2:
@@ -31,7 +37,7 @@ def _should_trigger_query(strategy: int, confidence: float, threshold: float, ra
     if strategy == 3:
         return confidence < threshold
     if strategy == 4:
-        return random.random() < random_query_prob
+        return random_query_rng.random() < random_query_prob
     raise ValueError(f"Unknown f_strategy={strategy}; expected 1(no), 2(all), 3(ours), or 4(random)")
 
 
@@ -59,19 +65,32 @@ def _ask_one_question(belief_manager: BeliefManager, belief, step: int, action_n
     return belief, updated_confidence, True
 
 
-def _run_feedback_policy(args, belief_manager: BeliefManager, belief, step: int, action_name: str):
+def _run_feedback_policy(
+    args,
+    belief_manager: BeliefManager,
+    belief,
+    step: int,
+    action_name: str,
+    random_query_rng: random.Random,
+):
     """
-    
+    Run the selected query timing policy after belief update.
+
+    Random query timing uses its own RNG so POMCP rollout randomness does not
+    change whether a feedback question is triggered. If random triggers, the
+    caller asks at least one question regardless of the current confidence.
     """
     threshold = belief_manager.feedback_manager.conf_threshold
     strategy = args.f_strategy
     strategy_name = STRATEGY_NAMES.get(strategy, str(strategy))
     confidence = belief_manager.feedback_manager.compute_confidence(belief.frontier_weights)
+    
     trigger_query = _should_trigger_query(
         strategy=strategy,
         confidence=confidence,
         threshold=threshold,
         random_query_prob=args.random_query_prob,
+        random_query_rng=random_query_rng,
     )
 
     print(
@@ -116,6 +135,7 @@ def main():
     args.threshold = WHEN_THRESHOLD
     random.seed(args.seed)
     np.random.seed(args.seed)
+    random_query_rng = random.Random(args.seed)
     
     env = Environment(args)
     
@@ -198,6 +218,7 @@ def main():
             belief=belief,
             step=i,
             action_name=action.name,
+            random_query_rng=random_query_rng,
         )
         interaction_elapsed = time() - interaction_start
         total_interaction_time += interaction_elapsed

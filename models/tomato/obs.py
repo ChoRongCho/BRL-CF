@@ -37,7 +37,7 @@ class ObservationTomato:
     def __init__(
         self,
         type_map: Dict[str, List[str]],
-        noise: float = 0.03,
+        noise: float = 0.1,
         true_state: State | None = None,
         observation_source: str = "true_init",
     ):
@@ -47,9 +47,9 @@ class ObservationTomato:
         self.observation_source = observation_source
         self.use_true_init_observation = observation_source == "true_init"
 
-        self.detect_observed_success_rate = 0.8
-        self.detect_classification_success_rate = 0.90
-        self.scan_success_rate = 0.70
+        self.detect_observed_success_rate = 0.85
+        self.detect_classification_success_rate = 0.95
+        self.scan_success_rate = 0.85
         self.navigate_success_rate = 0.95
 
         if self.use_true_init_observation and self.true_state is None:

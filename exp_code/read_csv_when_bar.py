@@ -6,7 +6,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-DOMAIN = "wastesorting"
+DOMAIN = "tomato"
+# DOMAIN = "wastesorting"
 BASE_DIR = Path(f"logs/{DOMAIN}/scene_metrics")
 OUTPUT_DIR = BASE_DIR / "plots_step50_when"
 STRATEGIES = ["all", "no", "random", "ours"]

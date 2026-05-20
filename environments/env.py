@@ -257,12 +257,6 @@ class Environment:
 
     def check_done(self, belief: Belief):
         """Goal 달성 또는 max_step 초과 시 episode 종료"""
-        if self.goal and all(belief.knowledge.has_fact(f) for f in self.goal.facts):
-            return "GOAL DONE"
-
-        if self.step_count >= self.max_step:
-            return "MAX STEP"
-
         def parse_fact(raw_fact):
             fact = raw_fact.replace(" ", "")
             if not fact.endswith(")"):
@@ -275,12 +269,25 @@ class Environment:
             return predicate, tuple(args.split(","))
 
         if self.domain_name == "tomato":
+            true_at_tomatoes = set()
+            true_moved_tomatoes = set()
             unripe_tomatoes = set()
             ripe_tomatoes = set()
             rotten_tomatoes = set()
             held_tomatoes = set()
             discarded_tomatoes = set()
             loaded_tomatoes = set()
+
+            for raw_fact in self.true_state.facts:
+                predicate, args = parse_fact(raw_fact)
+                if not args:
+                    continue
+
+                if predicate == "at":
+                    true_at_tomatoes.add(args[0])
+                elif predicate in {"holding", "holded", "loaded", "discarded"}:
+                    tomato = args[1] if predicate == "holding" and len(args) >= 2 else args[0]
+                    true_moved_tomatoes.add(tomato)
 
             for raw_fact in belief.knowledge.facts:
                 predicate, args = parse_fact(raw_fact)
@@ -308,6 +315,9 @@ class Environment:
             ):
                 return "PLAN FAILURE"
 
+            if true_at_tomatoes & true_moved_tomatoes:
+                return "PLAN FAILURE"
+
         elif self.domain_name == "wastesorting":
             goal_bin_by_waste = {}
 
@@ -329,6 +339,12 @@ class Environment:
                 goal_bin = goal_bin_by_waste.get(waste)
                 if goal_bin and bin_name != goal_bin:
                     return "PLAN FAILURE"
+
+        if self.goal and all(belief.knowledge.has_fact(f) for f in self.goal.facts):
+            return "GOAL DONE"
+
+        if self.step_count >= self.max_step:
+            return "MAX STEP"
 
         return False
 

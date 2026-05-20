@@ -6,11 +6,10 @@ set -euo pipefail
 # Example: ./run/when_experiments.sh --scene 3 --iter 10 --strategy random --random-query-prob 0.3
 DOMAIN="tomato"
 # DOMAIN="wastesorting"
-SEED_START=43
-SCENE="1"
+SCENE="5"
 ITERATIONS="1"
 MAXSTEP="50"
-STRATEGY="ours"
+STRATEGY="random"
 RANDOM_QUERY_PROB="0.3"
 THRESHOLD="0.8"
 
@@ -106,12 +105,14 @@ if [[ ! -f "$robot_skill" ]]; then
 fi
 
 PROB_LABEL="${RANDOM_QUERY_PROB/./-}"
-LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
+# LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
+LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_${STRATEGY}_rand${PROB_LABEL}"
+
 
 mkdir -p "$LOG_DIR"
 
 for ((i = 1; i <= ITERATIONS; i++)); do
-    seed=$((SEED_START))
+    seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
     echo "[RUN ${i}/${ITERATIONS}] strategy=${STRATEGY}, threshold=${THRESHOLD}, random_query_prob=${RANDOM_QUERY_PROB}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
 
     python3 when_main.py \

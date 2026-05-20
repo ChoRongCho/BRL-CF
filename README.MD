@@ -84,7 +84,7 @@ The strategy names map to `f_strategy` as follows:
 | `no` | `1` | Never ask feedback questions. |
 | `all` | `2` | Ask at every step. If triggered, at least one question is asked even when confidence is already above `0.8`. |
 | `ours` | `3` | Ask only when confidence is below `0.8`. |
-| `random` | `4` | Trigger asking with probability `--random_query_prob`; default is `0.3`. If triggered, at least one question is asked. |
+| `random` | `4` | Trigger asking with probability `--random_query_prob` regardless of confidence; default is `0.3`. If triggered, at least one question is asked. |
 
 ## Command-Line Arguments
 

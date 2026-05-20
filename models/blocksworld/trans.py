@@ -34,7 +34,7 @@ class TransitionBlocksworld:
     @staticmethod
     def _parse_fact(fact: str) -> Tuple[str, List[str]]:
         """
-        'located(changmin,stem1)' -> ('located', ['changmin', 'stem1'])
+        'located(brl_robot,stem1)' -> ('located', ['brl_robot', 'stem1'])
         """
         fact = fact.replace(" ", "")
         m = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)", fact)
@@ -47,7 +47,7 @@ class TransitionBlocksworld:
     
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
         """
-        예: 'located(changmin,L3)' -> ['located(changmin,dockstation)', 'located(changmin,stem1)', ...]
+        예: 'located(brl_robot,L3)' -> ['located(brl_robot,dockstation)', 'located(brl_robot,stem1)', ...]
         """
         pred, args = self._parse_fact(fact)
 
@@ -98,7 +98,7 @@ class TransitionBlocksworld:
     
     
     def _build_navigate_outcomes(self, action: Action) -> List[TransitionOutcome]:
-        nominal_target = action.add_effects[0]  # ex) located(changmin,stem1)
+        nominal_target = action.add_effects[0]  # ex) located(brl_robot,stem1)
         
         expanded_obs = []
         for obs in action.observation:

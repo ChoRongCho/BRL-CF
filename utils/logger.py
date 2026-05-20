@@ -40,6 +40,7 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "logs") -> Path:
         "",
         "[Plan Summary]",
         f"success: {result.get('success')}",
+        f"end_reason: {result.get('end_reason')}",
         f"steps: {result.get('steps')}",
         f"cumulated_reward: {reward.get('cumulated', 0.0)}",
         f"total_questions: {result.get('total_questions', 0)}",
@@ -66,6 +67,27 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "logs") -> Path:
                 f"pruning={_fmt_seconds(item.get('pruning_time', 0.0))}, "
                 f"step_reward={item.get('step_reward', 0.0)}, "
                 f"cumulated_reward={item.get('cumulated_reward', 0.0)})"
+            )
+    else:
+        lines.append("-")
+
+    lines.extend(["", "[Action Schema Summary]"])
+    action_schema_summary = result.get("action_schema_summary", {})
+    if action_schema_summary:
+        lines.extend([
+            "action_count: number of executed actions for this schema.",
+            "question_count: number of questions asked during executions of this schema.",
+            "expected_questions_per_action: expected number of questions per one action execution.",
+            "",
+            f"{'action_schema':<18} {'action_count':>12} {'question_count':>14} {'expected_questions_per_action':>30}",
+            f"{'-' * 18} {'-' * 12} {'-' * 14} {'-' * 30}",
+        ])
+        for schema, stats in action_schema_summary.items():
+            lines.append(
+                f"{schema:<18} "
+                f"{stats.get('action_count', 0):>12} "
+                f"{stats.get('question_count', 0):>14} "
+                f"{stats.get('questions_per_action', 0.0):>30.4f}"
             )
     else:
         lines.append("-")

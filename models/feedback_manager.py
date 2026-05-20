@@ -21,6 +21,7 @@ class FeedbackManger:
         self.conf_threshold = conf_threshold
         self.num_of_query = 0
         self.query_log = []
+        self.use_llm = False
         # ablation study
         """
         f_strategy: int = "1: no, 2: all, 3: ours, 4:random"
@@ -312,15 +313,18 @@ class FeedbackManger:
     
     # LLM-based refining vs Machine 
     def refining_query(self, target_fact, action_name):
-        try:
-            question = get_llm_manager().make_refining_query(
-                self.domain_name,
-                str(target_fact).replace(" ", ""),
-                action_name,
-            )
-        except Exception as exc:
-            print(f"    [Query] LLM refining failed: {exc}")
-            question = f"{target_fact} is True?"
+        if self.use_llm:
+            try:
+                question = get_llm_manager().make_refining_query(
+                    self.domain_name,
+                    str(target_fact).replace(" ", ""),
+                    action_name,
+                )
+            except Exception as exc:
+                print(f"    [Query] LLM refining failed: {exc}")
+                question = f"{target_fact} is True?"
 
-        print(f"    [Query] Q: {question}")
+            print(f"    [Query] T: {target_fact}=True? | Q: {question}")
+        else:
+            print(f"    [Query] T: {target_fact}=True?")
         return

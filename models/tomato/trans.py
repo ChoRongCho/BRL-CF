@@ -17,21 +17,21 @@ class TransitionTomato:
         self.true_state = true_state
 
         # original test
-        # self.navigate_success_rate = 0.90
-        # self.prepare_nav_success_rate = 1.0
-        # self.detect_success_rate = 0.95
-        # self.pick_success_rate = 0.95
-        # self.scan_success_rate = 0.90
-        # self.place_success_rate = 0.99
-        # self.discard_success_rate = 0.99
-        
-        self.navigate_success_rate = 0.85
+        self.navigate_success_rate = 0.90
         self.prepare_nav_success_rate = 1.0
-        self.detect_success_rate = 0.85
-        self.pick_success_rate = 0.85
-        self.scan_success_rate = 0.85
-        self.place_success_rate = 0.85
-        self.discard_success_rate = 0.85
+        self.detect_success_rate = 0.95
+        self.pick_success_rate = 0.95
+        self.scan_success_rate = 0.90
+        self.place_success_rate = 0.99
+        self.discard_success_rate = 0.99
+        
+        # self.navigate_success_rate = 0.85
+        # self.prepare_nav_success_rate = 1.0
+        # self.detect_success_rate = 0.85
+        # self.pick_success_rate = 0.85
+        # self.scan_success_rate = 0.85
+        # self.place_success_rate = 0.85
+        # self.discard_success_rate = 0.85
 
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
@@ -307,7 +307,7 @@ class TransitionTomato:
             )
         ]
 
-    # TODO: Changmin
+    # TODO: brl_robot
     def _build_detect_outcomes(self, action: Action) -> List[TransitionOutcome]:
         """
         detect:

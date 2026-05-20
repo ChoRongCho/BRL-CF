@@ -5,11 +5,11 @@ set -euo pipefail
 
 # Usage: ./run/run_threshold_experiment.sh [--scene N] [--iterations N] [--threshold N]
 # Example: ./run/run_threshold_experiment.sh --scene 3 --iterations 10 --threshold 0.8
-THRESHOLD="1.0"
-DOMAIN="wastesorting"
-SEED_START=43
-SCENE="1"
-ITERATIONS="3"
+THRESHOLD="0.8"
+DOMAIN="tomato"
+# DOMAIN="wastesorting"
+SCENE="5"
+ITERATIONS="10"
 MAXSTEP="50"
 
 usage() {
@@ -51,7 +51,7 @@ if ! [[ "$SCENE" =~ ^[0-9]+$ && "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 THRESHOLD_LABEL="${THRESHOLD/./-}"
-LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/thres_${THRESHOLD_LABEL}"
+LOG_DIR="logs/${DOMAIN}/test_scene_0${SCENE}_step${MAXSTEP}/thres_${THRESHOLD_LABEL}"
 # LOG_DIR="logs/${DOMAIN}/test/scene_0${SCENE}"
 
 
@@ -76,7 +76,7 @@ fi
 mkdir -p "$LOG_DIR"
 
 for ((i = 1; i <= ITERATIONS; i++)); do
-    seed=$((SEED_START))
+    seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
     echo "[RUN ${i}/${ITERATIONS}] threshold=${THRESHOLD}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
 
     python3 main.py \

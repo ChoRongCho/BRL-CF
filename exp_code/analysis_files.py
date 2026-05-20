@@ -1,13 +1,26 @@
+"""Aggregate text experiment logs into CSV metric tables.
+
+This script reads log files produced by ``utils.logger.logger_exp`` from the
+configured scene folders, extracts plan-level metrics, and writes one CSV per
+metric. It also aggregates the ``[Action Schema Summary]`` table from every log
+so query cost can be measured as expected questions per executed action.
+"""
+
 from __future__ import annotations
 
 import csv
 import math
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
-DOMAIN = "wastesorting"
+PlanResult = dict[str, Any]
+
+# DOMAIN = "wastesorting"
+DOMAIN = "tomato"
 SUMMARY_KEYS = ("success", "steps", "cumulated_reward", "total_questions")
+
+# Output CSV name -> (field parsed from each log, aggregate row label).
 METRIC_FILES = {
     "success_rate": ("success", "success rate"),
     "average_step": ("steps", "average step"),
@@ -16,20 +29,20 @@ METRIC_FILES = {
     "elapsed_time": ("total_time", "average elapsed time"),
 }
 
-# for thres in ['']:
-THRES = '0-9'
-TARGET = "random" # all, no, ours, random
+# Choose the log group to analyze. TARGET supports: all, no, ours, random.
+THRES = "0-8"
+TARGET = "random"
 FOLDERS = [
     f"logs/{DOMAIN}/scene_01_step50/when_{TARGET}_rand_0-3",
     f"logs/{DOMAIN}/scene_02_step50/when_{TARGET}_rand_0-3",
     f"logs/{DOMAIN}/scene_03_step50/when_{TARGET}_rand_0-3",
     f"logs/{DOMAIN}/scene_04_step50/when_{TARGET}_rand_0-3",
     f"logs/{DOMAIN}/scene_05_step50/when_{TARGET}_rand_0-3",
-    # f"logs/{DOMAIN}/scene_01_step50/thres_{THRES}",
-    # f"logs/{DOMAIN}/scene_02_step50/thres_{THRES}",
-    # f"logs/{DOMAIN}/scene_03_step50/thres_{THRES}",
-    # f"logs/{DOMAIN}/scene_04_step50/thres_{THRES}",
-    # f"logs/{DOMAIN}/scene_05_step50/thres_{THRES}",
+    # f"logs/{DOMAIN}/test_scene_01_step50/thres_{THRES}",
+    # f"logs/{DOMAIN}/test_scene_02_step50/thres_{THRES}",
+    # f"logs/{DOMAIN}/test_scene_03_step50/thres_{THRES}",
+    # f"logs/{DOMAIN}/test_scene_04_step50/thres_{THRES}",
+    # f"logs/{DOMAIN}/test_scene_05_step50/thres_{THRES}",
 ]
 
 OUTPUT_DIR = f"logs/{DOMAIN}/scene_metrics/step_50_thres_{TARGET}"
@@ -48,9 +61,25 @@ def _coerce_value(key: str, value: str) -> bool | int | float | str:
     return value
 
 
-def read_plan_result(path: Path) -> dict[str, bool | int | float | str] | None:
+def _parse_action_schema_row(line: str) -> tuple[str, int, int] | None:
+    """Parse one row from the fixed-width Action Schema Summary log table."""
+    columns = line.split()
+    if len(columns) < 3:
+        return None
+    schema, action_count, question_count = columns[:3]
+    if schema == "action_schema" or set(schema) == {"-"}:
+        return None
+    if not action_count.isdigit() or not question_count.isdigit():
+        return None
+    return schema, int(action_count), int(question_count)
+
+
+def read_plan_result(path: Path) -> PlanResult | None:
+    """Read the fields needed for analysis from one text log file."""
     section = ""
-    result: dict[str, bool | int | float | str] = {}
+    result: PlanResult = {
+        "action_schema_summary": {},
+    }
 
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as file:
@@ -62,12 +91,25 @@ def read_plan_result(path: Path) -> dict[str, bool | int | float | str] | None:
                 if line == "[Timing]":
                     section = "timing"
                     continue
+                if line == "[Action Schema Summary]":
+                    section = "action_schema_summary"
+                    continue
                 if not section:
                     continue
                 if line.startswith("[") and line.endswith("]"):
                     section = ""
                     continue
                 if not line:
+                    continue
+                if section == "action_schema_summary":
+                    parsed_row = _parse_action_schema_row(line)
+                    if parsed_row is None:
+                        continue
+                    schema, action_count, question_count = parsed_row
+                    result["action_schema_summary"][schema] = {
+                        "action_count": action_count,
+                        "question_count": question_count,
+                    }
                     continue
                 if ":" not in line:
                     continue
@@ -78,7 +120,6 @@ def read_plan_result(path: Path) -> dict[str, bool | int | float | str] | None:
                     result[key] = _coerce_value(key, value)
                 elif section == "timing" and key == "total_time":
                     result[key] = _coerce_value(key, value)
-                    break
     except OSError:
         return None
 
@@ -99,7 +140,7 @@ def _mean(values: Iterable[int | float]) -> float:
 
 
 def _metric_values(
-    results: list[dict[str, bool | int | float | str]],
+    results: list[PlanResult],
     key: str,
 ) -> list[float]:
     if key == "success":
@@ -108,7 +149,7 @@ def _metric_values(
 
 
 def _confidence_interval(
-    results: list[dict[str, bool | int | float | str]],
+    results: list[PlanResult],
     key: str,
     confidence_z: float = 1.96,
 ) -> str:
@@ -134,11 +175,11 @@ def _confidence_interval(
 
 def read_folder_results(
     folders: Iterable[str | Path],
-) -> tuple[list[Path], dict[Path, list[dict[str, bool | int | float | str] | None]]]:
+) -> tuple[list[Path], dict[Path, list[PlanResult | None]]]:
     folder_paths = [Path(folder) for folder in folders]
     files_by_folder = {folder: _list_files(folder) for folder in folder_paths}
     jobs = [(folder, index, path) for folder, files in files_by_folder.items() for index, path in enumerate(files)]
-    results_by_folder: dict[Path, list[dict[str, bool | int | float | str] | None]] = {
+    results_by_folder: dict[Path, list[PlanResult | None]] = {
         folder: [None] * len(files)
         for folder, files in files_by_folder.items()
     }
@@ -153,7 +194,7 @@ def read_folder_results(
 
 
 def _metric_value(
-    result: dict[str, bool | int | float | str] | None,
+    result: PlanResult | None,
     key: str,
 ) -> str:
     if result is None:
@@ -164,7 +205,7 @@ def _metric_value(
 
 
 def _aggregate_value(
-    results: list[dict[str, bool | int | float | str]],
+    results: list[PlanResult],
     key: str,
 ) -> str:
     if not results:
@@ -174,7 +215,7 @@ def _aggregate_value(
 
 def build_metric_table(
     folder_paths: list[Path],
-    results_by_folder: dict[Path, list[dict[str, bool | int | float | str] | None]],
+    results_by_folder: dict[Path, list[PlanResult | None]],
     metric_key: str,
     aggregate_label: str,
 ) -> tuple[list[str], list[list[str]]]:
@@ -219,19 +260,87 @@ def build_metric_table(
     return header, rows
 
 
-def _escape_markdown_cell(value: str) -> str:
-    return value.replace("|", r"\|").replace("\n", " ")
+def aggregate_action_schema_summary(
+    results: Iterable[PlanResult | None],
+) -> dict[str, dict[str, int | float]]:
+    """Sum action/query counts and recompute expected queries per action."""
+    summary: dict[str, dict[str, int | float]] = {}
+
+    for result in results:
+        if result is None:
+            continue
+        for schema, stats in result.get("action_schema_summary", {}).items():
+            schema_stats = summary.setdefault(schema, {
+                "action_count": 0,
+                "question_count": 0,
+            })
+            schema_stats["action_count"] += int(stats.get("action_count", 0))
+            schema_stats["question_count"] += int(stats.get("question_count", 0))
+
+    total_actions = 0
+    total_questions = 0
+    for stats in summary.values():
+        action_count = int(stats["action_count"])
+        question_count = int(stats["question_count"])
+        total_actions += action_count
+        total_questions += question_count
+        stats["expected_questions_per_action"] = (
+            question_count / action_count
+            if action_count > 0
+            else 0.0
+        )
+
+    summary["ALL"] = {
+        "action_count": total_actions,
+        "question_count": total_questions,
+        "expected_questions_per_action": (
+            total_questions / total_actions
+            if total_actions > 0
+            else 0.0
+        ),
+    }
+    return dict(sorted(summary.items(), key=lambda item: (item[0] == "ALL", item[0])))
 
 
-def format_markdown_table(header: list[str], rows: list[list[str]]) -> str:
-    escaped_header = [_escape_markdown_cell(value) for value in header]
-    escaped_rows = [[_escape_markdown_cell(value) for value in row] for row in rows]
-    lines = [
-        "| " + " | ".join(escaped_header) + " |",
-        "| " + " | ".join("---" for _ in escaped_header) + " |",
+def build_action_schema_table(
+    folder_paths: list[Path],
+    results_by_folder: dict[Path, list[PlanResult | None]],
+) -> tuple[list[str], list[list[str]]]:
+    """Build a CSV table with per-folder totals and one final TOTAL block."""
+    header = [
+        "folder",
+        "action_schema",
+        "action_count",
+        "question_count",
+        "expected_questions_per_action",
     ]
-    lines.extend("| " + " | ".join(row) + " |" for row in escaped_rows)
-    return "\n".join(lines)
+    rows: list[list[str]] = []
+    all_results: list[PlanResult | None] = []
+
+    for folder in folder_paths:
+        folder_results = results_by_folder[folder]
+        all_results.extend(folder_results)
+        summary = aggregate_action_schema_summary(folder_results)
+        for schema, stats in summary.items():
+            rows.append([
+                str(folder),
+                schema,
+                str(stats["action_count"]),
+                str(stats["question_count"]),
+                f"{stats['expected_questions_per_action']:.4f}",
+            ])
+
+    total_summary = aggregate_action_schema_summary(all_results)
+    for schema, stats in total_summary.items():
+        rows.append([
+            "TOTAL",
+            schema,
+            str(stats["action_count"]),
+            str(stats["question_count"]),
+            f"{stats['expected_questions_per_action']:.4f}",
+        ])
+
+    return header, rows
 
 
 def write_csv_table(path: str | Path, header: list[str], rows: list[list[str]]) -> None:
@@ -257,6 +366,11 @@ def main() -> None:
         output_path = output_dir / f"{file_name}.csv"
         write_csv_table(output_path, header, rows)
         print(output_path)
+
+    header, rows = build_action_schema_table(folder_paths, results_by_folder)
+    output_path = output_dir / "action_schema_summary.csv"
+    write_csv_table(output_path, header, rows)
+    print(output_path)
 
 
 if __name__ == "__main__":

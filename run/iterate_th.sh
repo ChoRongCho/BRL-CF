@@ -2,9 +2,11 @@
 
 set -euo pipefail
 
-thresholds=(0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+# thresholds=(0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+thresholds=(0.8)
+
 scenes=(1 2 3 4 5)
-iterations=35
+iterations=10
 
 total=$((${#thresholds[@]} * ${#scenes[@]} * iterations))
 current=0
