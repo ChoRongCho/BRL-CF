@@ -1,0 +1,213 @@
+\section{Related Work}~\label{related}
+In this section, we review related work along three directions. We first discuss knowledge-based robotic systems for structured environment representation. We then review planning under uncertainty, including POMDP-based and belief space methods. Finally, we examine human corrective systems that incorporate feedback for decision making.
+
+
+
+\begin{table*}[t]
+\caption{Qualitative comparison of related works.}
+\label{tab:comparison}
+\centering
+\small
+\begin{tabular}{p{5cm}ccccc}
+\toprule
+Related Works
+& \makecell{Symbolic KB}
+& \makecell{Symbolic \\ Planning}
+& \makecell{Planning under \\ Uncertainty}
+& \makecell{Human \\ Feedback}
+& \makecell{Proactive \\ Query} \\
+\midrule
+
+Logic-based knowledge inference
+
+~\cite{tenorth2012knowledge,liu2020graph,
+kunze2014using,hasegawa2023inferring,
+mota2021integrated,zhang2024icorpp,daruna2019robocse,
+mitrevsk2021ontology,olivares2019review,manzoor2021ontology}
+& $\bigcirc$
+& $\times$
+& △
+& $\times$ 
+& $\times$ \\
+
+Classical planning
+
+~\cite{fikes1971strips,aeronautiques1998pddl,
+helmert2009concise,hoffmann2001ff,
+helmert2006fast,correa2024lifted}
+& $\bigcirc$
+& $\bigcirc$
+& $\times$
+& $\times$ 
+& $\times$ \\
+
+LLM-based knowledge inference
+
+~\cite{ahn2022can,huang2022inner,singh2023progprompt,liang2023code,ding2023task,gu2024conceptgraphs,leanza2025conceptbot}
+& $\bigcirc$
+& △
+& $\times$
+& $\times$
+& $\times$ \\
+
+LLM-based planning
+
+~\cite{singh2025adaptbot,zhouenhancing,xu2024p,
+wang2025instructrag,kumar2026open,
+huang2023voxposer,dai2024optimal,
+liu2025delta,paulius2025bootstrapping,
+quartey2025verifiably}
+& $\bigcirc$
+& △
+& △
+& △
+& $\times$ \\
+
+POMDP-based planning
+
+~\cite{somani2013despot,bai2015intention,cramer2021probabilistic,bravo2019use,lauri2016exploration,kim2021plgrim,vanegas2016uav,xiao2019objectsearch,pajarinen2022composition}
+& $\times$
+& △
+& $\bigcirc$
+& $\times$
+& $\times$ \\
+
+
+Symbolic planning under uncertainty
+
+~\cite{li2026uncertainty,sanner2010symbolic,zhang2015corpp,serrano2021knowledge,
+tang2025tru}
+& $\bigcirc$
+& $\bigcirc$
+& $\bigcirc$
+& $\times$
+& $\times$ \\
+
+Human-on-the-loop systems
+
+~\cite{scharre2015introduction,
+nahavandi2017trusted,
+kelly2019hg,mandlekar2020human}
+& $\times$
+& $\times$
+& △
+& $\bigcirc$
+& $\times$ \\
+
+Uncertainty-aware query systems
+
+~\cite{knowno2023,liang2024introspective,
+mullen2025lbap}
+& △
+& $\times$
+& $\bigcirc$
+& $\bigcirc$
+& $\bigcirc$ \\
+
+Ours
+& $\bigcirc$
+& $\bigcirc$
+& $\bigcirc$
+& $\bigcirc$
+& $\bigcirc$ \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+
+\subsection{Knowledge-based Robotic System}~\label{rel:kb}
+In robotics, a knowledge base refers to a structured representation of information required for decision making. These systems use logic-based representations of objects, attributes, and relations to describe the world in a way that is understandable not only by robots but also by users~\cite{brachman2004knowledge, russell1995modern}. In particular, predicate-based symbolic representations such as~\cite{fikes1971strips, aeronautiques1998pddl} allow the system to describe both object properties and relationships among objects. In addition, graph-based models such as~\cite{johnson2015image, armeni20193d} are often used to represent these relationships more clearly by organizing objects and their connections in a simple structured form.
+
+
+To systematically define robot states and actions, planning languages such as PDDL~\cite{aeronautiques1998pddl} or FDR~\cite{helmert2009concise} are widely adopted. In these representations, a state is defined as a set of predicates, and each action is described by its preconditions and effects, which specify how the state changes after execution. This formulation provides a clear model of state transitions and allows robots to plan over a well-defined symbolic state space. As a result, classical planning techniques~\cite{hoffmann2001ff, helmert2006fast, correa2024lifted} can be applied to compute action sequences that achieve a given goal.
+
+
+
+\begin{comment}
+\sh{Knowledge-based robotic systems store observed facts and infer new knowledge from existing information. Logical and relational inference enables robots to identify facts that are not directly observed, combine multiple relations, and obtain plausible hidden states from contextual knowledge~\cite{tenorth2012knowledge,liu2020graph}. For example, a robot can infer the likely location of an unseen object from qualitative spatial relations, container-location relations, or place-object co-occurrence knowledge~\cite{kunze2014using,hasegawa2023inferring}. Commonsense reasoning connects symbolic knowledge with perceptual evidence and improves decision-making in partially observable environments~\cite{mota2021integrated,zhang2024icorpp,daruna2019robocse}. Ontology structures and type hierarchies support consistent integration of new observations and generalization across related objects, actions, and task contexts~\cite{mitrevsk2021ontology,olivares2019review,manzoor2021ontology}.
+
+Planning based on large language models (LLMs) has recently expanded the role of knowledge in robotic systems. Early LLM-based approaches employ procedural and commonsense knowledge encoded in LLMs to propose task decompositions or action sequences. The proposed plans are then grounded with robot affordances, programmatic interfaces, or execution feedback~\cite{ahn2022can,huang2022inner,singh2023progprompt,liang2023code,ding2023task}. Recent LLM-based approaches also incorporate external knowledge sources to compensate for incomplete observations. Some methods use scene graphs or open-vocabulary spatial representations to provide structured information about objects, places, and relations~\cite{gu2024conceptgraphs,leanza2025conceptbot}. Other methods retrieve demonstrations, procedural knowledge, or task-relevant constraints to guide long-horizon planning~\cite{singh2025adaptbot,zhouenhancing,xu2024p,wang2025instructrag,kumar2026open}. Related methods combine LLM-generated plans with symbolic constraints, spatial reasoning, or verification mechanisms to improve executability and consistency~\cite{huang2023voxposer,dai2024optimal,liu2025delta,paulius2025bootstrapping,quartey2025verifiably}. Some approaches translate natural language instructions into linear temporal logic (LTL) or hierarchical temporal logic and then use automata-based constrained decoding or safety verification to improve plan correctness~\cite{wu2025selp,rabiei2025ltlcodegen,li2025automatic}. Other approaches extend this framework to hierarchical specifications and multi-robot long-horizon planning under dynamic conditions~\cite{xu2025nl2hltl2plan,hu2026llm}.
+
+However, many knowledge-based robotic systems still rely on deterministic symbolic representations and do not explicitly model uncertainty in action effects, sensing, or world states~\cite{yang2018peorl,bouguerra2008monitoring}. Recent LLM-based planning methods are also vulnerable to grounding errors, incomplete retrieval, and hallucinated inferences. Knowledge-based robotic systems therefore provide rich semantic structure for planning, but such systems do not directly address uncertainty in observations, inferred facts, and knowledge validity. This gap in handling belief uncertainty motivates planning frameworks that explicitly reason over uncertain beliefs.}
+\end{comment}
+Knowledge-based robotic systems store observed facts and infer new knowledge from existing information within this symbolic representation. Logical and relational inference allows robots to identify facts that are not directly observed, combine multiple relations, and obtain plausible hidden states from contextual knowledge~\cite{tenorth2012knowledge,liu2020graph}. For example, a robot can infer the likely location of an unseen object from qualitative spatial relations, container-location relations, or place-object co-occurrence knowledge~\cite{kunze2014using,hasegawa2023inferring}. Commonsense reasoning connects symbolic knowledge with perceptual evidence and supports decision making in partially observable environments~\cite{mota2021integrated,zhang2024icorpp,daruna2019robocse}. Ontology structures and type hierarchies further support consistent integration of new observations and generalization across related objects, actions, and task contexts~\cite{mitrevsk2021ontology,olivares2019review,manzoor2021ontology}.
+
+While symbolic knowledge-based systems provide structured representations and support logical inference, recent approaches have explored the use of large language models (LLMs) to further expand how knowledge is utilized in robotic planning. Early LLM-based approaches employ procedural and commonsense knowledge encoded in LLMs to propose task decompositions or action sequences. The proposed plans are then grounded with robot affordances, programmatic interfaces, or execution feedback~\cite{ahn2022can,huang2022inner,singh2023progprompt,liang2023code,ding2023task}. Recent LLM-based approaches also incorporate external knowledge sources to compensate for incomplete observations. Some methods use scene graphs or open-vocabulary spatial representations to provide structured information about objects, places, and relations~\cite{gu2024conceptgraphs,leanza2025conceptbot}. Other methods retrieve demonstrations, procedural knowledge, or task-relevant constraints to guide long-horizon planning~\cite{singh2025adaptbot,zhouenhancing,xu2024p,wang2025instructrag,kumar2026open}. Related methods combine LLM-generated plans with symbolic constraints, spatial reasoning, or verification mechanisms to improve executability and consistency~\cite{huang2023voxposer,dai2024optimal,liu2025delta,paulius2025bootstrapping,quartey2025verifiably}.
+
+However, many knowledge-based robotic systems still rely on deterministic symbolic representations and assume a single consistent world state, which limits their ability to represent multiple hypotheses under uncertainty~\cite{yang2018peorl,bouguerra2008monitoring}. As a result, such systems do not explicitly model uncertainty in action effects, sensing, or world states, and inferred facts are typically committed as definite knowledge. Recent LLM-based planning methods also suffer from grounding errors, incomplete retrieval, and hallucinated inferences, and do not maintain structured uncertainty over alternative states. While knowledge-based systems provide rich semantic structure for planning, they do not directly address uncertainty in observations, inferred facts, and knowledge validity. 
+
+
+To address this limitation, we maintain multiple symbolic hypotheses over possible worlds instead of committing inferred facts as deterministic knowledge. Our framework combines symbolic knowledge-based reasoning with planning under uncertainty, allowing the robot to reason over uncertain inferred states while selectively requesting human feedback if the uncertainty becomes high.
+
+
+
+\subsection{Planning under Uncertainty}~\label{rel:PlanningUncertainty}
+
+
+\subsubsection{POMDP}~\label{rel:pu_pomdp}
+Unlike deterministic symbolic knowledge-based systems that assume a single world state, POMDPs explicitly reason over uncertainty through belief representations over multiple possible states. In robotic environments, such uncertainty naturally arises from sensor noise, occlusions, incomplete observations, and unexpected state changes. Sequential decision-making under these conditions has been extensively studied within the framework of POMDPs~\cite{somani2013despot,bai2015intention,cramer2021probabilistic,bravo2019use}.
+
+A key distinction between a POMDP and an MDP is the introduction of a belief state, which represents a probabilistic distribution over possible states when the true state cannot be directly observed. Accordingly, a wide range of solution methods have been proposed, including point-based value iteration~\cite{pineau2003point}, online tree search~\cite{ross2008online}, and Monte Carlo tree search (MCTS)~\cite{silver2010monte}.
+
+Despite these advances, effectively representing and updating the belief state remains a fundamental challenge. Since a belief is inherently a continuous distribution over the state space, exact inference is computationally difficult. Moreover, as the state space grows, the belief space expands combinatorially, making inference increasingly intractable. As a result, various approaches have been proposed to approximate the belief state.
+
+\subsubsection{Belief Approximation}~\label{rel:pu_belief_approx}
+Studies on belief approximation can be broadly categorized into particle-based and factored-based. Particle-based methods approximate the belief as a set of sampled states and have been widely adopted due to their natural compatibility with sampling-based online planning~\cite{doshi2005particle, lim2023optimality}. For example,~\cite{silver2010monte} maintains a set of particles as a history-conditioned belief and estimates action values by sampling future trajectories from a generative model without performing exact Bayesian belief updates. Similar sampling-based ideas have also been extended to large and continuous POMDPs, where DESPOT~\cite{somani2013despot} evaluates a limited set of sampled scenarios and POMCPOW~\cite{sunberg2018pomcpow} controls search tree growth in continuous action and observation spaces.
+
+
+In robotic domains, particle-based belief representations are widely used in localization, navigation, SLAM, object search, and manipulation, where particles encode hypotheses over robot, map, and object states under uncertainty. In navigation,~\cite{lauri2016exploration} combines POMCP with model predictive control to maximize information gain over occupancy-grid maps, while~\cite{kim2021plgrim} uses hierarchical local online POMDP planning for exploration in large unknown environments. Similar representations have also been used for continuous control under uncertainty, including autonomous driving at occluded intersections~\cite{brechtel2014continuous} and UAV collision avoidance or target tracking under partial observability~\cite{bai2011uav,vanegas2016uav}. In object search and manipulation, particles often represent complete scene hypotheses. For example,~\cite{xiao2019objectsearch} samples visible and occluded object configurations for cluttered object search, while~\cite{pajarinen2017multiobject,pajarinen2022composition} uses particle-based scene hypotheses for multi-object manipulation. Collectively, these studies show that particle beliefs provide a flexible approximation for preserving multimodal dependencies among robot, environment, and object states.
+
+
+% \gy{For example,~\cite{silver2010monte} maintains a set of particles as a history-conditioned belief and performs  planning directly over this representation. More generally, particle-based belief approximation replaces the posterior $b_t(s)=p(s_t=s \mid h_t)$ with an empirical distribution over a finite set of sampled states, $\hat{b}_t=\{s_t^{(i)}\}_{i=1}^{N}$, or its weighted variant. This representation is especially suited to online POMDP planning, where the belief at each action--observation history node is approximated by the particles that reach it. In Monte-Carlo planning methods such as POMCP, particles are sampled from the current belief and propagated through a generative model that produces next-state, observation, and reward samples. Thus, the planner can estimate action values through simulation rollouts without explicitly enumerating the full state space or performing exact Bayesian belief updates~\cite{silver2010monte,lauri2023pomdp}. Similar sampling-based principles have also been extended to large or continuous POMDPs, for example through scenario-based online planning in DESPOT~\cite{somani2013despot} and progressive widening for continuous action and observation spaces in POMCPOW~\cite{sunberg2018pomcpow}.}
+
+% \gy{Beyond planning, particle-based belief representations have been widely adopted across robotic domains in which uncertainty cannot be compactly captured by a single deterministic state. In localization, navigation, and active SLAM, particles encode hypotheses over the robot pose and map state, while actions correspond to local motion primitives or trajectories. The specific form of the state, action, and observation spaces varies by domain, but the underlying particle-based inference mechanism remains consistent. In navigation, POMCP combined with MPC has been used for robotic exploration by selecting short primitive trajectories that maximize the expected information gain about an occupancy-grid map~\cite{lauri2016exploration}. Hierarchical exploration frameworks have also employed online POMDP planning locally to reduce uncertainty over large unknown environments~\cite{kim2021plgrim}. In autonomous driving, particle or sample-set representations address continuous uncertainty over the states of other traffic participants and occluded objects; for instance, \cite{brechtel2014continuous} formulates velocity control at occluded intersections as a continuous-state POMDP, representing beliefs and value functions with samples. In aerial robotics and target search, Monte-Carlo POMDP methods have been used for UAV collision avoidance and target tracking under partial observability, where particles represent uncertainty over target or aircraft states~\cite{bai2011uav,vanegas2016uav}. In object search and manipulation, particles represent complete scene hypotheses, not merely individual robot states. For cluttered object search, belief particles are generated by sampling visible object poses from segmented scenes with added noise; fully occluded objects are instead sampled from occluded volumes behind visible objects. A POMCP-based planner then selects sensing or manipulation actions to reveal or grasp the target~\cite{xiao2019objectsearch}. Similar particle representations have been used in multi-object manipulation, where each particle corresponds to a hypothetical object composition of the scene, and grasping or moving an object provides observations that update the belief over these hypotheses~\cite{pajarinen2017multiobject,pajarinen2022composition}. Collectively, these applications demonstrate that particle beliefs offer a flexible, nonparametric approximation capable of preserving multimodal dependencies among robot, environment, and object states---particularly when factored independence assumptions are difficult to justify.}
+
+In contrast, factored belief representations model the belief by decomposing the state into a set of variables and exploiting their structure~\cite{hansen2000dynamic, feng2001approximate, veiga2014point}. Such approaches have been widely used in structured probabilistic models, including dynamic Bayesian networks and Hidden Markov Models~\cite{eddy1996hidden}, where the state is represented in a factored form. To improve computational efficiency, various approximate inference methods have been proposed to reduce the complexity of belief updates by relaxing dependencies among variables. For example,~\cite{murphy2013factored} approximates belief updates by maintaining a factorized representation while partially accounting for dependencies between variables. While factored representations exploit internal structure of state space, their independence assumptions break in symbolic planning where facts are tightly linked by action constraints. Therefore, we use a particle-based approximation to preserve these dependencies.
+
+
+\subsubsection{Symbolic Planning under Uncertainty}~\label{rel:pu_sym}
+Symbolic planning formalisms such as PDDL~\cite{aeronautiques1998pddl}, STRIPS~\cite{fikes1971strips}, and FDR~\cite{helmert2009concise} have been widely used due to their interpretability~\cite{ghallab2016automated}. These representations are typically based on first-order logic or similar discrete formalisms~\cite{lifschitz2019answer} which describes planning problems through explicit constraints and state transition rules. However, since traditional predicate logic only allows binary true or false values, it is difficult to directly model observation noise or state uncertainty.
+To address this limitation, various approaches have attempted to integrate probabilistic reasoning into logical representations. For example, ~\cite{richardson2006markov} assign weights to logical rules to enable probabilistic inference over uncertain relationships, and~\cite{qu2019probabilistic} combine logical structure with probabilistic reasoning.
+
+However, these approaches primarily focus on building inference models, and their high cost in model construction is unsuitable for online decision-making with complex constraints. 
+
+As a result, several studies have explored planning under uncertainty while preserving symbolic structure~\cite{li2026uncertainty,sanner2010symbolic}. For example,~\cite{zhang2015corpp} encodes commonsense knowledge in ASP~\cite{lifschitz2019answer} to construct a prior over possible worlds and integrates it with probabilistic planning~\cite{kurniawati2008sarsop}. However, since the belief is defined over a set of possible worlds, the computational cost increases as the number of states grows. To address this, some works organize possible worlds in a structured manner. For instance,~\cite{serrano2021knowledge} construct a state space tree and a hierarchy of POMDPs based on domain knowledge, reducing complexity by leveraging abstraction. More recently, large language models have been used for belief approximation, as in~\cite{tang2025tru}, which builds a tree of hypotheses and uses LLMs to generate particles in open-ended settings. While these approaches enable more flexible or scalable belief representations, they either depend on predefined hierarchical structures or rely on the quality and consistency of generated hypotheses.
+
+Prior work has explored various belief representations, but global belief approaches remain sample-inefficient under strong symbolic constraints. We instead approximate belief locally by sampling states reachable under each action~\cite{kurniawati2008sarsop}. These local beliefs are organized in a tree structure, and planning is performed using the off-the-shelf planner POMCP within an interpretable symbolic space. However, uncertainty in real-world robotic systems cannot always be resolved through planning and observation alone. Robots may therefore require additional information to disambiguate conflicting hypotheses, which motivates human corrective systems that selectively request feedback under high uncertainty.
+
+
+\subsection{Human Corrective System}~\label{rel:HCS}
+\ny{Despite recent advances in robotic systems, robots still face operational uncertainty in dynamic and unpredictable real-world environments. Prior work has addressed this limitation by involving humans in different forms of robot autonomy~\cite{kelly2019hg, mandlekar2020human}. In particular, in human-on-the-loop (HOTL) systems, robots execute tasks autonomously, while human operators monitor the system and revise or override robot decisions if failures or errors occur~\cite{scharre2015introduction, nahavandi2017trusted}. This supervisory structure can improve safety and robustness because human operators can compensate for errors that autonomous systems cannot resolve.}
+
+\ny{However, HOTL systems require operators to sustain attention and detect failures during robot operation. To provide effective corrective feedback, operators must first notice that the robot is in an uncertain or erroneous state. Situation awareness research suggests that operators must then understand the current situation, project possible consequences, and determine an appropriate intervention~\cite{endsley2018automation}. This cognitive process can be difficult in repetitive tasks. Operators may experience vigilance decrement because continuous exposure to monotonous monitoring tasks can slow responses and reduce detection accuracy~\cite{davies1982psychology, davies2013human}. Operators may also experience inattentional blindness, in which visible failures are missed if attention is not directed to the relevant event~\cite{mack2003inattentional}. As a result, continuous supervision can increase workload and fatigue~\cite{wong2017workload}. Continuous supervision can also reduce the likelihood that operators detect critical robot failures~\cite{wong2017workload, galster2006managing}.}
+
+\ny{Prior work has shown that robots can improve task performance, team efficiency, and subjective satisfaction if they proactively provide assistance during human-robot collaboration~\cite{baraglia2017efficient}. This finding suggests that proactive robot behavior can support collaboration by reducing the need for humans to manage every decision or detect every need for intervention. In parallel, uncertainty-aware robot systems have advanced toward determining when human input is needed. For example, conformal prediction-based methods construct prediction sets with statistical guarantees and use the size of these sets to decide whether to query the user~\cite{knowno2023, liang2024introspective, mullen2025lbap}. These methods show that robots can use uncertainty estimates to reduce unnecessary human intervention.}
+
+\ny{However, studies that develop and evaluate system-initiated query systems have mainly focused on technical performance, such as task performance, uncertainty calibration, and query efficiency. Human factors, such as workload and fatigue, can also affect task performance in automated systems that involve human operators~\cite{murata2000ergonomics, borragan2017cognitive, rajavenkatanarayanan2019towards}. Therefore, system-initiated corrective interaction should be evaluated not only in terms of technical performance but also in terms of operator burden and fatigue.}
+
+\ny{Building on this gap, we examine how system-initiated corrective interaction affect operator workload, fatigue, and task performance in automated robot systems. Our system does not require users to continuously supervise the robot to detect failures. Instead, users provide corrective feedback only if the system requests input. This interaction structure shifts part of the problem detection burden from the user to the robot.}
+
+
+\sj{
+% With the emergence of large language models, natural language-based feedback and correction mechanisms have become increasingly prominent~\cite{huang2022inner, sun2023adaplanner, zha2024droc, joublin2024copal}. In LLM-based planning, uncertainty is commonly quantified using token-level probabilities or entropy, and human intervention is triggered when confidence falls below a threshold~\cite{zheng2024evaluating}. Building on this, conformal prediction-based methods construct prediction sets with statistical guarantees and use their size to decide whether to query the user~\cite{ren2023knowno, liang2024introspective, mullen2025lbap}. These approaches aim to balance task success and human effort by minimizing unnecessary interactions.
+}
+
+
+
+\begin{comment}
+Human corrective system은 로봇의 의사결정 과정에 인간을 포함시켜 불확실성을 완화하고 시스템의 신뢰성을 향상시키기 위한 중요한 접근으로 오랜 기간 연구되어 왔다. 이러한 방식은 주로 shared autonomy나 interactive planning과 같은 형태로 나타나며, 인간이 계획 생성이나 실행 과정에 직접 개입하여 로봇의 행동을 수정하거나 보완한다.
+
+특히 초기의 인간–로봇 상호작용 연구들에서는 로봇의 자율성이 충분히 확보되지 않았기 때문에, 사람이 지속적으로 시스템을 관제하거나 모니터링하는 형태가 일반적이었다. 이러한 접근은 안정성과 안전성을 보장하는 데에는 효과적이지만, 인간의 지속적인 개입을 요구하기 때문에 작업 부하를 증가시키고 확장성에 한계를 가진다. 
+
+
+액션에 대해서 물어보는 시스템: method
+최근에는 단순한 직접 개입을 넘어서, 로봇이 스스로 불확실한 상황을 인식하고 필요할 때만 인간에게 도움을 요청하는 방향으로 연구가 확장되고 있다. 이 과정에서 핵심은 언제 질문을 해야 하는지, 그리고 무엇을 질문해야 하는지를 결정하는 것이다. 기존 연구에서는 preference learning이나 intention inference와 같이 인간의 의도를 추정하기 위해 질의를 활용하는 방법이 제안되었으며, 이를 통해 로봇은 제한된 상호작용만으로도 더 나은 의사결정을 수행할 수 있다.
+대형 언어 모델의 등장 이후에는 자연어를 기반으로 한 피드백 및 보정 방식이 활발히 연구되고 있다. 특히 LLM 기반 플래닝에서는 모델이 생성한 행동에 대한 신뢰도를 추정하고, 불확실성이 높은 경우 인간에게 검증을 요청하는 방식이 사용된다. 예를 들어, token 확률이나 entropy를 기반으로 불확실성을 정량화하거나, conformal prediction을 활용하여 prediction set을 구성하고 그 크기를 기준으로 인간 개입 여부를 결정하는 접근들이 제안되었다~\cite{}. 이러한 방법들은 일정 수준의 통계적 보장을 제공하면서도 불필요한 인간 개입을 줄이는 데 기여한다.
+
+그러나 기존 접근들은 주로 action selection 수준에서의 불확실성에 초점을 두고 있으며, 상태 인식이나 지식의 불완전성에서 발생하는 불확실성을 명시적으로 다루지 않는 한계가 있다. 특히 perception 결과나 knowledge base의 오류로 인해 잘못된 belief가 형성되는 경우, 이를 정량적으로 평가하고 인간 피드백과 연계하는 연구는 상대적으로 부족하다.
+
+따라서 불확실성 기반 상호작용을 보다 효과적으로 수행하기 위해서는, 단순히 행동 선택의 신뢰도뿐 아니라 상태 추정과 지식의 정확성까지 포함하는 통합적인 불확실성 모델이 필요하다. 이러한 관점에서, belief 기반의 불확실성 정량화와 정보 이득에 기반한 질의 선택은 인간 개입을 최소화하면서도 효율적인 상호작용을 가능하게 하는 중요한 방향으로 볼 수 있다.
+
+\end{comment}

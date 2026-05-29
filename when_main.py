@@ -2,8 +2,16 @@
 Docstring for main
 """
 
+from pathlib import Path
 import random
+import sys
 from time import time
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 from utils.arguments import parse_args
 from environments.env import Environment
 from models.belief_update import BeliefManager

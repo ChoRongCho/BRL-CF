@@ -87,9 +87,9 @@ case "$STRATEGY" in
 esac
 
 scene_id=$(printf "%02d" "$((10#$SCENE))")
-initial_state="domain/${DOMAIN}/scene_${scene_id}.yaml"
-domain_rule="domain/${DOMAIN}/domain_rule.yaml"
-robot_skill="domain/${DOMAIN}/robot_skill.yaml"
+initial_state="scripts/domain/${DOMAIN}/scene_${scene_id}.yaml"
+domain_rule="scripts/domain/${DOMAIN}/domain_rule.yaml"
+robot_skill="scripts/domain/${DOMAIN}/robot_skill.yaml"
 
 if [[ ! -f "$initial_state" ]]; then
     echo "Initial state file not found: ${initial_state}"

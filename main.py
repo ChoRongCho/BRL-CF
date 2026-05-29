@@ -2,7 +2,15 @@
 Docstring for main
 """
 
+from pathlib import Path
+import sys
 from time import time
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 from utils.arguments import parse_args
 from utils.asp import solve_asp
 from environments.env import Environment
