@@ -1,0 +1,127 @@
+\section{Experiment Settings}~\label{appx:expset}
+
+This appendix summarizes the parameters and scenario files used in the experiments. The planner-level parameters are defined in \path{scripts/utils/arguments.py}. The domain-level parameters are defined in \path{scripts/models/tomato} and \path{scripts/models/blocksworld}. Scenario configurations are taken from \path{scripts/domain/tomato} and \path{scripts/domain/wastesorting}.
+
+\subsection{Planner and Feedback Parameters}~\label{app:planner_params}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Default planner and experiment parameters.}
+\label{tab:planner_params}
+\begin{tabularx}{\linewidth}{lllX}
+\toprule
+Category & Parameter & Value & Description \\
+\midrule
+POMCP & \texttt{gamma} & 0.95 & Discount factor. \\
+POMCP & \texttt{c} & 1.0 & UCB exploration constant. \\
+POMCP & \texttt{max\_depth} & 20 & Maximum rollout depth. \\
+POMCP & \texttt{n\_simulations} & 100 & Number of simulations per planning step. \\
+POMCP & \texttt{epsilon} & 0.005 & Discount-based stopping threshold. \\
+Experiment & \texttt{seed} & 42 & Random seed. \\
+Experiment & \texttt{max\_step} & 20 & Maximum number of executed actions per episode. \\
+Belief & \texttt{max\_particles} & 100 & Maximum number of belief particles after update. \\
+Feedback & \texttt{threshold} & 0.8 & Confidence threshold for feedback. \\
+Feedback & \texttt{random\_query\_prob} & 0.3 & Query probability for the random feedback timing baseline. \\
+Fluent & \texttt{fluent\_sample\_sigma} & 0.05 & Gaussian support width for observed fluent particles. \\
+Fluent & \texttt{pick\_fluent\_sigma} & 0.05 & Execution tolerance for fluent comparison. \\
+Fluent & \texttt{pick\_success\_rate} & 0.88 & Nominal pick success probability for fluent commands. \\
+Fluent & \texttt{pick\_success\_floor} & 0.05 & Minimum pick success probability for distant fluent particles. \\
+Ablation & \texttt{f\_strategy} & 1 & Feedback timing strategy. \\
+Ablation & \texttt{q\_strategy} & 1 & Question selection strategy. \\
+Ablation & \texttt{answer\_type} & \texttt{auto} & Answer source used during experiments. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Domain Model Parameters}~\label{app:model_params}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tomato harvesting model parameters.}
+\label{tab:tomato_model_params}
+\begin{tabularx}{\linewidth}{lllX}
+\toprule
+Model & Parameter & Value & Description \\
+\midrule
+Transition & \texttt{navigate\_success\_rate} & 0.90 & Probability that navigation reaches the intended location. \\
+Transition & \texttt{prepare\_nav\_success\_rate} & 1.00 & Probability that navigation preparation succeeds. \\
+Transition & \texttt{detect\_success\_rate} & 0.95 & Probability that detection produces the intended transition outcome. \\
+Transition & \texttt{pick\_success\_rate} & 0.95 & Probability that picking succeeds. \\
+Transition & \texttt{scan\_success\_rate} & 0.90 & Probability that scan-related transition succeeds. \\
+Transition & \texttt{place\_success\_rate} & 0.99 & Probability that placing a tomato succeeds. \\
+Transition & \texttt{discard\_success\_rate} & 0.99 & Probability that discarding a tomato succeeds. \\
+Observation & \texttt{noise} & 0.10 & Default observation noise. \\
+Observation & \texttt{observation\_source} & \texttt{true\_init} & Ground-truth source for simulated detection and scan observations. \\
+Observation & \texttt{detect\_observed\_success\_rate} & 0.85 & Probability that a tomato is observed during detection. \\
+Observation & \texttt{detect\_classification\_success\_rate} & 0.95 & Probability that a detected tomato is classified correctly. \\
+Observation & \texttt{scan\_success\_rate} & 0.85 & Probability that scanning returns the correct ripeness label. \\
+Observation & \texttt{navigate\_success\_rate} & 0.95 & Probability that navigation observation is correct. \\
+Reward & \texttt{place} & 5.0 & Reward for loading an observed and scanned ripe tomato. \\
+Reward & \texttt{discard} & 5.0 & Reward for discarding an observed and scanned rotten tomato. \\
+Reward & Other actions & 0.0 & No additional action reward. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Blocksworld model parameters.}
+\label{tab:blocksworld_model_params}
+\begin{tabularx}{\linewidth}{lllX}
+\toprule
+Model & Parameter & Value & Description \\
+\midrule
+Transition & \texttt{navigate\_success\_rate} & 0.90 & Probability that navigation reaches the intended location. \\
+Observation & \texttt{noise} & 0.15 & Default observation noise. \\
+Observation & \texttt{likelihood} & 1.0 & Constant likelihood returned by the current observation model. \\
+Reward & \texttt{calculate\_reward} & 1 & Constant reward returned by the current reward model. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tomato Harvesting Scenarios}~\label{app:tomato_scenarios}
+
+All tomato harvesting scenarios use four tomatoes, one robot, two stems, and the dock station. The common initial facts include \texttt{handempty(brl\_robot)} and \texttt{located(brl\_robot,dock\_station)}. Table~\ref{tab:tomato_scenarios} lists the hidden true state and goal facts that differ across scenarios.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tomato harvesting scenario settings from \texttt{scripts/domain/tomato}.}
+\label{tab:tomato_scenarios}
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+Scenario & True initial state & Goal \\
+\midrule
+\texttt{scene\_01} & \texttt{ripe(tomato1)}, \texttt{rotten(tomato2)}, \texttt{ripe(tomato3)}, \texttt{unripe(tomato4)}; \texttt{at(tomato1,stem\_01)}, \texttt{at(tomato2,stem\_01)}, \texttt{at(tomato3,stem\_02)}, \texttt{at(tomato4,stem\_02)} & Observe all tomatoes; \texttt{loaded(tomato1,brl\_robot)}, \texttt{discarded(tomato2)}, \texttt{loaded(tomato3,brl\_robot)}, \texttt{at(tomato4,stem\_02)} \\
+\texttt{scene\_02} & \texttt{ripe(tomato1)}, \texttt{unripe(tomato2)}, \texttt{rotten(tomato3)}, \texttt{ripe(tomato4)}; tomatoes 1--2 at \texttt{stem\_01}, tomatoes 3--4 at \texttt{stem\_02} & Observe all tomatoes; \texttt{loaded(tomato1,brl\_robot)}, \texttt{at(tomato2,stem\_01)}, \texttt{discarded(tomato3)}, \texttt{loaded(tomato4,brl\_robot)} \\
+\texttt{scene\_03} & \texttt{ripe(tomato1)}, \texttt{unripe(tomato2)}, \texttt{ripe(tomato3)}, \texttt{rotten(tomato4)}; tomatoes 1--2 at \texttt{stem\_01}, tomatoes 3--4 at \texttt{stem\_02} & Observe all tomatoes; \texttt{loaded(tomato1,brl\_robot)}, \texttt{at(tomato2,stem\_01)}, \texttt{loaded(tomato3,brl\_robot)}, \texttt{discarded(tomato4)} \\
+\texttt{scene\_04} & \texttt{rotten(tomato1)}, \texttt{ripe(tomato2)}, \texttt{ripe(tomato3)}, \texttt{unripe(tomato4)}; tomatoes 1--2 at \texttt{stem\_01}, tomatoes 3--4 at \texttt{stem\_02} & Observe all tomatoes; \texttt{discarded(tomato1)}, \texttt{loaded(tomato2,brl\_robot)}, \texttt{loaded(tomato3,brl\_robot)}, \texttt{at(tomato4,stem\_02)} \\
+\texttt{scene\_05} & \texttt{rotten(tomato1)}, \texttt{unripe(tomato2)}, \texttt{ripe(tomato3)}, \texttt{ripe(tomato4)}; tomatoes 1--2 at \texttt{stem\_01}, tomatoes 3--4 at \texttt{stem\_02} & Observe all tomatoes; \texttt{discarded(tomato1)}, \texttt{at(tomato2,stem\_01)}, \texttt{loaded(tomato3,brl\_robot)}, \texttt{loaded(tomato4,brl\_robot)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Waste Sorting Scenarios}~\label{app:wastesorting_scenarios}
+
+All waste sorting scenarios use four waste objects, one robot, and four bins: \texttt{pl\_bin}, \texttt{ca\_bin}, \texttt{pp\_bin}, and \texttt{gw\_bin}. The common initial facts include \texttt{handempty(brl\_robot)}. Table~\ref{tab:wastesorting_scenarios} lists the hidden waste type assignments and target bin placements.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Waste sorting scenario settings from \texttt{scripts/domain/wastesorting}.}
+\label{tab:wastesorting_scenarios}
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+Scenario & True initial state & Goal \\
+\midrule
+\texttt{scene\_01} & \texttt{paper(waste1)}, \texttt{general(waste2)}, \texttt{plastic(waste3)}, \texttt{can(waste4)} & \texttt{in\_bin(waste1,pp\_bin)}, \texttt{in\_bin(waste2,gw\_bin)}, \texttt{in\_bin(waste3,pl\_bin)}, \texttt{in\_bin(waste4,ca\_bin)} \\
+\texttt{scene\_02} & \texttt{can(waste1)}, \texttt{general(waste2)}, \texttt{paper(waste3)}, \texttt{can(waste4)} & \texttt{in\_bin(waste1,ca\_bin)}, \texttt{in\_bin(waste2,gw\_bin)}, \texttt{in\_bin(waste3,pp\_bin)}, \texttt{in\_bin(waste4,ca\_bin)} \\
+\texttt{scene\_03} & \texttt{plastic(waste1)}, \texttt{plastic(waste2)}, \texttt{paper(waste3)}, \texttt{general(waste4)} & \texttt{in\_bin(waste1,pl\_bin)}, \texttt{in\_bin(waste2,pl\_bin)}, \texttt{in\_bin(waste3,pp\_bin)}, \texttt{in\_bin(waste4,gw\_bin)} \\
+\texttt{scene\_04} & \texttt{paper(waste1)}, \texttt{paper(waste2)}, \texttt{can(waste3)}, \texttt{general(waste4)} & \texttt{in\_bin(waste1,pp\_bin)}, \texttt{in\_bin(waste2,pp\_bin)}, \texttt{in\_bin(waste3,ca\_bin)}, \texttt{in\_bin(waste4,gw\_bin)} \\
+\texttt{scene\_05} & \texttt{paper(waste1)}, \texttt{paper(waste2)}, \texttt{can(waste3)}, \texttt{can(waste4)} & \texttt{in\_bin(waste1,pp\_bin)}, \texttt{in\_bin(waste2,pp\_bin)}, \texttt{in\_bin(waste3,ca\_bin)}, \texttt{in\_bin(waste4,ca\_bin)} \\
+\bottomrule
+\end{tabularx}
+\end{table}
