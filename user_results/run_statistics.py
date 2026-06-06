@@ -5,16 +5,38 @@ import csv
 import math
 import re
 from collections import defaultdict
-from itertools import product
+from itertools import combinations, product
 from pathlib import Path
+
+from process_responses import (
+    CONDITION_ORDER,
+    DEFAULT_ANSWER_PATH,
+    DEFAULT_RESPONSE_PATH,
+    DEFAULT_SURVEY_PATH,
+    DOMAIN_ORDER,
+    QUESTIONS,
+    build_answer_lookup,
+    condition_value,
+    normalize,
+    read_csv_dicts,
+    read_csv_table,
+    read_survey_option_codes,
+    score_sagat_rows,
+    unique_header_indices,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_RESPONSE_PATH = BASE_DIR / "response.csv"
 DEFAULT_CSV_OUTPUT_PATH = BASE_DIR / "stats_results.csv"
+DEFAULT_MATRIX_OUTPUT_PATH = BASE_DIR / "stats_pairwise_matrix.csv"
+DEFAULT_SCORES_OUTPUT_PATH = BASE_DIR / "participant_condition_scores.csv"
 DEFAULT_TEXT_OUTPUT_PATH = BASE_DIR / "stats_summary.txt"
 
-CONDITION_ORDER = ("C1: All", "C2: No", "C3: Ours1", "C4: Ours2", "C5: KnowNo")
+DOMAIN_PANELS: tuple[tuple[str, str | None], ...] = (
+    ("토마토 수확", "토마토 수확"),
+    ("분리수거", "분리수거"),
+    ("통합", None),
+)
 CONDITION_SHORT = {
     "C1: All": "C1",
     "C2: No": "C2",
@@ -22,124 +44,110 @@ CONDITION_SHORT = {
     "C4: Ours2": "C4",
     "C5: KnowNo": "C5",
 }
-PRIMARY_CONDITION = "C4: Ours2"
 PLANNED_COMPARISONS = (
+    ("C3: Ours1", "C1: All"),
+    ("C3: Ours1", "C2: No"),
+    ("C3: Ours1", "C5: KnowNo"),
     ("C4: Ours2", "C1: All"),
     ("C4: Ours2", "C2: No"),
     ("C4: Ours2", "C3: Ours1"),
     ("C4: Ours2", "C5: KnowNo"),
 )
 
-METRICS = {
-    "Workload_NASA_low": {
+SCALE_METRICS: dict[str, dict[str, object]] = {
+    "NASA_TLX_workload": {
         "items": ("N1", "N2", "N3", "N5", "N6"),
         "direction": "lower",
-        "description": "NASA workload excluding self-rated performance",
+        "description": "NASA-TLX workload excluding N4 performance",
     },
-    "Fatigue_low": {
-        "items": ("F",),
-        "direction": "lower",
-        "description": "Fatigue",
-    },
-    "Performance_high": {
-        "items": ("N4",),
-        "direction": "higher",
-        "description": "Self-rated task success/performance",
-    },
-    "SART_demand_low": {
-        "items": ("S1", "S2", "S3"),
-        "direction": "lower",
-        "description": "Situation-awareness demand",
-    },
-    "SART_supply_high": {
-        "items": ("S4", "S5", "S6", "S7"),
-        "direction": "higher",
-        "description": "Situation-awareness supply; S6 is not reverse-coded here",
-    },
-    "SART_understanding_high": {
-        "items": ("S8", "S9", "S10"),
-        "direction": "higher",
-        "description": "Situation understanding",
-    },
+    "NASA_N1_mental": {"items": ("N1",), "direction": "lower", "description": "NASA-TLX mental demand"},
+    "NASA_N2_physical": {"items": ("N2",), "direction": "lower", "description": "NASA-TLX physical demand"},
+    "NASA_N3_temporal": {"items": ("N3",), "direction": "lower", "description": "NASA-TLX temporal demand"},
+    "NASA_N4_performance": {"items": ("N4",), "direction": "higher", "description": "NASA-TLX perceived performance"},
+    "NASA_N5_effort": {"items": ("N5",), "direction": "lower", "description": "NASA-TLX effort"},
+    "NASA_N6_frustration": {"items": ("N6",), "direction": "lower", "description": "NASA-TLX frustration"},
+    "Fatigue": {"items": ("F",), "direction": "lower", "description": "Fatigue"},
+    "SART_demand": {"items": ("S1", "S2", "S3"), "direction": "lower", "description": "SART demand"},
+    "SART_supply": {"items": ("S4", "S5", "S6", "S7"), "direction": "higher", "description": "SART supply"},
+    "SART_understanding": {"items": ("S8", "S9", "S10"), "direction": "higher", "description": "SART understanding"},
 }
 
-CSV_FIELDS = [
-    "metric",
-    "metric_description",
+STAT_FIELDS = [
+    "measure",
+    "description",
+    "domain_panel",
     "direction",
+    "test_family",
     "test",
     "comparison",
     "n",
     "C1_mean",
+    "C1_sd",
     "C2_mean",
+    "C2_sd",
     "C3_mean",
+    "C3_sd",
     "C4_mean",
+    "C4_sd",
     "C5_mean",
+    "C5_sd",
     "statistic",
     "df",
     "p",
     "p_holm",
-    "effect",
+    "effect_size",
     "mean_difference",
+    "median_difference",
 ]
 
+MATRIX_FIELDS = [
+    "measure",
+    "description",
+    "domain_panel",
+    "direction",
+    "value_type",
+    "row_condition",
+    *[CONDITION_SHORT[condition] for condition in CONDITION_ORDER],
+]
 
-def normalize(value: str | None) -> str:
-    return " ".join((value or "").strip().split())
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as file:
-        return list(csv.DictReader(file))
-
-
-def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
-    with path.open("w", encoding="utf-8-sig", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+SCORE_FIELDS = ["subject", "domain_panel", "condition", "measure", "value"]
 
 
-def condition_value(condition: str) -> str:
-    for expected in CONDITION_ORDER:
-        if condition == expected or condition.startswith(expected.split(":", 1)[0]):
-            return expected
-    return condition
+def row_get(row: list[str], index: int | None) -> str:
+    if index is None or index >= len(row):
+        return ""
+    return row[index]
 
 
 def subject_sort_key(subject: str) -> tuple[int, str]:
     match = re.search(r"\d+", subject)
-    if match:
-        return int(match.group(0)), subject
-    return 999999, subject
+    return (int(match.group(0)) if match else 999999, subject)
 
 
-def item_id_from_scale_column(column: str) -> str | None:
-    item_id = column.split(".", 1)[0].strip()
-    if item_id == "F":
-        return item_id
-    if len(item_id) >= 2 and item_id[0] in {"N", "S"} and item_id[1:].isdigit():
-        return item_id
+def scale_item_id(column: str) -> str | None:
+    item = normalize(column).split(".", 1)[0]
+    if item == "F":
+        return item
+    if len(item) >= 2 and item[0] in {"N", "S"} and item[1:].isdigit():
+        return item
     return None
 
 
-def scale_question_columns(response_rows: list[dict[str, str]]) -> dict[str, str]:
-    if not response_rows:
-        return {}
-    columns: dict[str, str] = {}
-    for column in response_rows[0]:
-        item_id = item_id_from_scale_column(column)
-        if item_id is not None:
-            columns[item_id] = column
+def scale_column_indices(header: list[str]) -> dict[str, int]:
+    columns: dict[str, int] = {}
+    for index, column in enumerate(header):
+        item = scale_item_id(column)
+        if item is not None:
+            columns[item] = index
     return columns
 
 
 def parse_float(value: str | None) -> float | None:
-    normalized = normalize(value)
-    if not normalized:
+    value = normalize(value)
+    if not value:
         return None
     try:
-        return float(normalized)
+        return float(value)
     except ValueError:
         return None
 
@@ -148,33 +156,55 @@ def mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
+def median(values: list[float]) -> float:
+    ordered = sorted(values)
+    n = len(ordered)
+    mid = n // 2
+    if n % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def sd(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    avg = mean(values)
+    return math.sqrt(sum((value - avg) ** 2 for value in values) / (len(values) - 1))
+
+
 def rank_values(values: list[float]) -> list[float]:
     indexed = sorted(enumerate(values), key=lambda item: item[1])
     ranks = [0.0] * len(values)
-    index = 0
-    while index < len(indexed):
-        end = index + 1
-        while end < len(indexed) and indexed[end][1] == indexed[index][1]:
+    cursor = 0
+    while cursor < len(indexed):
+        end = cursor + 1
+        while end < len(indexed) and indexed[end][1] == indexed[cursor][1]:
             end += 1
-        avg_rank = (index + 1 + end) / 2
-        for original_index, _ in indexed[index:end]:
+        avg_rank = (cursor + 1 + end) / 2
+        for original_index, _ in indexed[cursor:end]:
             ranks[original_index] = avg_rank
-        index = end
+        cursor = end
     return ranks
 
 
-def chi_square_sf_df4(value: float) -> float:
+def chi_square_sf(value: float, df: int) -> float:
     if value <= 0:
         return 1.0
-    return math.exp(-value / 2) * (1 + value / 2)
+    if df == 4:
+        return math.exp(-value / 2) * (1 + value / 2)
+    # Wilson-Hilferty normal approximation fallback for unexpected dfs.
+    z = ((value / df) ** (1 / 3) - (1 - 2 / (9 * df))) / math.sqrt(2 / (9 * df))
+    return 0.5 * math.erfc(z / math.sqrt(2))
 
 
-def friedman_test(matrix: list[list[float]]) -> tuple[float, float, float]:
+def friedman_test(matrix: list[list[float]]) -> tuple[float, int, float, float]:
     n = len(matrix)
-    k = len(matrix[0])
+    k = len(matrix[0]) if matrix else 0
+    if n == 0 or k < 2:
+        return 0.0, max(0, k - 1), 1.0, 0.0
+
     rank_sums = [0.0] * k
     tie_sum = 0.0
-
     for row in matrix:
         ranks = rank_values(row)
         for index, rank in enumerate(ranks):
@@ -189,17 +219,17 @@ def friedman_test(matrix: list[list[float]]) -> tuple[float, float, float]:
     tie_correction = 1 - tie_sum / (n * (k**3 - k))
     if tie_correction > 0:
         statistic /= tie_correction
+    df = k - 1
+    p_value = chi_square_sf(statistic, df)
+    kendalls_w = statistic / (n * df) if n and df else 0.0
+    return statistic, df, p_value, kendalls_w
 
-    p_value = chi_square_sf_df4(statistic)
-    kendalls_w = statistic / (n * (k - 1))
-    return statistic, p_value, kendalls_w
 
-
-def wilcoxon_exact(values_a: list[float], values_b: list[float]) -> tuple[int, float, float, float, float]:
+def wilcoxon_exact(values_a: list[float], values_b: list[float]) -> tuple[int, float, float, float, float, float]:
     diffs = [a - b for a, b in zip(values_a, values_b) if a != b]
     n = len(diffs)
     if n == 0:
-        return 0, 0.0, 0.0, 1.0, 0.0
+        return 0, 0.0, 0.0, 1.0, 0.0, 0.0
 
     ranks = rank_values([abs(diff) for diff in diffs])
     w_plus = sum(rank for diff, rank in zip(diffs, ranks) if diff > 0)
@@ -214,8 +244,8 @@ def wilcoxon_exact(values_a: list[float], values_b: list[float]) -> tuple[int, f
             more_extreme += 1
 
     p_value = min(1.0, more_extreme / total)
-    rank_biserial = (w_plus - w_minus) / (w_plus + w_minus)
-    return n, min(w_plus, w_minus), w_plus - w_minus, p_value, rank_biserial
+    rank_biserial = (w_plus - w_minus) / (w_plus + w_minus) if (w_plus + w_minus) else 0.0
+    return n, min(w_plus, w_minus), w_plus - w_minus, p_value, rank_biserial, median(diffs)
 
 
 def holm_adjust(p_values: list[float]) -> list[float]:
@@ -230,114 +260,289 @@ def holm_adjust(p_values: list[float]) -> list[float]:
     return adjusted
 
 
-def build_subject_condition_scores(
-    response_rows: list[dict[str, str]],
-) -> dict[str, dict[str, dict[str, float]]]:
-    columns = scale_question_columns(response_rows)
-    row_scores: dict[str, dict[str, dict[str, list[float]]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-
-    for row in response_rows:
-        subject = normalize(row.get("피험자"))
-        condition = condition_value(normalize(row.get("조건 선택")))
-        if not subject or condition not in CONDITION_ORDER:
-            continue
-
-        for metric_name, metric in METRICS.items():
-            values = [
-                value
-                for item_id in metric["items"]
-                if (value := parse_float(row.get(columns.get(item_id, "")))) is not None
-            ]
-            if values:
-                row_scores[subject][condition][metric_name].append(mean(values))
-
-    scores: dict[str, dict[str, dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
-    for subject, condition_scores in row_scores.items():
-        for condition, metric_scores in condition_scores.items():
-            for metric_name, values in metric_scores.items():
-                scores[subject][condition][metric_name] = mean(values)
-    return scores
-
-
 def fmt(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value:.6g}"
 
 
-def analyze(response_rows: list[dict[str, str]]) -> list[dict[str, str]]:
-    scores = build_subject_condition_scores(response_rows)
-    subjects = sorted(scores, key=subject_sort_key)
-    result_rows: list[dict[str, str]] = []
+def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
+    with path.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
 
-    for metric_name, metric in METRICS.items():
-        complete_subjects = [
+
+def build_sagat_item_rows(
+    header: list[str],
+    response_rows: list[list[str]],
+    answer_sheet: Path,
+    survey: Path,
+) -> list[dict[str, str]]:
+    answer_lookup = build_answer_lookup(read_csv_dicts(answer_sheet))
+    option_codes = read_survey_option_codes(survey)
+    sagat_rows, warnings = score_sagat_rows(header, response_rows, answer_lookup, option_codes)
+    if warnings:
+        for warning in warnings:
+            print(f"warning: {warning}")
+    return sagat_rows
+
+
+def build_measure_observations(
+    header: list[str],
+    response_rows: list[list[str]],
+    sagat_rows: list[dict[str, str]],
+) -> dict[tuple[str, str, str, str], list[float]]:
+    indices = unique_header_indices(header)
+    scale_columns = scale_column_indices(header)
+    observations: dict[tuple[str, str, str, str], list[float]] = defaultdict(list)
+
+    for row in response_rows:
+        subject = normalize(row_get(row, indices.get("피험자")))
+        domain = normalize(row_get(row, indices.get("평가 도메인")))
+        condition = condition_value(normalize(row_get(row, indices.get("조건 선택"))))
+        if not subject or domain not in DOMAIN_ORDER or condition not in CONDITION_ORDER:
+            continue
+
+        for metric_name, metric in SCALE_METRICS.items():
+            values = [
+                value
+                for item in metric["items"]  # type: ignore[index]
+                if (value := parse_float(row_get(row, scale_columns.get(item)))) is not None
+            ]
+            if values:
+                observations[(subject, domain, condition, metric_name)].append(mean(values))
+
+    for row in sagat_rows:
+        subject = row["피험자"]
+        domain = row["평가 도메인"]
+        condition = row["조건 선택"]
+        question = row["문항"]
+        value = float(row["값"])
+        observations[(subject, domain, condition, "SAGAT_accuracy")].append(value)
+        observations[(subject, domain, condition, f"SAGAT_{question}")].append(value)
+
+    return observations
+
+
+def measure_info(measure: str) -> tuple[str, str]:
+    if measure == "SAGAT_accuracy":
+        return "SAGAT mean accuracy across Q1-Q6", "higher"
+    if measure.startswith("SAGAT_Q"):
+        return f"SAGAT correctness for {measure.removeprefix('SAGAT_')}", "higher"
+    metric = SCALE_METRICS[measure]
+    return str(metric["description"]), str(metric["direction"])
+
+
+def build_subject_condition_scores(
+    observations: dict[tuple[str, str, str, str], list[float]],
+) -> list[dict[str, str]]:
+    subjects = sorted({key[0] for key in observations}, key=subject_sort_key)
+    measures = sorted({key[3] for key in observations}, key=measure_sort_key)
+    rows: list[dict[str, str]] = []
+
+    for subject in subjects:
+        for panel_label, domain_filter in DOMAIN_PANELS:
+            for condition in CONDITION_ORDER:
+                for measure_name in measures:
+                    values: list[float] = []
+                    for domain in DOMAIN_ORDER:
+                        if domain_filter is not None and domain != domain_filter:
+                            continue
+                        values.extend(observations.get((subject, domain, condition, measure_name), []))
+                    if not values:
+                        continue
+                    rows.append(
+                        {
+                            "subject": subject,
+                            "domain_panel": panel_label,
+                            "condition": condition,
+                            "measure": measure_name,
+                            "value": fmt(mean(values)),
+                        }
+                    )
+    return rows
+
+
+def measure_sort_key(measure: str) -> tuple[int, int, str]:
+    if measure == "SAGAT_accuracy":
+        return (0, 0, measure)
+    if measure.startswith("SAGAT_Q"):
+        return (0, int(measure.rsplit("Q", 1)[1]), measure)
+    order = list(SCALE_METRICS)
+    return (1, order.index(measure) if measure in SCALE_METRICS else 999, measure)
+
+
+def score_lookup(score_rows: list[dict[str, str]]) -> dict[tuple[str, str, str, str], float]:
+    return {
+        (row["subject"], row["domain_panel"], row["condition"], row["measure"]): float(row["value"])
+        for row in score_rows
+    }
+
+
+def analyze_measure_panel(
+    measure: str,
+    panel: str,
+    scores: dict[tuple[str, str, str, str], float],
+    test_family: str,
+    pairwise_pairs: tuple[tuple[str, str], ...],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    subjects = sorted(
+        {
             subject
-            for subject in subjects
-            if all(metric_name in scores[subject].get(condition, {}) for condition in CONDITION_ORDER)
-        ]
-        matrix = [
-            [scores[subject][condition][metric_name] for condition in CONDITION_ORDER]
-            for subject in complete_subjects
-        ]
-        means_by_condition = [mean([row[index] for row in matrix]) for index in range(len(CONDITION_ORDER))]
+            for subject, domain_panel, _condition, item_measure in scores
+            if domain_panel == panel and item_measure == measure
+        },
+        key=subject_sort_key,
+    )
+    complete_subjects = [
+        subject
+        for subject in subjects
+        if all((subject, panel, condition, measure) in scores for condition in CONDITION_ORDER)
+    ]
+    matrix = [
+        [scores[(subject, panel, condition, measure)] for condition in CONDITION_ORDER]
+        for subject in complete_subjects
+    ]
+    if not matrix:
+        return [], []
 
-        statistic, p_value, kendalls_w = friedman_test(matrix)
-        base = {
-            "metric": metric_name,
-            "metric_description": metric["description"],
-            "direction": metric["direction"],
-            "n": str(len(complete_subjects)),
-            "C1_mean": fmt(means_by_condition[0]),
-            "C2_mean": fmt(means_by_condition[1]),
-            "C3_mean": fmt(means_by_condition[2]),
-            "C4_mean": fmt(means_by_condition[3]),
-            "C5_mean": fmt(means_by_condition[4]),
+    description, direction = measure_info(measure)
+    condition_values = [[row[index] for row in matrix] for index in range(len(CONDITION_ORDER))]
+    means = [mean(values) for values in condition_values]
+    sds = [sd(values) for values in condition_values]
+
+    base = {
+        "measure": measure,
+        "description": description,
+        "domain_panel": panel,
+        "direction": direction,
+        "test_family": test_family,
+        "n": str(len(complete_subjects)),
+        "C1_mean": fmt(means[0]),
+        "C1_sd": fmt(sds[0]),
+        "C2_mean": fmt(means[1]),
+        "C2_sd": fmt(sds[1]),
+        "C3_mean": fmt(means[2]),
+        "C3_sd": fmt(sds[2]),
+        "C4_mean": fmt(means[3]),
+        "C4_sd": fmt(sds[3]),
+        "C5_mean": fmt(means[4]),
+        "C5_sd": fmt(sds[4]),
+    }
+
+    stat_rows: list[dict[str, str]] = []
+    statistic, df, p_value, kendalls_w = friedman_test(matrix)
+    stat_rows.append(
+        {
+            **base,
+            "test": "Friedman",
+            "comparison": "C1-C5",
+            "statistic": fmt(statistic),
+            "df": str(df),
+            "p": fmt(p_value),
+            "p_holm": "",
+            "effect_size": fmt(kendalls_w),
+            "mean_difference": "",
+            "median_difference": "",
         }
-        result_rows.append(
+    )
+
+    pair_rows: list[dict[str, str]] = []
+    p_values: list[float] = []
+    for condition_a, condition_b in pairwise_pairs:
+        index_a = CONDITION_ORDER.index(condition_a)
+        index_b = CONDITION_ORDER.index(condition_b)
+        values_a = condition_values[index_a]
+        values_b = condition_values[index_b]
+        n_pairs, w_stat, _signed_sum, p_pair, rank_biserial, median_diff = wilcoxon_exact(values_a, values_b)
+        mean_diff = means[index_a] - means[index_b]
+        p_values.append(p_pair)
+        pair_rows.append(
             {
                 **base,
-                "test": "Friedman",
-                "comparison": "C1-C5",
-                "statistic": fmt(statistic),
-                "df": "4",
-                "p": fmt(p_value),
+                "test": "Wilcoxon signed-rank exact",
+                "comparison": f"{CONDITION_SHORT[condition_a]}-{CONDITION_SHORT[condition_b]}",
+                "n": str(n_pairs),
+                "statistic": fmt(w_stat),
+                "df": "",
+                "p": fmt(p_pair),
                 "p_holm": "",
-                "effect": fmt(kendalls_w),
-                "mean_difference": "",
+                "effect_size": fmt(rank_biserial),
+                "mean_difference": fmt(mean_diff),
+                "median_difference": fmt(median_diff),
             }
         )
 
-        pairwise_rows: list[dict[str, str]] = []
-        pairwise_p_values: list[float] = []
-        for condition_a, condition_b in PLANNED_COMPARISONS:
-            index_a = CONDITION_ORDER.index(condition_a)
-            index_b = CONDITION_ORDER.index(condition_b)
-            values_a = [row[index_a] for row in matrix]
-            values_b = [row[index_b] for row in matrix]
-            n_pairs, statistic_w, signed_rank_sum, pairwise_p, rank_biserial = wilcoxon_exact(values_a, values_b)
-            mean_difference = means_by_condition[index_a] - means_by_condition[index_b]
-            pairwise_p_values.append(pairwise_p)
-            pairwise_rows.append(
-                {
-                    **base,
-                    "test": "Wilcoxon signed-rank exact",
-                    "comparison": f"{CONDITION_SHORT[condition_a]}-{CONDITION_SHORT[condition_b]}",
-                    "n": str(n_pairs),
-                    "statistic": fmt(statistic_w),
-                    "df": "",
-                    "p": fmt(pairwise_p),
-                    "p_holm": "",
-                    "effect": fmt(rank_biserial),
-                    "mean_difference": fmt(mean_difference),
-                }
-            )
+    for row, p_adjusted in zip(pair_rows, holm_adjust(p_values)):
+        row["p_holm"] = fmt(p_adjusted)
+        stat_rows.append(row)
 
-        for row, adjusted_p in zip(pairwise_rows, holm_adjust(pairwise_p_values)):
-            row["p_holm"] = fmt(adjusted_p)
-            result_rows.append(row)
+    matrix_rows = build_pairwise_matrix_rows(measure, description, panel, direction, pair_rows)
+    return stat_rows, matrix_rows
 
-    return result_rows
+
+def build_pairwise_matrix_rows(
+    measure: str,
+    description: str,
+    panel: str,
+    direction: str,
+    pair_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    values_by_pair = {row["comparison"]: row for row in pair_rows}
+    rows: list[dict[str, str]] = []
+    for value_type, field in (("p_holm", "p_holm"), ("mean_difference", "mean_difference"), ("effect_size", "effect_size")):
+        for row_condition in CONDITION_ORDER:
+            matrix_row = {
+                "measure": measure,
+                "description": description,
+                "domain_panel": panel,
+                "direction": direction,
+                "value_type": value_type,
+                "row_condition": CONDITION_SHORT[row_condition],
+            }
+            for column_condition in CONDITION_ORDER:
+                row_short = CONDITION_SHORT[row_condition]
+                column_short = CONDITION_SHORT[column_condition]
+                if row_condition == column_condition:
+                    matrix_row[column_short] = "-"
+                    continue
+
+                comparison = f"{row_short}-{column_short}"
+                reverse = f"{column_short}-{row_short}"
+                pair = values_by_pair.get(comparison)
+                sign = 1.0
+                if pair is None:
+                    pair = values_by_pair.get(reverse)
+                    sign = -1.0
+                if pair is None:
+                    matrix_row[column_short] = ""
+                    continue
+
+                value = pair[field]
+                if value_type in {"mean_difference", "effect_size"} and value:
+                    value = fmt(sign * float(value))
+                matrix_row[column_short] = value
+            rows.append(matrix_row)
+    return rows
+
+
+def analyze(score_rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    scores = score_lookup(score_rows)
+    measures = sorted({row["measure"] for row in score_rows}, key=measure_sort_key)
+    panels = [panel for panel, _ in DOMAIN_PANELS]
+    stat_rows: list[dict[str, str]] = []
+    matrix_rows: list[dict[str, str]] = []
+
+    all_pairwise = tuple(combinations(CONDITION_ORDER, 2))
+    for measure in measures:
+        for panel in panels:
+            rows, matrices = analyze_measure_panel(measure, panel, scores, "planned", PLANNED_COMPARISONS)
+            stat_rows.extend(rows)
+            rows, matrices = analyze_measure_panel(measure, panel, scores, "all_pairwise", all_pairwise)
+            matrix_rows.extend(matrices)
+
+    return stat_rows, matrix_rows
 
 
 def p_label(value: str) -> str:
@@ -350,28 +555,30 @@ def p_label(value: str) -> str:
 
 
 def build_summary_text(rows: list[dict[str, str]]) -> str:
+    planned_rows = [row for row in rows if row["test_family"] == "planned"]
     lines = [
         "Statistical Analysis Summary",
         "============================",
         "",
         "Design: within-subject, five conditions.",
+        "Primary analysis unit: participant x condition score.",
         "Omnibus test: Friedman test across C1-C5.",
-        "Planned pairwise tests: exact Wilcoxon signed-rank tests comparing C4 against C1, C2, C3, and C5.",
-        "Correction: Holm adjustment within each metric's four planned comparisons.",
+        "Planned pairwise tests: exact Wilcoxon signed-rank tests centered on C3 and C4.",
+        "Correction: Holm adjustment within each measure/domain panel.",
         "Effect sizes: Kendall's W for Friedman; matched-pairs rank-biserial correlation for Wilcoxon.",
         "",
         "Condition labels: C1=All, C2=No, C3=Ours1, C4=Ours2, C5=KnowNo.",
         "",
     ]
 
-    by_metric: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in rows:
-        by_metric[row["metric"]].append(row)
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+    for row in planned_rows:
+        grouped[(row["measure"], row["domain_panel"])].append(row)
 
-    for metric_name, metric_rows in by_metric.items():
-        friedman = next(row for row in metric_rows if row["test"] == "Friedman")
-        lines.append(metric_name)
-        lines.append("-" * len(metric_name))
+    for (measure, panel), group in sorted(grouped.items(), key=lambda item: (measure_sort_key(item[0][0]), item[0][1])):
+        friedman = next(row for row in group if row["test"] == "Friedman")
+        lines.append(f"{measure} [{panel}]")
+        lines.append("-" * len(lines[-1]))
         lines.append(
             "Means: "
             f"C1={float(friedman['C1_mean']):.2f}, "
@@ -382,15 +589,16 @@ def build_summary_text(rows: list[dict[str, str]]) -> str:
         )
         lines.append(
             f"Friedman: chi2(4) = {float(friedman['statistic']):.2f}, "
-            f"{p_label(friedman['p'])}, Kendall's W = {float(friedman['effect']):.2f}."
+            f"{p_label(friedman['p'])}, Kendall's W = {float(friedman['effect_size']):.2f}."
         )
-        for row in metric_rows:
+        for row in group:
             if row["test"] == "Friedman":
                 continue
             lines.append(
                 f"{row['comparison']}: mean diff = {float(row['mean_difference']):.2f}, "
+                f"median diff = {float(row['median_difference']):.2f}, "
                 f"raw {p_label(row['p'])}, Holm {p_label(row['p_holm'])}, "
-                f"rank-biserial r = {float(row['effect']):.2f}."
+                f"rank-biserial r = {float(row['effect_size']):.2f}."
             )
         lines.append("")
 
@@ -398,23 +606,37 @@ def build_summary_text(rows: list[dict[str, str]]) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run repeated-measures statistics for response.csv.")
+    parser = argparse.ArgumentParser(description="Run within-subject condition statistics for the user study.")
     parser.add_argument("--response", type=Path, default=DEFAULT_RESPONSE_PATH)
+    parser.add_argument("--answer-sheet", type=Path, default=DEFAULT_ANSWER_PATH)
+    parser.add_argument("--survey", type=Path, default=DEFAULT_SURVEY_PATH)
     parser.add_argument("--csv-output", type=Path, default=DEFAULT_CSV_OUTPUT_PATH)
+    parser.add_argument("--matrix-output", type=Path, default=DEFAULT_MATRIX_OUTPUT_PATH)
+    parser.add_argument("--scores-output", type=Path, default=DEFAULT_SCORES_OUTPUT_PATH)
     parser.add_argument("--text-output", type=Path, default=DEFAULT_TEXT_OUTPUT_PATH)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    response_rows = read_csv(args.response)
-    result_rows = analyze(response_rows)
-    write_csv(args.csv_output, result_rows)
-    args.text_output.write_text(build_summary_text(result_rows), encoding="utf-8")
+    header, response_rows = read_csv_table(args.response)
+    sagat_rows = build_sagat_item_rows(header, response_rows, args.answer_sheet, args.survey)
+    observations = build_measure_observations(header, response_rows, sagat_rows)
+    score_rows = build_subject_condition_scores(observations)
+    stat_rows, matrix_rows = analyze(score_rows)
+
+    write_csv(args.scores_output, score_rows, SCORE_FIELDS)
+    write_csv(args.csv_output, stat_rows, STAT_FIELDS)
+    write_csv(args.matrix_output, matrix_rows, MATRIX_FIELDS)
+    args.text_output.write_text(build_summary_text(stat_rows), encoding="utf-8")
+
     print(f"response: {args.response}")
-    print(f"csv output: {args.csv_output}")
-    print(f"text output: {args.text_output}")
-    print(f"rows: {len(result_rows)}")
+    print(f"answer sheet: {args.answer_sheet}")
+    print(f"survey: {args.survey}")
+    print(f"participant-condition scores: {args.scores_output} ({len(score_rows)} rows)")
+    print(f"stats csv: {args.csv_output} ({len(stat_rows)} rows)")
+    print(f"pairwise matrix csv: {args.matrix_output} ({len(matrix_rows)} rows)")
+    print(f"summary: {args.text_output}")
 
 
 if __name__ == "__main__":
