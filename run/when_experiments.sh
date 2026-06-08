@@ -105,8 +105,8 @@ if [[ ! -f "$robot_skill" ]]; then
 fi
 
 PROB_LABEL="${RANDOM_QUERY_PROB/./-}"
-# LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
-LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_${STRATEGY}_rand${PROB_LABEL}"
+LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
+# LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_${STRATEGY}_rand${PROB_LABEL}"
 
 
 mkdir -p "$LOG_DIR"

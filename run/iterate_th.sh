@@ -3,10 +3,12 @@
 set -euo pipefail
 
 # thresholds=(0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
-thresholds=(0.8)
+thresholds=(0.0 0.1)
 
 scenes=(1 2 3 4 5)
-iterations=10
+# scenes=(1)
+
+iterations=40
 
 total=$((${#thresholds[@]} * ${#scenes[@]} * iterations))
 current=0
@@ -24,5 +26,5 @@ for threshold in "${thresholds[@]}"; do
     done
 done
 
-python3 exp_code/analysis_files.py >/dev/null
+python3 exp_code/analysis_thres.py >/dev/null
 printf "\rProgress: 100%%\n"

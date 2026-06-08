@@ -3,7 +3,9 @@
 set -euo pipefail
 
 strategies=(no all random ours)
-scenes=(1 2 3 4 5)
+# scenes=(1 2 3 4 5)
+scenes=(5)
+
 iterations=40
 
 total=$((${#strategies[@]} * ${#scenes[@]} * iterations))
@@ -22,5 +24,5 @@ for strategy in "${strategies[@]}"; do
     done
 done
 
-python3 exp_code/analysis_files.py >/dev/null
+python3 exp_code/analysis_when.py >/dev/null
 printf "\rProgress: 100%%\n"
