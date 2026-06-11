@@ -152,7 +152,7 @@ The remaining weights are renormalized, and the confidence is recomputed. This p
 
 
 \paragraph{POMCP-based search}~\label{methd:POMCP}
-We employ POMCP~\cite{silver2010monte} as the underlying planner for action selection. We use its sampling-based framework and focus on integrating symbolic representations with uncertainty-aware reasoning. Instead, as summarized in Alg.~\ref{alg:search} to Alg.~\ref{alg:selection}, we apply minimal adaptations to ensure consistency with the symbolic domain. 
+We employ POMCP~\cite{silver2010monte} as the underlying planner for action selection. We use its sampling-based framework and focus on integrating symbolic representations with uncertainty-aware reasoning. Instead, as summarized in Alg.~\ref{alg:search} to Alg.~\ref{alg:selection}, we apply minimal adaptations to ensure consistency with the symbolic domain. The detailed pseudocode for the search, simulation, and action-selection routines is provided in Appendix~\ref{appx:algorithms}.
 
 In Alg.~\ref{alg:search}, the search phase follows standard POMCP by repeatedly sampling a state and performing simulations. Each sampled state is passed to \Simulate (line~\ref{alg_search:simulate}), and the accumulated values are used to select the final action. If the belief is empty, the search uses $s^{K}$, and at the root, the action is chosen based on value without UCB (line~\ref{alg_search:search_best}).
 
@@ -162,117 +162,6 @@ In the simulation phase, as described in Alg.~\ref{alg:simulate}, the recursive 
 In Alg.~\ref{alg:selection}, the same principle is applied to both action selection and rollout. The candidate set $\mathcal{C} = \{a \mid a\llbracket s \rrbracket \in \mathcal{A},\ ha \in T\}$ includes actions that are both applicable in state $s$ and present in the tree. If $\texttt{use\_ucb}$ is true, an action is selected according to the UCB criterion defined in Eq.~\ref{eq:ucb}. Otherwise, the action with the highest value is chosen. During rollout, actions are sampled uniformly from all applicable actions. The generative model $\mathcal{G}(s,a)$ then produces the next state, observation, and reward, while the action space is restricted by symbolic constraints.
 
 In symbolic domains, action preconditions and effects are explicitly defined, so exploring infeasible actions is unnecessary. Restricting the action space to $\mathcal{A}(s)$ therefore improves both search efficiency and model consistency. Overall, the structure follows POMCP while naturally incorporating the constraints imposed by the symbolic representation.
-
-
-\normalem
-\begin{algorithm}[t]
-\caption{POMCP Search with Applicable Actions}
-\label{alg:search}
-\textbf{Input}: belief $b$ \\
-\textbf{Output}: selected action $a \in \mathcal{A}$
-\BlankLine
-
-\Proc{\Search{$b$}}{
-    $h \gets$ root history\\
-    $s^{K} \gets knowledge(b)$\\
-    % initialize search tree $T$ with root $h$\\
-    
-    \Repeat{\Timeout}{
-        \eIf{$B(h) \neq \emptyset$}{
-            sample $s \sim B(h)$ \label{alg_search:sample}\\
-        }{
-            $s \gets s^{K}$\\
-        }
-        
-        \Simulate{$s, h, 0$} \label{alg_search:simulate}\\
-    }
-    $a \gets$ \SearchBest{$h, s^{K}, \textnormal{false}$}  \label{alg_search:search_best}\\
-    \KwRet $a$ \\
-}
-\end{algorithm}
-
-
-
-\begin{algorithm}[t]
-\caption{POMCP Simulation with Applicable Actions}
-\label{alg:simulate}
-\textbf{Input}: state $s$, history $h$, depth $depth$ \\
-\textbf{Output}: simulated return $R$
-\BlankLine
-
-\Proc{\Simulate{$s, h, depth$}}{
-    \If{$\gamma^{depth} < \epsilon$}{
-        \KwRet $0$\\
-    }
-
-    \If{there is no $a\llbracket s \rrbracket \in \mathcal{A}$}{
-        $N(h) \gets N(h) + 1$\\
-        \KwRet $0$\\
-    }
-
-    \If{$h \notin T$}{
-        \ForEach{$a\llbracket s \rrbracket \in \mathcal{A}$ \label{alg_simulate:applicable}}{
-            $T, N(ha), V(ha) \gets T \cup \{ha\}, 0, 0$ \label{alg_simulate:tree_expand}\\
-        }
-        % $G \gets$ \\
-        $N(h) \gets N(h) + 1$\\
-        \KwRet \Rollout{$s, depth$} \label{alg_simulate:rollout}\\
-    }
-
-    $a \gets$ \SearchBest{$h, s, \textnormal{true}$} \label{alg_simulate:search_best}\\
-    sample $(s^\prime, o, r)$ from simulator $\mathcal{G}(s, a)$ \label{alg_simulate:simulate}\\
-
-    $R \gets r + \gamma \cdot$ \Simulate{$s^\prime, hao, depth + 1$}\\
-
-    $B(h)\gets B(h) \cup \{s\}$\\
-    $N(h) \gets N(h)+1$\\
-    $N(ha) \gets N(ha)+1$\\
-    $V(ha) \gets V(ha) + \frac{R - V(ha)}{N(ha)}$\\
-
-    \KwRet $R$\\
-}
-\end{algorithm}
-
-
-
-\begin{algorithm}[t]
-\caption{Action Selection and Rollout}
-\label{alg:selection}
-\textbf{Input}: history $h$, state $s$
-\BlankLine
-
-\Proc{\SearchBest{$h, s, use\_ucb$}}{
-    $\mathcal{C} \gets \{a \mid a\llbracket s \rrbracket \in \mathcal{A},\ ha \in T\}$\\
-    
-    \If{$\mathcal{C} = \emptyset$}{
-        \KwRet $\emptyset$\\
-    }
-
-    \eIf{$use\_ucb$}{
-        \KwRet $\arg\max_{a \in \mathcal{C}} V(ha) + c \cdot \sqrt{\frac{\log N(h)}{1 + N(ha)}}$\\
-    }{
-        \KwRet $\arg\max_{a \in \mathcal{C}} V(ha)$\
-    }
-    }
-    
-\BlankLine
-
-
-\Proc{\Rollout{$s, depth$}}{
-    \If{$(\gamma^{depth} < \epsilon \lor \gamma = 0) \land depth > 0$}{
-        \KwRet $0$\\
-    }
-
-    \If{there is no $a\llbracket s \rrbracket \in \mathcal{A}$}{
-        \KwRet $0$\\
-    }
-
-    $a \sim \mathrm{Uniform}(\{ a \mid  a\llbracket s \rrbracket \in \mathcal{A}\}  )$ \label{alg_rollout:uniform}\\
-    sample $(s^\prime, o, r)$ from simulator $\mathcal{G}(s, a)$ \label{alg_rollout:simulator}\\
-
-    \KwRet $r + \gamma \cdot$ \Rollout{$s^\prime, depth + 1$}\\
-}
-\end{algorithm}
 
 \paragraph{Action execution}~\label{method:action_execution}
 Each $a \in \mathcal{A}$ selected by the POMCP is associated with an executable robot skill. The symbolic action specifies the task-level intention and parameters, while the corresponding skill defines the motion or perception routine required for execution. For example, a symbolic action such as $\texttt{navigate}(\text{robot}, l_1, l_2)$ is mapped to a navigation routine, and $\texttt{pick}(\text{robot}, \text{tomato}_1)$ is mapped to a predefined manipulation trajectory.
@@ -284,14 +173,8 @@ Specifically, after each action execution, the system receives an observation $o
 
 
 \paragraph{Overall planning pipeline}~\label{method:planning}
-We adopt a online planning framework as described in Algorithm~\ref{alg:online_planning}. The planning process starts from the initial knowledge state $s^{K}_{0}$, which is used to initialize the belief (line~\ref{alg1_planning:init}). At each iteration, the planner first selects $a_t$ by performing Monte Carlo tree search over the current belief $\mathcal{B}$ (line~\ref{alg1_planning:search}). If no applicable action exists, the process terminates. Otherwise, the selected action is executed and an observation $o_{t+1}$ is received from the environment.
+We adopt an online planning framework as described in Algorithm~\ref{alg:online_planning}. The planning process starts from the initial knowledge state $s^{K}_{0}$, which is used to initialize the belief (line~\ref{alg1_planning:init}). At each iteration, the planner first selects $a_t$ by performing Monte Carlo tree search over the current belief $\mathcal{B}$ (line~\ref{alg1_planning:search}). If no applicable action exists, the process terminates. Otherwise, the selected action is executed and an observation $o_{t+1}$ is received from the environment.
 
-The belief is then updated using the observation model (line~\ref{alg1_planning:belief_update}), and the confidence of the updated belief is computed (line~\ref{alg1_planning:compute_conf}). If the confidence is below the threshold $\tau$, the planner queries the FM to reduce uncertainty. Specifically, it selects the most informative hypothesis, sends it to the FM, and filters out particles inconsistent with the answer (lines~\ref{alg1_planning:select_hypo}--\ref{alg1_planning:filter}). This process is repeated until the confidence exceeds $\tau$. Once the belief becomes sufficiently confident, the most probable state is committed as the updated knowledge state, and the planner proceeds to the next step.
-
-
-
-
-\normalem
 \begin{algorithm}[t]
 \caption{Planning Pipeline}
 \label{alg:online_planning}
@@ -330,7 +213,7 @@ The belief is then updated using the observation model (line~\ref{alg1_planning:
 }
 \end{algorithm}
 
-
+The belief is then updated using the observation model (line~\ref{alg1_planning:belief_update}), and the confidence of the updated belief is computed (line~\ref{alg1_planning:compute_conf}). If the confidence is below the threshold $\tau$, the planner queries the FM to reduce uncertainty. Specifically, it selects the most informative hypothesis, sends it to the FM, and filters out particles inconsistent with the answer (lines~\ref{alg1_planning:select_hypo}--\ref{alg1_planning:filter}). This process is repeated until the confidence exceeds $\tau$. Once the belief becomes sufficiently confident, the most probable state is committed as the updated knowledge state, and the planner proceeds to the next step.
 \subsubsection{Sensing and Perception}~\label{method:SP}
 The SP module acquires raw sensory data, generates local information in $\mathcal{I}^{L}$, and updates the numeric fluents in the KB. It also provides observations required for belief updates during action execution. Let $\mathcal{M}$ denote the set of perception models. For each predicate $\text{pred}$ associated with local information in $\mathcal{I}^{L}$, there exists a corresponding perception model $m_{\text{pred}} \in \mathcal{M}$ defined as
 \[
@@ -347,7 +230,7 @@ In addition, the SP module defines the observation interface of the system. Afte
 
 
 \subsubsection{Feedback Manager}~\label{method:FM}
-As illustrated in Fig.~\ref{fig:FM_module}, the FM translates hypotheses provided by the PM into a form that is easily understandable for the user, and interprets user responses into a format that can be processed by the system. Specifically, a hypothesis such as $\texttt{ripe}(\text{tomato}_1)$ is represented internally as a predicate, but the FM converts it into a natural question such as \cp{“Is this tomato ripe?”}. To support user understanding, the queried object is visualized with a bounding box indicating its location.
+As illustrated in Fig.~\ref{fig:FM_UI}, the FM translates hypotheses provided by the PM into a form that is easily understandable for the user, and interprets user responses into a format that can be processed by the system. Specifically, a hypothesis such as $\texttt{ripe}(\text{tomato}_1)$ is represented internally as a predicate, but the FM converts it into a natural question such as \cp{“Is this tomato ripe?”}. To support user understanding, the queried object is visualized with a bounding box indicating its location.
 
 In addition, the FM interprets user inputs. Users can respond via touch or speech, and the FM converts these responses into a boolean form (true or false) that can be used for belief updates. Through this bidirectional translation, the FM reduces the semantic gap between the system and the user, enabling efficient interaction.
 
@@ -360,26 +243,27 @@ FM는 PM로부터 전달받은 가설을 사용자에게 이해하기 쉬운 형
 
 
 
-\begin{figure}[t!]
-\captionsetup{skip=0pt}
-    \centering
-    \includegraphics[width=0.47\textwidth]{figures/fig_fm-temp.png}
-    \caption{An overview of FM system. This figure is a temporary image.}
-    \label{fig:FM_module}
-    % \vspace{-10pt}
-\end{figure} 
-
-
-
 \subsubsection{User Interface}
-As shown in Fig.~\ref{fig:UI}, the UI enables interaction between the user and the system and is implemented on a tablet. It presents queries generated by the FM and overlays the queried object on the camera image using a bounding box to support intuitive understanding. Users provide responses through simple touch input, with optional speech input. The interface hides internal representations and is designed to elicit accurate feedback with minimal workload.
+As shown in Fig.~\ref{fig:FM_UI}, the UI enables interaction between the user and the system and is implemented on a tablet. It presents queries generated by the FM and overlays the queried object on the camera image using a bounding box to support intuitive understanding. Users provide responses through simple touch input, with optional speech input. The interface hides internal representations and is designed to elicit accurate feedback with minimal workload.
 
 
-\begin{figure}[t!]
+\begin{figure*}[t!]
 \captionsetup{skip=0pt}
     \centering
-    \includegraphics[width=0.47\textwidth]{figures/fig_interface.pdf}
-    \caption{An overview of interface. This figure is a temporary image.}
-    \label{fig:UI}
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fig_fm-temp.png}
+        \caption{FM system overview.}
+        \label{fig:FM_module}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fig_interface.pdf}
+        \caption{User interface overview.}
+        \label{fig:UI}
+    \end{subfigure}
+    \caption{Overview of the feedback manager and user interface. This figure is a temporary image.}
+    \label{fig:FM_UI}
     % \vspace{-10pt}
-\end{figure} 
+\end{figure*} 
