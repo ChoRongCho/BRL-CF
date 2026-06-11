@@ -14,10 +14,12 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
 BASE_DIR = Path(__file__).resolve().parent
-TIMELINE_CSV = BASE_DIR / "timeline.csv"
-DETAIL_CSV = BASE_DIR / "timeline_duration_records.csv"
-SUMMARY_CSV = BASE_DIR / "timeline_duration_summary.csv"
-FIGURE_DIR = BASE_DIR / "timeline_figures"
+TIME_CONSUME_DIR = BASE_DIR / "02_time_consume"
+TIMELINE_CSV = TIME_CONSUME_DIR / "timeline.csv"
+VIDEO_DURATION_CSV = TIME_CONSUME_DIR / "video_duration_template.csv"
+DETAIL_CSV = TIME_CONSUME_DIR / "timeline_duration_records.csv"
+SUMMARY_CSV = TIME_CONSUME_DIR / "timeline_duration_summary.csv"
+FIGURE_DIR = TIME_CONSUME_DIR / "timeline_figures"
 
 DOMAINS = {
     "R": "분리수거",
@@ -33,11 +35,17 @@ CONDITIONS = {
 CONDITION_ORDER = ["ALL", "No", "Ours1", "Ours2", "KnowNo"]
 SCENARIO_ORDER = [1, 2, 3, 4, 5]
 TIME_TYPE_LABELS = {
-    "operation": "조작 시간",
+    "operation": "순수 조작 시간",
     "survey": "설문 시간",
 }
 
 HEADER_PATTERN = re.compile(r"([RT])(\d)\(s(\d)\)")
+NATURAL_DURATION_PATTERN = re.compile(
+    r"(?:(?P<hours>\d+)\s*(?:hours?|시간))?\s*"
+    r"(?:(?P<minutes>\d+)\s*(?:minutes?|mins?|분))?\s*"
+    r"(?:(?P<seconds>\d+)\s*(?:seconds?|secs?|초))?",
+    re.IGNORECASE,
+)
 
 
 def configure_korean_font() -> None:
@@ -65,14 +73,23 @@ def parse_duration_to_seconds(value: str) -> int:
     value = value.strip()
     if not value:
         return 0
-    parts = [int(part) for part in value.split(":")]
-    if len(parts) == 3:
-        hours, minutes, seconds = parts
-    elif len(parts) == 2:
-        hours = 0
-        minutes, seconds = parts
-    else:
+    if ":" in value:
+        parts = [int(part) for part in value.split(":")]
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+        elif len(parts) == 2:
+            hours = 0
+            minutes, seconds = parts
+        else:
+            raise ValueError(f"unsupported duration format: {value}")
+        return hours * 3600 + minutes * 60 + seconds
+
+    match = NATURAL_DURATION_PATTERN.fullmatch(value)
+    if not match or not any(match.groupdict().values()):
         raise ValueError(f"unsupported duration format: {value}")
+    hours = int(match.group("hours") or 0)
+    minutes = int(match.group("minutes") or 0)
+    seconds = int(match.group("seconds") or 0)
     return hours * 3600 + minutes * 60 + seconds
 
 
@@ -91,7 +108,30 @@ def read_rows(path: Path) -> list[list[str]]:
         return list(csv.reader(file))
 
 
-def parse_timeline(path: Path) -> list[dict[str, str | int]]:
+def load_video_durations(path: Path) -> dict[tuple[str, int], int]:
+    if not path.exists():
+        return {}
+
+    durations: dict[tuple[str, int], int] = {}
+    with path.open("r", encoding="utf-8-sig", newline="") as file:
+        for row in csv.DictReader(file):
+            domain = (row.get("domain") or "").strip()
+            scenario_text = (row.get("scenario") or "").strip()
+            if not domain or not scenario_text:
+                continue
+            seconds_text = (row.get("video_seconds") or "").strip()
+            hms_text = (row.get("video_hms") or "").strip()
+            if seconds_text:
+                video_seconds = int(float(seconds_text))
+            elif hms_text:
+                video_seconds = parse_duration_to_seconds(hms_text)
+            else:
+                video_seconds = 0
+            durations[(domain, int(scenario_text))] = video_seconds
+    return durations
+
+
+def parse_timeline(path: Path, video_durations: dict[tuple[str, int], int]) -> list[dict[str, str | int]]:
     rows = read_rows(path)
     records: list[dict[str, str | int]] = []
 
@@ -118,7 +158,9 @@ def parse_timeline(path: Path) -> list[dict[str, str | int]]:
                 elif label == "총 설문 시간":
                     totals["survey"] = parse_duration_to_seconds(duration)
 
-            for time_type, seconds in totals.items():
+            for time_type, raw_seconds in totals.items():
+                video_seconds = video_durations.get((domain, scenario), 0) if time_type == "operation" else 0
+                seconds = max(0, raw_seconds - video_seconds)
                 records.append({
                     "domain": domain,
                     "domain_code": domain_code,
@@ -126,6 +168,10 @@ def parse_timeline(path: Path) -> list[dict[str, str | int]]:
                     "condition_code": condition_code,
                     "scenario": scenario,
                     "time_type": time_type,
+                    "raw_seconds": raw_seconds,
+                    "raw_hms": format_seconds(raw_seconds),
+                    "video_seconds": video_seconds,
+                    "video_hms": format_seconds(video_seconds) if video_seconds else "",
                     "seconds": seconds,
                     "time_hms": format_seconds(seconds),
                     "source_row": row_index + 1,
@@ -144,6 +190,10 @@ def write_detail_csv(records: list[dict[str, str | int]], path: Path) -> None:
         "condition_code",
         "scenario",
         "time_type",
+        "raw_seconds",
+        "raw_hms",
+        "video_seconds",
+        "video_hms",
         "seconds",
         "time_hms",
         "source_row",
@@ -159,7 +209,7 @@ def summarize_records(records: list[dict[str, str | int]]) -> list[dict[str, str
     grouped: dict[tuple[str, str, str, int], list[int]] = defaultdict(list)
     for record in records:
         seconds = int(record["seconds"])
-        if seconds <= 0:
+        if seconds < 0:
             continue
         key = (
             str(record["domain"]),
@@ -176,6 +226,19 @@ def summarize_records(records: list[dict[str, str | int]]) -> list[dict[str, str
                 for scenario in SCENARIO_ORDER:
                     values = grouped.get((domain, condition, time_type, scenario), [])
                     if not values:
+                        summary.append({
+                            "domain": domain,
+                            "condition": condition,
+                            "scenario": scenario,
+                            "time_type": time_type,
+                            "n": 0,
+                            "mean_seconds": "",
+                            "std_seconds": "",
+                            "mean_minutes": "",
+                            "std_minutes": "",
+                            "mean_hms": "",
+                            "std_hms": "",
+                        })
                         continue
                     avg_seconds = mean(values)
                     std_seconds = stdev(values) if len(values) > 1 else 0.0
@@ -228,6 +291,8 @@ def read_detail_csv(path: Path) -> list[dict[str, str]]:
 def build_summary_lookup(summary_rows: list[dict[str, str]]) -> dict[tuple[str, str, str, int], tuple[float, float]]:
     lookup: dict[tuple[str, str, str, int], tuple[float, float]] = {}
     for row in summary_rows:
+        if not row["mean_seconds"]:
+            continue
         key = (
             row["domain"],
             row["condition"],
@@ -326,7 +391,8 @@ def plot_all(summary_csv: Path) -> None:
 
 
 def main() -> None:
-    records = parse_timeline(TIMELINE_CSV)
+    video_durations = load_video_durations(VIDEO_DURATION_CSV)
+    records = parse_timeline(TIMELINE_CSV, video_durations)
     write_detail_csv(records, DETAIL_CSV)
     summary = summarize_records(records)
     write_summary_csv(summary, SUMMARY_CSV)
