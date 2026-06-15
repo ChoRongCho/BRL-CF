@@ -11,13 +11,19 @@ The robot is given a symbolic domain, a set of executable skills, an initial kno
 \end{equation}
 where $\mathrm{query}_t$ indicates that feedback is requested after the belief update at time $t$, and $\lambda$ is the cost of human interaction.
 
+The key system-level distinction is between the \emph{committed knowledge state} and the \emph{belief state}. The committed state $s^K_t$ contains facts that the robot is willing to use as knowledge for symbolic planning and skill execution. The belief $\mathcal{B}_t$ is a temporary distribution over candidate successor states induced by recent actions and observations. Human feedback is invoked only between these two layers: it refines $\mathcal{B}_t$ before the system commits a new $s^K_{t+1}$. Thus, querying is not modeled as a separate recovery mode, but as an information action in the knowledge-update loop.
+
 \subsection{Knowledge Base}
 
 The knowledge base is partitioned into domain information, static information, and local information:
 \begin{equation}
 \mathcal{KB}=\mathcal{I}^{D}\sqcup \mathcal{I}^{S}\sqcup \mathcal{I}^{L}.
 \end{equation}
-Domain information encodes predicates, action schemas, task rules, and robot skills. Static information contains facts and numeric fluents that remain fixed during an episode, such as object identifiers, bin locations, or stem locations. Local information contains facts inferred during execution, such as object category, tomato state, object pose, and visibility. Uncertainty is concentrated in $\mathcal{I}^{L}$ because these facts depend on perception and partial observations.
+Domain information encodes predicates, action schemas, task rules, and robot skills. Static information contains facts and numeric fluents that remain fixed during an episode, such as object identifiers, bin locations, or stem locations. Local information contains facts inferred during execution, such as object category, tomato state, object pose, and visibility. Uncertainty is concentrated in $\mathcal{I}^{L}$ because these facts depend on perception and partial observations. Each symbolic state is therefore represented as
+\begin{equation}
+s^K = \mathcal{I}^{D} \cup \mathcal{I}^{S} \cup \hat{\mathcal{I}}^{L},
+\end{equation}
+where $\hat{\mathcal{I}}^{L}$ denotes the subset of local information that has been committed after belief update and, when needed, human feedback. This separation prevents uncertain perceptual outputs from being immediately treated as certain planning facts.
 
 \subsection{Symbolic Frontier Belief}
 
@@ -38,7 +44,7 @@ w'_k = w_k O(o|s_k^\star,a), \qquad
 \label{eq:frontier_update}
 \end{equation}
 
-This local frontier construction has two roles. First, it avoids enumerating irrelevant symbolic worlds. Second, it ties uncertainty to the action currently affecting task progress, which makes later human queries task-relevant.
+This local frontier construction has three roles. First, it avoids enumerating irrelevant symbolic worlds. Second, it preserves symbolic action constraints because every particle is reachable under the current action model. Third, it ties uncertainty to the action currently affecting task progress, which makes later human queries task-relevant. The resulting belief is local in scope but sufficient for deciding whether the knowledge base can be safely updated after the current transition.
 
 \subsection{Confidence and Query Trigger}
 
@@ -62,6 +68,12 @@ s^K \leftarrow \arg\max_{s_k^\star \in \mathcal{B}}\tilde{w}_k.
 \label{eq:commit}
 \end{equation}
 If $\mathrm{Conf}(\mathcal{B})<\tau$, the robot requests human feedback. The threshold $\tau$ is therefore an autonomy-interaction parameter: lower values allow the robot to act with less certainty, while higher values increase interaction to obtain more reliable knowledge.
+
+The confidence rule defines a guarded transition from belief to knowledge. When confidence is high, the update
+\begin{equation}
+(s^K_t,\mathcal{B}_t,o_{t+1}) \mapsto s^K_{t+1}
+\end{equation}
+is performed autonomously by committing Eq.~\ref{eq:commit}. When confidence is low, the same transition is delayed until one or more feedback answers filter the belief. This guard is the mechanism that connects uncertainty estimation to system behavior.
 
 \subsection{Query Selection}
 
@@ -92,9 +104,9 @@ The remaining weights are renormalized. Querying repeats until the confidence ex
 
 \subsection{Planning and Execution Pipeline}
 
-\placeholderfig{Detailed system architecture. The final figure should show the knowledge base, sensing and perception module, POMCP planning manager, feedback manager, user interface, and robot execution layer.}{2.0in}{fig:architecture}
+At each step, the planning manager runs POMCP using the current belief and the symbolic action constraints, following the closed-loop architecture in Fig.~\ref{fig:overview}. The selected task action is executed by a corresponding robot skill. Perception produces observations used to update the frontier belief. If the updated confidence is low, the feedback manager converts the selected symbolic hypothesis into a human-readable query, highlights the relevant object in the interface, receives a binary response, and returns the response to the planner. The knowledge base is updated only after the belief is sufficiently confident.
 
-At each step, the planning manager runs POMCP using the current belief and the symbolic action constraints. The selected task action is executed by a corresponding robot skill. Perception produces observations used to update the frontier belief. If the updated confidence is low, the feedback manager converts the selected symbolic hypothesis into a human-readable query, highlights the relevant object in the interface, receives a binary response, and returns the response to the planner. The knowledge base is updated only after the belief is sufficiently confident.
+Action selection follows the POMCP structure, but the search is restricted to actions applicable in the sampled symbolic state. This prevents the planner from evaluating infeasible symbolic transitions and keeps Monte Carlo simulations consistent with the knowledge base. In this sense, the system combines two forms of structure: symbolic preconditions constrain the search space, while frontier particles represent the remaining uncertainty after action execution.
 
 \begin{algorithm}[t]
 \caption{Uncertainty-Aware Planning with Human Querying}

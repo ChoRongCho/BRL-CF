@@ -21,6 +21,10 @@ DEFAULT_INPUT = PROJECT_ROOT / "users_raw_data" / "피험자별결과.csv"
 DEFAULT_OUTPUT_DIR = BASE_DIR / "domain_condition_friedman"
 
 CONDITIONS = ("C1: All", "C2: No", "C3: Ours1", "C4: Ours2", "C5: KnowNo")
+EXCLUDED_CONDITIONS_BY_METRIC = {
+    "조작성공률 (%)": {"C2: No"},
+    "조작시간 (s)": {"C2: No"},
+}
 CONDITION_SHORT = {
     "C1: All": "C1",
     "C2: No": "C2",
@@ -52,6 +56,11 @@ METRIC_SLUGS = {
     "SART": "sart",
 }
 BONFERRONI_ALPHA = 0.05
+
+
+def analysis_conditions_for_metric(metric: str, active_conditions: tuple[str, ...] = CONDITIONS) -> tuple[str, ...]:
+    excluded = EXCLUDED_CONDITIONS_BY_METRIC.get(metric, set())
+    return tuple(condition for condition in active_conditions if condition not in excluded)
 
 
 def normalize(value: str | None) -> str:
@@ -342,7 +351,8 @@ def analyze(rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], list[dict
                     for _subject, item_domain, item_condition, item_metric in scores
                 )
             )
-            analysis_conditions = active_conditions if metric in BINARY_DVS else CONDITIONS
+            base_conditions = active_conditions if metric in BINARY_DVS else CONDITIONS
+            analysis_conditions = analysis_conditions_for_metric(metric, base_conditions)
             subjects, matrix = complete_matrix(scores, domain, metric, analysis_conditions)
             condition_values = [[subject_row[index] for subject_row in matrix] for index in range(len(analysis_conditions))]
             condition_value_map = {
@@ -457,14 +467,15 @@ def plot_metric(
     pairwise_rows: list[dict[str, str]],
     output_dir: Path,
 ) -> Path:
+    plot_conditions = analysis_conditions_for_metric(metric)
     rows = [row for row in summary_rows if row["domain"] == domain and row["metric"] == metric]
-    means = [float(next(row["mean"] for row in rows if row["condition"] == condition)) for condition in CONDITIONS]
-    ses = [float(next(row["se"] for row in rows if row["condition"] == condition)) for condition in CONDITIONS]
-    labels = [CONDITION_SHORT[condition] for condition in CONDITIONS]
+    means = [float(next(row["mean"] for row in rows if row["condition"] == condition)) for condition in plot_conditions]
+    ses = [float(next(row["se"] for row in rows if row["condition"] == condition)) for condition in plot_conditions]
+    labels = [CONDITION_SHORT[condition] for condition in plot_conditions]
 
     fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=180)
-    x_values = list(range(len(CONDITIONS)))
-    colors = ["#4C78A8" if domain == "Waste" else "#D66B4D"] * len(CONDITIONS)
+    x_values = list(range(len(plot_conditions)))
+    colors = ["#4C78A8" if domain == "Waste" else "#D66B4D"] * len(plot_conditions)
     ax.bar(x_values, means, yerr=ses, capsize=5, color=colors, edgecolor="#333333", linewidth=0.8)
     ax.set_xticks(x_values, labels)
     ax.set_title(f"{domain} - {METRIC_LABELS[metric]}")
@@ -519,6 +530,7 @@ def write_text_report(
         "",
         "Note: Continuous/ordinal variables use non-parametric Friedman tests, so the omnibus statistic is chi-square rather than RM-ANOVA F.",
         "Binary task success uses Cochran's Q and exact McNemar post-hoc tests.",
+        "Condition C2: No is excluded from task success and operation time analyses/figures.",
         "Post-hoc tests use Bonferroni correction across the available condition pairs per domain/metric.",
         "",
         "Omnibus results",

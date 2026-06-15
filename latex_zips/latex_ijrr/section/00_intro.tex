@@ -9,16 +9,21 @@ We trigger human feedback from the robot's belief update rather than treating it
 
 This paper proposes a knowledge-based belief-space planning framework for proactive human querying. The robot maintains a symbolic knowledge base~\cite{davis1993knowledge} with STRIPS-style state and action structure~\cite{fikes1971strips}, while online decision making is performed using a POMDP formulation and POMCP-based planning~\cite{kaelbling1998planning,silver2010monte}. Instead of committing uncertain perceptual outputs as deterministic facts, the robot maintains a particle belief over symbolic possible worlds. After each observation, the system updates the belief over reachable frontier states, computes entropy-based confidence, and either commits the most likely state to the knowledge base or asks the human a targeted question before replanning.
 
-\placeholderfig{Overview of the proposed framework. The final paper should show the closed loop among sensing, symbolic belief update, POMCP planning, human query, and knowledge-base commitment.}{1.9in}{fig:overview}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/fig_dataflow.pdf}
+    \caption{System architecture and data flow of the proposed framework. The knowledge base stores committed symbolic information, the planning manager maintains and updates the frontier belief, the sensing and perception module provides observations, and the feedback manager queries the user only when belief confidence is insufficient for knowledge-base commitment.}
+    \label{fig:overview}
+\end{figure}
 
 The framework differs from continuous supervision, failure-triggered intervention, always-query policies, and action-level query systems: the user is not asked to monitor every decision or choose robot actions, but instead answers targeted questions about uncertain symbolic state facts.
 
-We evaluate the framework in waste sorting and tomato harvesting, including real-robot tomato experiments. We compare against no-query, always-query, and random-query baselines, analyze sensitivity to the confidence threshold $\tau$, and conduct a user study to examine whether selective state-level querying reduces subjective workload.
+We evaluate the framework in waste sorting and tomato harvesting. The main evaluation compares system performance under different confidence thresholds and query policies, while a compact user study analysis examines whether state-level querying changes workload and situation-awareness measures.
 
 The contributions and findings of this paper are:
 \begin{itemize}[leftmargin=*]
-    \item We present an integrated robot system that determines both \textit{when} it is uncertain and \textit{what} it should ask the human during task execution, by combining symbolic knowledge, belief-space planning, entropy-based uncertainty estimation, and hypothesis-level feedback.
-    \item We show that the proposed system substantially reduces the number of human queries compared with an always-query system while maintaining comparable task success, demonstrating that selective querying can preserve task performance without continuous supervision.
-    \item We show through a user study that reducing unnecessary queries also reduces human workload, supporting the central goal of making uncertainty-aware robot assistance easier for people to use.
-    \item We validate the system across simulated and real robotic domains and compare it against no-query, always-query, and random-query baselines to isolate the effect of deciding when and what to ask.
+    \item We formulate human querying as belief refinement in a symbolic planning system: observations update an action-conditioned frontier belief, entropy-normalized confidence determines whether the state can be committed, and queries are selected by expected posterior entropy.
+    \item We present an integrated architecture connecting a structured knowledge base, POMCP-style online planning, sensing and perception, feedback management, and knowledge-base commitment.
+    \item We show that the confidence threshold $\tau$ controls a sharp autonomy-interaction trade-off, with high task success emerging once the belief is sufficiently constrained by selective feedback.
+    \item We compare no-query, random-query, always-query, and proposed query policies to isolate the value of belief-triggered, hypothesis-level querying; user-study results are included as a secondary analysis of interaction burden.
 \end{itemize}
