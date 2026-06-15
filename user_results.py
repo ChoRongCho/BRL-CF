@@ -457,6 +457,13 @@ def format_value(value: float | None, metric: str) -> str:
     return f"{value:.6g}"
 
 
+def mean_without_extremes(values: list[float]) -> float | None:
+    if len(values) <= 2:
+        return None
+    trimmed = sorted(values)[1:-1]
+    return mean(trimmed)
+
+
 def write_output(
     output_path: Path,
     subjects: list[str],
@@ -484,18 +491,30 @@ def write_output(
         rows.append([])
         rows.append([])
 
-    rows.append(["조건", "도메인", "P_ALL"] + [""] * (len(METRICS) - 1))
-    rows.append(["", "", *METRICS])
+    rows.append(
+        ["조건", "도메인", "P_ALL"]
+        + [""] * (len(METRICS) - 1)
+        + [""]
+        + ["P_ALL_outlier_removed"]
+        + [""] * (len(METRICS) - 1)
+    )
+    rows.append(["", "", *METRICS, "", *METRICS])
     for condition in CONDITIONS:
         for domain_index, domain in enumerate(DOMAINS):
             row = [condition if domain_index == 0 else "", domain]
+            metric_values_by_metric: dict[str, list[float]] = {}
             for metric in METRICS:
                 metric_values = [
                     values[(subject, domain, condition, metric)]
                     for subject in subjects
                     if (subject, domain, condition, metric) in values
                 ]
+                metric_values_by_metric[metric] = metric_values
                 row.append(format_value(mean(metric_values), metric) if metric_values else "")
+            row.append("")
+            for metric in METRICS:
+                trimmed_mean = mean_without_extremes(metric_values_by_metric[metric])
+                row.append(format_value(trimmed_mean, metric))
             rows.append(row)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

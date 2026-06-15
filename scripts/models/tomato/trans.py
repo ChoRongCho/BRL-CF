@@ -160,7 +160,6 @@ class TransitionTomato:
         if not action.name.startswith("detect("):
             return outcomes
         
-        observed_tomatoes = set()
         unavailable_tomatoes = set()
         for fact in current_facts:
             pred, args = _parse_fact(fact)
@@ -168,44 +167,33 @@ class TransitionTomato:
                 continue
 
             tomato = args[0]
-            if pred == "observed":
-                observed_tomatoes.add(tomato)
-            elif pred in {"loaded", "discarded", "holded"}:
+            if pred in {"loaded", "discarded", "holded"}:
                 unavailable_tomatoes.add(tomato)
             elif pred == "holding" and len(args) >= 2:
                 unavailable_tomatoes.add(args[1])
         
-        if not observed_tomatoes:
+        if not unavailable_tomatoes:
             return outcomes
         
         merged = {}
-        quality_predicates = {"ripe", "unripe", "rotten"}
 
         for outcome in outcomes:
             filtered_add_facts = []
             filtered_del_facts = []
 
             for fact in outcome.add_facts:
-                remove_fact = False
                 pred, args = _parse_fact(fact)
                 tomato = args[0] if args else None
 
-                if tomato in observed_tomatoes and pred in {"observed", "at"}:
-                    remove_fact = True
-                elif tomato in observed_tomatoes and pred in quality_predicates:
-                    remove_fact = True
-
-                if not remove_fact:
+                if tomato not in unavailable_tomatoes:
                     filtered_add_facts.append(fact)
 
             for fact in outcome.del_facts:
-                pred, args = _parse_fact(fact)
+                _, args = _parse_fact(fact)
                 tomato = args[0] if args else None
 
-                if tomato in observed_tomatoes and pred in quality_predicates:
-                    continue
-
-                filtered_del_facts.append(fact)
+                if tomato not in unavailable_tomatoes:
+                    filtered_del_facts.append(fact)
 
             filtered_add_facts = _dedup_facts(filtered_add_facts)
             filtered_del_facts = _dedup_facts(filtered_del_facts)

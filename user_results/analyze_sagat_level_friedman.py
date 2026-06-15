@@ -198,7 +198,7 @@ def parse_subject_blocks(path: Path) -> list[dict[str, str]]:
         subject_starts = [
             index
             for index, value in enumerate(header)
-            if index >= 2 and normalize(value).upper().startswith("P") and normalize(value).upper() != "P_ALL"
+            if index >= 2 and normalize(value).upper().startswith("P") and normalize(value).upper()[1:].isdigit()
         ]
 
         current_condition = ""
