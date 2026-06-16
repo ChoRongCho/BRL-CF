@@ -35,12 +35,17 @@ def parse_args():
     parser.add_argument("--instruction", default="Discard all waste.")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
     parser.add_argument("--scene-objects", default="waste1, waste2, waste3, waste4")
-    parser.add_argument("--qhat", type=float, default=0.928)
-    parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=5.0)
+    parser.add_argument("--qhat", type=float, default=0.92)
+    parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=3.0)
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--detect-success-prob", type=float, default=0.8)
     parser.add_argument("--detect-label-error-prob", type=float, default=0.0)
     parser.add_argument("--labels", default="", help='Optional true labels, e.g. "waste1:can,waste2:paper".')
+    parser.add_argument(
+        "--occlusions",
+        default="",
+        help='Optional hidden stack relations, e.g. "waste4:waste3" means waste4 is under waste3.',
+    )
     parser.add_argument("--log-file", default="")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", action="store_true", help="Also print detailed log records to the terminal.")
@@ -51,6 +56,50 @@ def parse_args():
     parser.add_argument("--num-calibration", type=int, default=1)
     parser.add_argument("--num-test", type=int, default=0)
     return parser.parse_args()
+
+
+def waste_dead_end_reason(hidden_attributes, placed_objects):
+    for obj, target_bin in placed_objects.items():
+        true_bin = f"{hidden_attributes[obj]} bin"
+        if target_bin != true_bin:
+            return f"Dead-end: true {hidden_attributes[obj]} waste {obj} was placed into {target_bin}."
+    return None
+
+
+def waste_success(hidden_attributes, remaining_objects, held_object, placed_objects):
+    if held_object is not None or remaining_objects:
+        return False
+    for obj, label in hidden_attributes.items():
+        if placed_objects.get(obj) != f"{label} bin":
+            return False
+    return True
+
+
+def parse_occlusions(text: str) -> dict[str, str]:
+    occlusions = {}
+    if not text:
+        return occlusions
+    for item in text.split(","):
+        if ":" not in item:
+            raise ValueError('Occlusions must use "hidden:blocker" format, e.g. "waste4:waste3".')
+        hidden, blocker = [part.strip().lower() for part in item.split(":", 1)]
+        occlusions[hidden] = blocker
+    return occlusions
+
+
+def visible_objects(remaining_objects: list[str], occlusions: dict[str, str]) -> list[str]:
+    remaining = set(remaining_objects)
+    return [obj for obj in remaining_objects if occlusions.get(obj) not in remaining]
+
+
+def occlusion_text(occlusions: dict[str, str], remaining_objects: list[str]) -> str:
+    remaining = set(remaining_objects)
+    active = [
+        f"{hidden} is under {blocker} and cannot be detected until {blocker} is placed"
+        for hidden, blocker in sorted(occlusions.items())
+        if hidden in remaining and blocker in remaining
+    ]
+    return "; ".join(active) if active else "None"
 
 
 def main() -> None:
@@ -70,8 +119,10 @@ def main() -> None:
     # -> build prediction set -> execute or ask for help -> update state -> repeat.
     remaining_objects = [obj.strip().lower() for obj in args.scene_objects.split(",") if obj.strip()]
     hidden_attributes = initialize_hidden_attributes(remaining_objects, args.labels)
+    occlusions = parse_occlusions(args.occlusions)
     observed_attributes = {}
     held_object = None
+    placed_objects = {}
     action_history = []
     tokens = ["A", "B", "C", "D", "E"]
 
@@ -111,17 +162,29 @@ def main() -> None:
         
     console("qhat:", qhat)
     console("Detailed log file:", logger.path)
+    stop_reason = "unknown"
+    completed_iterations = 0
+    help_count = 0
+    autonomous_count = 0
+    fallback_in_prediction_count = 0
+    candidate_counts = []
+    help_candidate_counts = []
+    prediction_set_sizes = []
+    help_prediction_set_sizes = []
+    action_failure_count = 0
 
     for step in range(1, args.max_steps + 1):
         step_start = time.perf_counter()
         if not remaining_objects and held_object is None:
             console("\nAll objects have been sorted.")
+            stop_reason = "success"
             break
 
         history_text = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(action_history))
         if not history_text:
             history_text = "None"
         held_text = held_object if held_object is not None else "None"
+        current_occlusion_text = occlusion_text(occlusions, remaining_objects)
         observed_text = (
             ", ".join(f"{obj}: {attr}" for obj, attr in sorted(observed_attributes.items()))
             if observed_attributes
@@ -135,12 +198,14 @@ def main() -> None:
             held_text,
             history_text,
             args.prompt_version,
+            current_occlusion_text,
         )
 
         log_json(f"Step {step} start:", {
             "remaining_objects": remaining_objects,
             "observed_attributes": observed_attributes,
             "held_object": held_object,
+            "occlusions": occlusions,
             "action_history": action_history,
         })
         if args.verbose:
@@ -159,6 +224,8 @@ def main() -> None:
             "raw_text": mc_gen_raw,
         })
         mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw(mc_gen_raw.strip())
+        completed_iterations = step
+        candidate_counts.append(len(mc_gen_all))
 
         score_prompt = build_waste_score_prompt(
             args.instruction,
@@ -168,6 +235,7 @@ def main() -> None:
             history_text,
             mc_gen_full,
             args.prompt_version,
+            current_occlusion_text,
         )
 
         if args.verbose:
@@ -197,6 +265,7 @@ def main() -> None:
         top_logprobs = list(option_logprobs.values())
         scores = temperature_scaling(top_logprobs, temperature=args.score_temperature)
         preds = [token for token, score in zip(top_tokens, scores) if score >= 1 - qhat]
+        prediction_set_sizes.append(len(preds))
         log_json(f"Step {step} decision data:", {
             "options": mc_gen_all,
             "add_mc_prefix": add_mc_prefix,
@@ -211,6 +280,7 @@ def main() -> None:
         true_text = ", ".join(f"{obj}: {label}" for obj, label in sorted(hidden_attributes.items()))
         console_colored(f"{YELLOW}True waste attributes: {true_text}{RESET}", f"True waste attributes: {true_text}")
         console("Observed waste attributes:", observed_text)
+        console("Occluded waste objects:", current_occlusion_text)
         console("Held object:", held_text)
         console("\nGenerated options:")
         highlighted_options = []
@@ -230,15 +300,22 @@ def main() -> None:
         # and not the fallback "option not listed here"; otherwise ask for help.
         if preds == [add_mc_prefix]:
             console("Prediction set only includes 'an option not listed here'. Dead-end reached.")
+            stop_reason = "prediction set only includes fallback"
             break
         help_needed = len(preds) != 1 or add_mc_prefix in preds
+        if add_mc_prefix in preds:
+            fallback_in_prediction_count += 1
         if help_needed:
+            help_count += 1
+            help_candidate_counts.append(len(mc_gen_all))
+            help_prediction_set_sizes.append(len(preds))
             while True:
                 selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
                 if selected_token in tokens:
                     break
                 console("Invalid option. Please enter one of A, B, C, D, or E.")
         else:
+            autonomous_count += 1
             selected_token = preds[0]
         if selected_token not in tokens:
             raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
@@ -246,14 +323,17 @@ def main() -> None:
         selected_action = mc_gen_all[tokens.index(selected_token)]
         if selected_action == add_mc_prefix:
             console("Selected 'an option not listed here'. Dead-end reached.")
+            stop_reason = "selected fallback option"
             break
 
         action_type, action_arg = parse_waste_action(selected_action)
         if action_type == "done":
             console("Planner selected a terminal action. Stopping.")
+            stop_reason = "planner selected terminal action"
             break
         if action_type is None:
             console("Planner selected a terminal or non-executable action. Stopping.")
+            stop_reason = f"non-executable action: {selected_action}"
             break
 
         # Lightweight state update for the high-level planner view. This is not
@@ -262,7 +342,7 @@ def main() -> None:
         if action_type == "detect":
             new_observations = []
             detect_rolls = []
-            for obj in remaining_objects:
+            for obj in visible_objects(remaining_objects, occlusions):
                 if obj in observed_attributes:
                     continue
                 detect_roll = random.random()
@@ -300,10 +380,17 @@ def main() -> None:
                     break
             if matched_object is None:
                 console("Selected object is not in the current state. Stopping to avoid compounding error.")
+                stop_reason = f"invalid pick unavailable object: {action_arg}"
+                break
+            if matched_object not in visible_objects(remaining_objects, occlusions):
+                blocker = occlusions.get(matched_object)
+                console(f"Selected object is occluded by {blocker}. Place the blocker before picking it.")
+                stop_reason = f"invalid pick occluded object: {matched_object}"
                 break
 
             if held_object is not None:
                 console("Robot is already holding an object. Place it before picking another one.")
+                stop_reason = "invalid pick while holding object"
                 break
             held_object = matched_object
             action_history.append(f"pick {matched_object}")
@@ -312,15 +399,18 @@ def main() -> None:
         elif action_type == "place":
             if held_object is None:
                 console("Robot is not holding anything. Pick an object before placing.")
+                stop_reason = "invalid place without held object"
                 break
             place_object, target_bin = action_arg
             if not (place_object in held_object or held_object in place_object):
                 console("Place action does not match the held object. Stopping to avoid compounding error.")
+                stop_reason = "invalid place target mismatch"
                 break
             placed_object = held_object
             held_object = None
             remaining_objects.remove(placed_object)
             observed_attributes.pop(placed_object, None)
+            placed_objects[placed_object] = target_bin
             action_history.append(f"place {placed_object} into {target_bin}")
             result_text = f"Executed: place {placed_object} into {target_bin}"
 
@@ -330,12 +420,23 @@ def main() -> None:
             "remaining_objects": remaining_objects,
             "observed_attributes": observed_attributes,
             "held_object": held_object,
+            "placed_objects": placed_objects,
             "action_history": action_history,
             "step_elapsed_sec": time.perf_counter() - step_start,
         })
+        dead_end_reason = waste_dead_end_reason(hidden_attributes, placed_objects)
+        if dead_end_reason is not None:
+            console(dead_end_reason)
+            stop_reason = dead_end_reason
+            break
+        if waste_success(hidden_attributes, remaining_objects, held_object, placed_objects):
+            console("\nAll objects have been sorted.")
+            stop_reason = "success"
+            break
 
     else:
         console("\nReached max steps before all objects were sorted.")
+        stop_reason = "max steps reached"
 
     console("\n====== Final Plan ======")
     if action_history:
@@ -348,7 +449,49 @@ def main() -> None:
     if remaining_objects:
         console("Unsorted objects:", ", ".join(remaining_objects))
     log_json("Token usage totals:", total_usage)
-    console("Total elapsed seconds:", time.perf_counter() - run_start)
+    total_elapsed = time.perf_counter() - run_start
+    console("Total elapsed seconds:", total_elapsed)
+    final_success = waste_success(hidden_attributes, remaining_objects, held_object, placed_objects)
+    summary = {
+        "success": final_success,
+        "stop_reason": stop_reason,
+        "planning_length": len(action_history),
+        "planning_iterations": completed_iterations,
+        "question_count": help_count,
+        "autonomous_action_count": autonomous_count,
+        "fallback_in_prediction_count": fallback_in_prediction_count,
+        "average_candidate_count": (sum(candidate_counts) / len(candidate_counts)) if candidate_counts else 0.0,
+        "average_candidate_count_when_asked": (
+            sum(help_candidate_counts) / len(help_candidate_counts)
+            if help_candidate_counts else 0.0
+        ),
+        "average_prediction_set_size": (
+            sum(prediction_set_sizes) / len(prediction_set_sizes)
+            if prediction_set_sizes else 0.0
+        ),
+        "average_prediction_set_size_when_asked": (
+            sum(help_prediction_set_sizes) / len(help_prediction_set_sizes)
+            if help_prediction_set_sizes else 0.0
+        ),
+        "action_failure_count": action_failure_count,
+        "placed_objects": placed_objects,
+        "held_object": held_object,
+        "unsorted_objects": remaining_objects,
+        "token_usage": total_usage,
+        "total_elapsed_seconds": total_elapsed,
+    }
+    log_json("Summary:", summary)
+    console("\n====== Summary ======")
+    console("Success:", final_success)
+    console("Stop reason:", stop_reason)
+    console("Planning length:", len(action_history))
+    console("Planning iterations:", completed_iterations)
+    console("Question count:", help_count)
+    console("Average candidate count when asked:", summary["average_candidate_count_when_asked"])
+    console("Average prediction set size when asked:", summary["average_prediction_set_size_when_asked"])
+    console("Autonomous action count:", autonomous_count)
+    console("Fallback in prediction count:", fallback_in_prediction_count)
+    console("Action failure count:", action_failure_count)
     logger.close()
 
 

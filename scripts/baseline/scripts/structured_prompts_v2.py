@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from scripts.structured_prompts import (
+    TOMATO_ACTION_OUTPUT_RULES,
     TOMATO_ACTION_ROLES,
     TOMATO_BACKGROUND,
+    WASTE_ACTION_OUTPUT_RULES,
     WASTE_ACTION_ROLES,
     WASTE_BACKGROUND,
+)
+
+TOMATO_ENVIRONMENT_SENTENCE = (
+    "The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. "
+    "The locations are dock_station, stem_01, and stem_02."
 )
 
 
@@ -55,6 +62,7 @@ def _tomato_scene_text(
     held_text = f"The robot is holding {held_tomato}." if held_tomato else "The robot is not holding a tomato."
     return f"""
 We: The task is: {instruction}
+We: {TOMATO_ENVIRONMENT_SENTENCE}
 We: The robot is at {robot_location}. {held_text}
 We: The tomatoes that still need attention are {_items_text(active_tomatoes)}.
 We: {_tomato_state_sentences(tomato_state_text)}
@@ -76,6 +84,7 @@ def _waste_scene_text(
     held_text: str,
     history_text: str,
     available_bins: list[str],
+    occlusion_text: str = "None",
 ) -> str:
     held_sentence = (
         "The robot is not holding any waste object."
@@ -86,13 +95,14 @@ def _waste_scene_text(
 We: The task is: {instruction}
 We: The waste objects still on the counter are {_items_text(remaining_objects)}.
 We: The available bins are {_items_text(available_bins)}.
+We: The occluded waste objects are {occlusion_text}.
 We: {_waste_observation_sentence(observed_text)} {held_sentence}
 We: {_history_sentence(history_text)}
 """.strip()
 
-
 TOMATO_GENERATION_FEW_SHOT = """
 We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at dock_station. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato1, tomato2.
 We: tomato1 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato2 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
@@ -106,6 +116,7 @@ C) detect stem_01
 D) pick tomato1
 
 We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato1, tomato2.
 We: tomato1 is currently detected; its observed ripeness is ripe, and its scan result is unknown. tomato2 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
@@ -119,6 +130,7 @@ C) navigate to stem_02
 D) scan
 
 We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is holding tomato1.
 We: The tomatoes that still need attention are tomato1, tomato2.
 We: tomato1 is currently held; its observed ripeness is ripe, and its scan result is unknown. tomato2 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
@@ -130,6 +142,48 @@ A) scan
 B) place tomato1
 C) discard tomato1
 D) pick tomato2
+
+We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
+We: The robot is at stem_01. The robot is not holding a tomato.
+We: The tomatoes that still need attention are tomato3, tomato4.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
+We: The loaded tomatoes are tomato1. The discarded tomatoes are tomato2.
+We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan; 8. discard tomato2.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) navigate to stem_02
+B) detect stem_01
+C) pick tomato3
+D) scan
+
+We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
+We: The robot is at stem_01. The robot is holding tomato2.
+We: The tomatoes that still need attention are tomato2, tomato3, tomato4.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently held; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
+We: The loaded tomatoes are tomato1. The discarded tomatoes are none.
+We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) discard tomato2
+B) place tomato2
+C) navigate to stem_02
+D) pick tomato3
+
+We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
+We: The robot is at stem_02. The robot is not holding a tomato.
+We: The tomatoes that still need attention are tomato3, tomato4.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently detected; its observed ripeness is ripe, and its scan result is unknown. tomato4 is currently detected; its observed ripeness is unripe, and its scan result is unknown.
+We: The loaded tomatoes are tomato1. The discarded tomatoes are tomato2.
+We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan; 8. discard tomato2; 9. navigate to stem_02; 10. detect stem_02.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) pick tomato3
+B) pick tomato4
+C) detect stem_02
+D) navigate to stem_01
 """.strip()
 
 
@@ -197,6 +251,10 @@ def build_tomato_generation_prompt_text(
     return f"""
 We: {TOMATO_BACKGROUND}
 
+{TOMATO_ACTION_ROLES}
+
+{TOMATO_ACTION_OUTPUT_RULES}
+
 {TOMATO_GENERATION_FEW_SHOT}
 
 {_tomato_scene_text(instruction, robot_location, active_tomatoes, tomato_state_text, held_tomato, loaded_tomatoes, discarded_tomatoes, history_text)}
@@ -219,6 +277,8 @@ def build_tomato_score_prompt_text(
 ) -> str:
     return f"""
 {TOMATO_BACKGROUND}
+
+{TOMATO_ACTION_ROLES}
 
 {_tomato_scene_text(instruction, robot_location, active_tomatoes, tomato_state_text, held_tomato, loaded_tomatoes, discarded_tomatoes, history_text)}
 We: What should the robot do next?
@@ -247,13 +307,18 @@ def build_waste_generation_prompt_text(
     held_text: str,
     history_text: str,
     available_bins: list[str],
+    occlusion_text: str = "None",
 ) -> str:
     return f"""
 We: {WASTE_BACKGROUND}
 
+{WASTE_ACTION_ROLES}
+
+{WASTE_ACTION_OUTPUT_RULES}
+
 {WASTE_GENERATION_FEW_SHOT}
 
-{_waste_scene_text(instruction, remaining_objects, observed_text, held_text, history_text, available_bins)}
+{_waste_scene_text(instruction, remaining_objects, observed_text, held_text, history_text, available_bins, occlusion_text)}
 We: What should the robot do next? Answer with four options labeled A), B), C), and D).
 You:
 """.strip()
@@ -267,11 +332,12 @@ def build_waste_score_prompt_text(
     history_text: str,
     mc_gen_full: str,
     available_bins: list[str],
+    occlusion_text: str = "None",
 ) -> str:
     return f"""
 {WASTE_BACKGROUND}
 
-{_waste_scene_text(instruction, remaining_objects, observed_text, held_text, history_text, available_bins)}
+{_waste_scene_text(instruction, remaining_objects, observed_text, held_text, history_text, available_bins, occlusion_text)}
 We: What should the robot do next?
 You:
 {mc_gen_full}

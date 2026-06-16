@@ -143,14 +143,22 @@ def waste_args_from_scene(scene_path: Path) -> list[str]:
     return ["--labels", format_mapping(labels)]
 
 
+def waste_occlusions_for_scene(scene: str) -> str:
+    if scene in {"02", "03"}:
+        return "waste4:waste3"
+    if scene in {"04", "05"}:
+        return "waste3:waste1,waste4:waste2"
+    return ""
+
+
 def append_optional(cmd: list[str], flag: str, value) -> None:
     if value is not None and value != "":
         cmd.extend([flag, str(value)])
 
 
-def default_log_file(domain: str) -> Path:
+def default_log_file(domain: str, scene: str) -> Path:
     log_domain = "waste" if domain == "wastesorting" else domain
-    log_dir = LOGS_DIR / log_domain
+    log_dir = LOGS_DIR / log_domain / f"scene_{scene}"
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return log_dir / f"knowno_{domain}_{timestamp}.txt"
@@ -167,6 +175,7 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     else:
         planner = BASELINE_SCRIPT_DIR / "knowno_multistep_wastesorting.py"
         scene_args = waste_args_from_scene(scene_path)
+        append_optional(scene_args, "--occlusions", waste_occlusions_for_scene(scene))
 
     cmd = [sys.executable, str(planner), "--settings", args.settings]
     append_optional(cmd, "--api-key", args.api_key)
@@ -175,7 +184,7 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     append_optional(cmd, "--temperature", args.score_temperature)
     append_optional(cmd, "--max-steps", args.max_steps)
     append_optional(cmd, "--seed", args.seed)
-    append_optional(cmd, "--log-file", args.log_file or default_log_file(domain))
+    append_optional(cmd, "--log-file", args.log_file or default_log_file(domain, scene))
     append_optional(cmd, "--detect-success-prob", args.detect_success_prob)
     append_optional(cmd, "--detect-label-error-prob", args.detect_label_error_prob)
 

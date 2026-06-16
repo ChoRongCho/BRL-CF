@@ -22,7 +22,7 @@ EXPERIMENT_SCRIPT = SCRIPT_DIR / "knowno_baseline_experiment.py"
 
 DEFAULTS = {
     "tomato": {
-        "qhat": "0.8146779677667251",
+        "qhat": "0.92",
         "detect_success_prob": "0.85",
         "detect_label_error_prob": "0.05",
         "scan_success_prob": "0.9",
@@ -33,7 +33,7 @@ DEFAULTS = {
         "discard_failure_prob": "0.01",
     },
     "wastesorting": {
-        "qhat": "0.7692256894078886",
+        "qhat": "0.92",
         "detect_success_prob": "0.9",
         "detect_label_error_prob": "0.2",
     },
@@ -62,7 +62,7 @@ class KnownoGui(tk.Tk):
             "prompt_version": tk.StringVar(value="v1"),
             "max_steps": tk.StringVar(value="50"),
             "seed": tk.StringVar(value=""),
-            "score_temperature": tk.StringVar(value="5.0"),
+            "score_temperature": tk.StringVar(value="3.0"),
             "qhat": tk.StringVar(value=DEFAULTS["tomato"]["qhat"]),
             "detect_success_prob": tk.StringVar(value=DEFAULTS["tomato"]["detect_success_prob"]),
             "detect_label_error_prob": tk.StringVar(value=DEFAULTS["tomato"]["detect_label_error_prob"]),
@@ -337,9 +337,16 @@ class KnownoGui(tk.Tk):
         return text[: match.start()], int(match.group(1)), text[match.end() :]
 
     def _choose_log_file(self) -> None:
+        domain = "waste" if self.vars["domain"].get() == "wastesorting" else self.vars["domain"].get()
+        try:
+            scene = f"{int(self.vars['scene'].get()):02d}"
+        except ValueError:
+            scene = self.vars["scene"].get().strip() or "01"
+        initialdir = SCRIPT_DIR / "logs" / domain / f"scene_{scene}"
+        initialdir.mkdir(parents=True, exist_ok=True)
         path = filedialog.asksaveasfilename(
             title="Choose log file",
-            initialdir=str(SCRIPT_DIR / "logs"),
+            initialdir=str(initialdir),
             defaultextension=".txt",
             filetypes=[("Text logs", "*.txt"), ("All files", "*.*")],
         )

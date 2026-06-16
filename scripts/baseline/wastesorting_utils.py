@@ -113,6 +113,7 @@ def build_waste_generation_prompt(
     held_text: str,
     history_text: str,
     prompt_version: str = "v1",
+    occlusion_text: str = "None",
 ) -> str:
     return prompt_module(prompt_version).build_waste_generation_prompt_text(
         instruction,
@@ -121,6 +122,7 @@ def build_waste_generation_prompt(
         held_text,
         history_text,
         AVAILABLE_BINS,
+        occlusion_text,
     )
 
 
@@ -132,6 +134,7 @@ def build_waste_score_prompt(
     history_text: str,
     mc_gen_full: str,
     prompt_version: str = "v1",
+    occlusion_text: str = "None",
 ) -> str:
     return prompt_module(prompt_version).build_waste_score_prompt_text(
         instruction,
@@ -141,4 +144,5 @@ def build_waste_score_prompt(
         history_text,
         mc_gen_full,
         AVAILABLE_BINS,
+        occlusion_text,
     )

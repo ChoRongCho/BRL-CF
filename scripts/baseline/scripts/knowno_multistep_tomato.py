@@ -22,7 +22,7 @@ from tomato_utils import (
     STEMS,
     TOMATO_BACKGROUND,
     TOMATO_CALIBRATION_TEMPLATE,
-    TOMATO_PROPERTIES,
+    TOMATO_SCAN_RESULTS,
     build_tomato_calibration_prompt,
     build_tomato_generation_prompt,
     build_tomato_score_prompt,
@@ -37,8 +37,8 @@ def parse_args():
     parser.add_argument("--instruction", default="Harvest all ripe tomatoes and discard rotten tomatoes.")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
     parser.add_argument("--tomatoes", default="tomato1, tomato2, tomato3, tomato4")
-    parser.add_argument("--qhat", type=float, default=0.928)
-    parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=5.0)
+    parser.add_argument("--qhat", type=float, default=0.92)
+    parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=3.0)
     parser.add_argument("--max-steps", type=int, default=30)
     parser.add_argument("--detect-success-prob", type=float, default=0.8)
     parser.add_argument("--detect-label-error-prob", type=float, default=0.0)
@@ -508,14 +508,15 @@ def main() -> None:
             }
             if scan_roll <= args.scan_success_prob:
                 true_property = hidden_properties[held_tomato]
+                true_scan_result = "ripe" if true_property == "ripe" else "rotten"
                 label_error_roll = random.random()
                 scan_info["label_error_roll"] = label_error_roll
                 scan_info["label_error"] = label_error_roll <= args.scan_label_error_prob
                 if label_error_roll <= args.scan_label_error_prob:
-                    candidates = [label for label in TOMATO_PROPERTIES if label != true_property]
+                    candidates = [label for label in TOMATO_SCAN_RESULTS if label != true_scan_result]
                     scanned_properties[held_tomato] = random.choice(candidates)
                 else:
-                    scanned_properties[held_tomato] = true_property
+                    scanned_properties[held_tomato] = true_scan_result
                 scan_info["scanned_property"] = scanned_properties[held_tomato]
                 result_text = f"Scan result: {held_tomato}: {scanned_properties[held_tomato]}"
             else:

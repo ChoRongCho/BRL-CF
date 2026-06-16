@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-# Usage: ./run/when_experiments.sh [--scene N] [--iter N] [--strategy no|all|ours|random] [--random-query-prob P]
-# Example: ./run/when_experiments.sh --scene 3 --iter 10 --strategy random --random-query-prob 0.3
+# Usage: ./run/when_experiments.sh [--scene N] [--iter N] [--strategy no|all|ours|random] [--random-query-prob P] [--seed N|random]
+# Example: ./run/when_experiments.sh --scene 3 --iter 10 --strategy random --random-query-prob 0.3 --seed random
 DOMAIN="tomato"
 # DOMAIN="wastesorting"
 SCENE="5"
@@ -12,13 +12,15 @@ MAXSTEP="50"
 STRATEGY="random"
 RANDOM_QUERY_PROB="0.3"
 THRESHOLD="0.8"
+SEED="random"
 
 usage() {
-    echo "Usage: $0 [--scene N] [--iter N] [--strategy no|all|ours|random] [--random-query-prob P]"
+    echo "Usage: $0 [--scene N] [--iter N] [--strategy no|all|ours|random] [--random-query-prob P] [--seed N|random]"
     echo "  --scene N              scene number (default: ${SCENE})"
     echo "  --iter, --iteration N  repeat count (default: ${ITERATIONS})"
     echo "  --strategy NAME        query policy: no, all, ours, random (default: ${STRATEGY})"
     echo "  --random-query-prob P  trigger probability for random strategy (default: ${RANDOM_QUERY_PROB})"
+    echo "  --seed N|random        fixed seed or random seed per run (default: ${SEED})"
     echo "  --domain NAME          domain name (default: ${DOMAIN})"
     echo "  --max-step N           maximum episode steps (default: ${MAXSTEP})"
 }
@@ -39,6 +41,10 @@ while (($#)); do
             ;;
         --random-query-prob)
             RANDOM_QUERY_PROB="${2:?Missing value for --random-query-prob}"
+            shift 2
+            ;;
+        --seed)
+            SEED="${2:?Missing value for --seed}"
             shift 2
             ;;
         --domain)
@@ -63,6 +69,11 @@ done
 if ! [[ "$SCENE" =~ ^[0-9]+$ && "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$MAXSTEP" =~ ^[1-9][0-9]*$ ]]; then
     usage
     echo "  scene, iterations, and max-step must be positive integers."
+    exit 1
+fi
+if [[ "$SEED" != "random" && ! "$SEED" =~ ^[0-9]+$ ]]; then
+    usage
+    echo "  seed must be a non-negative integer or random."
     exit 1
 fi
 
@@ -105,14 +116,22 @@ if [[ ! -f "$robot_skill" ]]; then
 fi
 
 PROB_LABEL="${RANDOM_QUERY_PROB/./-}"
-LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
+LOG_DIR="logs/${DOMAIN}/scene_${scene_id}_step${MAXSTEP}/when_${STRATEGY}_rand_${PROB_LABEL}"
 # LOG_DIR="logs/${DOMAIN}/scene_0${SCENE}_${STRATEGY}_rand${PROB_LABEL}"
 
 
 mkdir -p "$LOG_DIR"
 
+generate_seed() {
+    od -An -N4 -tu4 /dev/urandom | tr -d ' '
+}
+
 for ((i = 1; i <= ITERATIONS; i++)); do
-    seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
+    if [[ "$SEED" == "random" ]]; then
+        seed=$(generate_seed)
+    else
+        seed="$SEED"
+    fi
     echo "[RUN ${i}/${ITERATIONS}] strategy=${STRATEGY}, threshold=${THRESHOLD}, random_query_prob=${RANDOM_QUERY_PROB}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
 
     python3 when_main.py \

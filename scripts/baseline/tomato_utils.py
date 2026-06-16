@@ -11,6 +11,7 @@ from scripts.structured_prompts import (
 
 
 TOMATO_PROPERTIES = ["ripe", "unripe", "rotten"]
+TOMATO_SCAN_RESULTS = ["ripe", "rotten"]
 LOCATIONS = ["dock_station", "stem_01", "stem_02"]
 STEMS = ["stem_01", "stem_02"]
 TOMATO_LABELS = {

@@ -21,6 +21,13 @@ Action roles:
 - discard <tomato>: discard the held rotten or bad tomato.
 """.strip()
 
+TOMATO_ACTION_OUTPUT_RULES = """
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: navigate to <location>, detect <location>, pick <tomato>, scan, scan <tomato>, place <tomato>, discard <tomato>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+""".strip()
+
 TOMATO_GENERATION_FEW_SHOT = """
 We: Example state:
 Robot location: dock_station
@@ -98,6 +105,13 @@ Action roles:
 - place <object> into <bin>: place the held object into the bin matching the observed attribute.
 """.strip()
 
+WASTE_ACTION_OUTPUT_RULES = """
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: detect, pick <object>, place <object> into <bin>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+""".strip()
+
 WASTE_GENERATION_FEW_SHOT = """
 We: Example state:
 Objects still on the counter: waste1, waste2, waste3, waste4
@@ -154,6 +168,10 @@ def build_tomato_generation_prompt_text(
 ) -> str:
     return f"""
 We: {TOMATO_BACKGROUND}
+
+{TOMATO_ACTION_ROLES}
+
+{TOMATO_ACTION_OUTPUT_RULES}
 
 {TOMATO_GENERATION_FEW_SHOT}
 
@@ -223,15 +241,21 @@ def build_waste_generation_prompt_text(
     held_text: str,
     history_text: str,
     available_bins: list[str],
+    occlusion_text: str = "None",
 ) -> str:
     return f"""
 We: {WASTE_BACKGROUND}
+
+{WASTE_ACTION_ROLES}
+
+{WASTE_ACTION_OUTPUT_RULES}
 
 {WASTE_GENERATION_FEW_SHOT}
 
 We: Overall instruction: {instruction}
 We: Objects still on the counter: {", ".join(remaining_objects) if remaining_objects else "None"}
 We: Available bins: {", ".join(available_bins)}
+We: Occluded waste objects: {occlusion_text}
 We: Observed waste attributes: {observed_text}
 We: Object currently held by the robot: {held_text}
 We: Actions already completed:
@@ -249,6 +273,7 @@ def build_waste_score_prompt_text(
     history_text: str,
     mc_gen_full: str,
     available_bins: list[str],
+    occlusion_text: str = "None",
 ) -> str:
     return f"""
 {WASTE_BACKGROUND}
@@ -256,6 +281,7 @@ def build_waste_score_prompt_text(
 We: Overall instruction: {instruction}
 We: Objects still on the counter: {", ".join(remaining_objects) if remaining_objects else "None"}
 We: Available bins: {", ".join(available_bins)}
+We: Occluded waste objects: {occlusion_text}
 We: Observed waste attributes: {observed_text}
 We: Object currently held by the robot: {held_text}
 We: Actions already completed:

@@ -13,13 +13,15 @@ PROMPT_VERSION="v1"
 MAX_STEPS="50"
 # Optional fixed seed. Leave empty to generate a new random seed on each run.
 SEED="${SEED:-}"
-SCORE_TEMPERATURE="5.0"
+# Lower temperature keeps option probabilities less flat, so the runner asks
+# only when the model is genuinely uncertain.
+SCORE_TEMPERATURE="3.0"
 VERBOSE="false"
 DRY_RUN="false"
 LOG_FILE=""
 
 if [[ "${DOMAIN}" == "tomato" ]]; then
-  QHAT="0.8146779677667251"
+  QHAT="0.92"
   DETECT_SUCCESS_PROB="0.85"
   DETECT_LABEL_ERROR_PROB="0.05"
   SCAN_SUCCESS_PROB="0.9"
@@ -29,7 +31,7 @@ if [[ "${DOMAIN}" == "tomato" ]]; then
   PLACE_FAILURE_PROB="0.01"
   DISCARD_FAILURE_PROB="0.01"
 elif [[ "${DOMAIN}" == "wastesorting" || "${DOMAIN}" == "waste" ]]; then
-  QHAT="0.7692256894078886"
+  QHAT="0.92"
   DETECT_SUCCESS_PROB="0.9"
   DETECT_LABEL_ERROR_PROB="0.2"
 else
