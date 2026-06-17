@@ -9,6 +9,7 @@ import json
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
@@ -20,6 +21,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "knowno_baseline_experiment.py"
 SETTINGS_PATH = SCRIPT_DIR / "llm_setting.json"
+ROOT_DUMMY_SETTINGS_PATH = PROJECT_ROOT / "llm_setting_dummy.json"
 
 
 DEFAULTS = {
@@ -57,13 +59,16 @@ class KnownoGui(tk.Tk):
         self.current_option_lines: list[str] = []
         self.current_options: dict[str, str] = {}
         self.current_prediction_set: list[str] = []
+        self.runtime_settings_path: Path | None = None
 
         self.vars = {
             "domain": tk.StringVar(value="tomato"),
             "scene": tk.StringVar(value="01"),
+            "llm_model": tk.StringVar(value="gpt-4o"),
             "prompt_version": tk.StringVar(value="v1"),
             "max_steps": tk.StringVar(value="50"),
             "seed": tk.StringVar(value=""),
+            "seed_random": tk.BooleanVar(value=True),
             "score_temperature": tk.StringVar(value="3.0"),
             "qhat": tk.StringVar(value=DEFAULTS["tomato"]["qhat"]),
             "detect_success_prob": tk.StringVar(value=DEFAULTS["tomato"]["detect_success_prob"]),
@@ -135,10 +140,10 @@ class KnownoGui(tk.Tk):
 
         row = self._combo_row(parent, row, "Domain", "domain", ["tomato", "wastesorting"])
         row = self._combo_row(parent, row, "Scene", "scene", ["01", "02", "03", "04", "05"])
+        row = self._combo_row(parent, row, "LLM", "llm_model", ["gpt-4o", "gpt-3.5-turbo"])
         row = self._combo_row(parent, row, "Prompt", "prompt_version", ["v1", "v2"])
         row = self._entry_row(parent, row, "Max steps", "max_steps")
-        row = self._entry_row(parent, row, "Seed", "seed")
-        ttk.Label(parent, text="blank = random each run").grid(row=row - 1, column=2, sticky="w", padx=(6, 0))
+        row = self._seed_row(parent, row)
         row = self._entry_row(parent, row, "Temperature", "score_temperature")
         row = self._entry_row(parent, row, "qhat", "qhat")
 
@@ -193,6 +198,8 @@ class KnownoGui(tk.Tk):
 
         self.vars["domain"].trace_add("write", lambda *_: self._apply_domain_defaults())
         self.vars["scene"].trace_add("write", lambda *_: self._update_ground_truth())
+        self.vars["seed_random"].trace_add("write", lambda *_: self._apply_seed_mode())
+        self._apply_seed_mode()
 
     def _build_output(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
@@ -247,6 +254,27 @@ class KnownoGui(tk.Tk):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
         ttk.Entry(parent, textvariable=self.vars[key], width=20).grid(row=row, column=1, sticky="ew", pady=3)
         return row + 1
+
+    def _seed_row(self, parent: ttk.Frame, row: int) -> int:
+        ttk.Label(parent, text="Seed").grid(row=row, column=0, sticky="w", pady=3)
+        self.seed_entry = ttk.Entry(parent, textvariable=self.vars["seed"], width=20)
+        self.seed_entry.grid(row=row, column=1, sticky="ew", pady=3)
+        ttk.Checkbutton(parent, text="Random", variable=self.vars["seed_random"]).grid(
+            row=row, column=2, sticky="w", padx=(6, 0)
+        )
+        return row + 1
+
+    def _apply_seed_mode(self) -> None:
+        if not hasattr(self, "seed_entry"):
+            return
+        if self.vars["seed_random"].get():
+            if not self.vars["seed"].get().strip():
+                self.vars["seed"].set("random")
+            self.seed_entry.configure(state="disabled")
+        else:
+            if self.vars["seed"].get().strip().lower() == "random":
+                self.vars["seed"].set("")
+            self.seed_entry.configure(state="normal")
 
     def _apply_domain_defaults(self) -> None:
         domain = self.vars["domain"].get()
@@ -339,17 +367,52 @@ class KnownoGui(tk.Tk):
         return text[: match.start()], int(match.group(1)), text[match.end() :]
 
     @staticmethod
-    def _model_slug() -> str:
-        try:
-            settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return "unknown"
-        model = str(settings.get("model", "")).lower()
+    def _model_slug_for(model_name: str) -> str:
+        model = model_name.lower()
         if "gpt-3.5" in model or "gpt-35" in model:
             return "gpt35turbo"
         if "gpt-4" in model:
             return "gpt4"
         return re.sub(r"[^a-z0-9]+", "", model) or "unknown"
+
+    def _model_slug(self) -> str:
+        return self._model_slug_for(self.vars["llm_model"].get())
+
+    def _base_settings(self) -> dict:
+        for path in (SETTINGS_PATH, ROOT_DUMMY_SETTINGS_PATH):
+            try:
+                if path.exists():
+                    return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+        return {}
+
+    def _write_runtime_settings(self) -> Path:
+        settings = self._base_settings()
+        settings["model"] = self.vars["llm_model"].get()
+        if self.runtime_settings_path is not None:
+            self._cleanup_runtime_settings()
+        handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="knowno_llm_setting_",
+            suffix=".json",
+            delete=False,
+        )
+        with handle:
+            json.dump(settings, handle, indent=2)
+            handle.write("\n")
+        self.runtime_settings_path = Path(handle.name)
+        return self.runtime_settings_path
+
+    def _cleanup_runtime_settings(self) -> None:
+        if self.runtime_settings_path is None:
+            return
+        try:
+            self.runtime_settings_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        self.runtime_settings_path = None
 
     def _choose_log_file(self) -> None:
         domain = "wastesorting" if self.vars["domain"].get() == "waste" else self.vars["domain"].get()
@@ -376,14 +439,23 @@ class KnownoGui(tk.Tk):
             self.vars["log_file"].set(path)
 
     def _build_command(self) -> list[str]:
-        seed = self.vars["seed"].get().strip()
-        if not seed:
+        if self.vars["seed_random"].get():
             seed = str(random.randrange(0, 2**32 - 1))
             self.vars["seed"].set(seed)
+        else:
+            seed = self.vars["seed"].get().strip()
+            if not seed:
+                raise ValueError("Seed is required when Random is unchecked.")
+            if not seed.isdigit():
+                raise ValueError("Seed must be a non-negative integer.")
+
+        settings_path = self._write_runtime_settings()
 
         cmd = [
             sys.executable,
             str(EXPERIMENT_SCRIPT),
+            "--settings",
+            str(settings_path),
             "--domain",
             self.vars["domain"].get(),
             "--scene",
@@ -436,7 +508,11 @@ class KnownoGui(tk.Tk):
             messagebox.showinfo("Run active", "A run is already active.")
             return
 
-        cmd = self._build_command()
+        try:
+            cmd = self._build_command()
+        except ValueError as exc:
+            messagebox.showerror("Invalid setting", str(exc))
+            return
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         self._reset_run_display()
@@ -454,6 +530,7 @@ class KnownoGui(tk.Tk):
                 start_new_session=True,
             )
         except OSError as exc:
+            self._cleanup_runtime_settings()
             messagebox.showerror("Start failed", str(exc))
             self.process = None
             return
@@ -517,6 +594,7 @@ class KnownoGui(tk.Tk):
                 self.status_var.set(f"Finished ({code})")
                 self.start_button.configure(state="normal")
                 self.stop_button.configure(state="disabled")
+                self._cleanup_runtime_settings()
                 self._append_events(f"\n[process exited with code {code}]\n")
             else:
                 self._process_output(str(item))
