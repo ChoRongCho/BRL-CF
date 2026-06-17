@@ -339,13 +339,22 @@ experiments/user_eval/figure/
 
 ## Requirements
 
-The core planner expects Python 3 and the following packages:
+Install Python dependencies from the repository root:
 
 ```bash
-pip install numpy pyyaml clingo
+conda activate myenv
+pip install -r requirements.txt
 ```
 
-Plotting and analysis scripts also use common scientific Python packages such as `pandas`, `matplotlib`, and `scipy` depending on the script.
+The `requirements.txt` file covers the core planner, KnowNo baseline, plotting/analysis scripts, and optional tabletop simulation dependencies.
+
+The KnowNo GUI also requires `tkinter`. If `import tkinter` fails, install it through conda or the OS package manager:
+
+```bash
+conda install tk
+# or, on Ubuntu/Debian:
+sudo apt-get install python3-tk
+```
 
 KnowNo baseline execution requires a valid OpenAI-compatible API setting in:
 

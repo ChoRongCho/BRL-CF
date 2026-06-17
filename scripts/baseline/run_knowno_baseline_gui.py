@@ -135,7 +135,7 @@ class KnownoGui(tk.Tk):
         parent.columnconfigure(1, weight=1)
         row = 0
 
-        ttk.Label(parent, text="Run Settings", font=("", 15, "bold")).grid(row=row, column=0, columnspan=3, sticky="w")
+        ttk.Label(parent, text="Run Settings", font=("", 13, "bold")).grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
 
         row = self._combo_row(parent, row, "Domain", "domain", ["tomato", "wastesorting"])
@@ -149,7 +149,7 @@ class KnownoGui(tk.Tk):
 
         ttk.Separator(parent).grid(row=row, column=0, columnspan=3, sticky="ew", pady=10)
         row += 1
-        ttk.Label(parent, text="Probabilities", font=("", 15, "bold")).grid(row=row, column=0, columnspan=3, sticky="w")
+        ttk.Label(parent, text="Probabilities", font=("", 13, "bold")).grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
 
         row = self._entry_row(parent, row, "Detect success", "detect_success_prob")
@@ -189,7 +189,7 @@ class KnownoGui(tk.Tk):
         truth_frame.rowconfigure(1, weight=1)
         truth_frame.columnconfigure(0, weight=1)
         ttk.Label(truth_frame, text="Ground Truth", font=(self.ui_font_family, 15, "bold")).grid(row=0, column=0, sticky="w")
-        self.truth_text = tk.Text(truth_frame, wrap="word", height=14, state="disabled", font=(self.text_font_family, 13))
+        self.truth_text = tk.Text(truth_frame, wrap="word", height=18, state="disabled", font=(self.text_font_family, 13))
         truth_scrollbar = ttk.Scrollbar(truth_frame, orient="vertical", command=self.truth_text.yview)
         self.truth_text.configure(yscrollcommand=truth_scrollbar.set)
         self.truth_text.grid(row=1, column=0, sticky="nsew")
@@ -211,12 +211,12 @@ class KnownoGui(tk.Tk):
 
         panes = ttk.Panedwindow(parent, orient="vertical")
         panes.grid(row=1, column=0, sticky="nsew", pady=(8, 8))
-        state_frame, self.state_text = self._text_panel(panes, "Current State", height=14)
+        state_frame, self.state_text = self._text_panel(panes, "Current State", height=10)
         options_frame, self.options_text = self._text_panel(panes, "Options", height=10)
-        events_frame, self.events_text = self._text_panel(panes, "Events", height=7)
-        panes.add(state_frame, weight=3)
+        events_frame, self.events_text = self._text_panel(panes, "Events", height=12)
+        panes.add(state_frame, weight=2)
         panes.add(options_frame, weight=2)
-        panes.add(events_frame, weight=1)
+        panes.add(events_frame, weight=3)
 
         input_frame = ttk.Frame(parent)
         input_frame.grid(row=2, column=0, sticky="ew")
