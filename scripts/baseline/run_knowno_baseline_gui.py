@@ -5,6 +5,7 @@ import queue
 import random
 import re
 import ast
+import json
 import signal
 import subprocess
 import sys
@@ -18,6 +19,7 @@ from tkinter import filedialog, messagebox, ttk
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "knowno_baseline_experiment.py"
+SETTINGS_PATH = SCRIPT_DIR / "llm_setting.json"
 
 
 DEFAULTS = {
@@ -336,13 +338,33 @@ class KnownoGui(tk.Tk):
             return text, 999999, text
         return text[: match.start()], int(match.group(1)), text[match.end() :]
 
+    @staticmethod
+    def _model_slug() -> str:
+        try:
+            settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return "unknown"
+        model = str(settings.get("model", "")).lower()
+        if "gpt-3.5" in model or "gpt-35" in model:
+            return "gpt35turbo"
+        if "gpt-4" in model:
+            return "gpt4"
+        return re.sub(r"[^a-z0-9]+", "", model) or "unknown"
+
     def _choose_log_file(self) -> None:
-        domain = "waste" if self.vars["domain"].get() == "wastesorting" else self.vars["domain"].get()
+        domain = "wastesorting" if self.vars["domain"].get() == "waste" else self.vars["domain"].get()
         try:
             scene = f"{int(self.vars['scene'].get()):02d}"
         except ValueError:
             scene = self.vars["scene"].get().strip() or "01"
-        initialdir = SCRIPT_DIR / "logs" / domain / f"scene_{scene}"
+        initialdir = (
+            PROJECT_ROOT
+            / "experiments_logs"
+            / "system_log"
+            / domain
+            / f"scene_{scene}_step50"
+            / f"when_knowno_{self._model_slug()}"
+        )
         initialdir.mkdir(parents=True, exist_ok=True)
         path = filedialog.asksaveasfilename(
             title="Choose log file",

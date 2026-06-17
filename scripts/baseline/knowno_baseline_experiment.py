@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -14,7 +15,7 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 BASELINE_DIR = SCRIPTS_DIR / "baseline"
 BASELINE_SCRIPT_DIR = BASELINE_DIR / "scripts"
 DOMAIN_DIR = SCRIPTS_DIR / "domain"
-LOGS_DIR = BASELINE_DIR / "logs"
+LOGS_DIR = PROJECT_ROOT / "experiments_logs" / "system_log"
 
 TOMATO_PROPERTIES = {"ripe", "unripe", "rotten"}
 WASTE_LABELS = {"general", "plastic", "paper", "can"}
@@ -156,9 +157,21 @@ def append_optional(cmd: list[str], flag: str, value) -> None:
         cmd.extend([flag, str(value)])
 
 
-def default_log_file(domain: str, scene: str) -> Path:
-    log_domain = "waste" if domain == "wastesorting" else domain
-    log_dir = LOGS_DIR / log_domain / f"scene_{scene}"
+def model_slug(settings_path: str) -> str:
+    try:
+        settings = json.loads(Path(settings_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "unknown"
+    model = str(settings.get("model", "")).lower()
+    if "gpt-3.5" in model or "gpt-35" in model:
+        return "gpt35turbo"
+    if "gpt-4" in model:
+        return "gpt4"
+    return re.sub(r"[^a-z0-9]+", "", model) or "unknown"
+
+
+def default_log_file(domain: str, scene: str, settings_path: str) -> Path:
+    log_dir = LOGS_DIR / domain / f"scene_{scene}_step50" / f"when_knowno_{model_slug(settings_path)}"
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return log_dir / f"knowno_{domain}_{timestamp}.txt"
@@ -184,7 +197,7 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     append_optional(cmd, "--temperature", args.score_temperature)
     append_optional(cmd, "--max-steps", args.max_steps)
     append_optional(cmd, "--seed", args.seed)
-    append_optional(cmd, "--log-file", args.log_file or default_log_file(domain, scene))
+    append_optional(cmd, "--log-file", args.log_file or default_log_file(domain, scene, args.settings))
     append_optional(cmd, "--detect-success-prob", args.detect_success_prob)
     append_optional(cmd, "--detect-label-error-prob", args.detect_label_error_prob)
 

@@ -15,7 +15,7 @@ def _write_lines(path: Path, lines: Iterable[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def logger_exp(result: Dict[str, Any], log_dir: str | Path = "logs") -> Path:
+def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/system_log") -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     domain = result.get("meta", {}).get("domain", "unknown")
     path = Path(log_dir) / f"exp_{domain}_{timestamp}.txt"

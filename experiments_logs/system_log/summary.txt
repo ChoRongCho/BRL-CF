@@ -1,0 +1,184 @@
+실험 결과 요약
+==============
+
+이 문서는 현재 `logs/*/scene_metrics` 아래 CSV 파일을 다시 읽어서 작성했다.
+각 수치는 CSV의 마지막 aggregate row를 기준으로 하며, scene별 값의 평균을 사용했다.
+
+
+1. 데이터 구성
+==============
+
+현재 `scene_metrics`에는 두 종류의 결과가 있다.
+
+1. Threshold sweep
+   - tomato: `logs/tomato/scene_metrics/step_50_thres_0-2`부터 `step_50_thres_1-0`
+   - wastesorting: `logs/wastesorting/scene_metrics/step_50_thres_0-2`부터 `step_50_thres_1-0`
+   - threshold 변화에 따른 성공률, 질문 수, reward, step, elapsed time을 정리한 결과이다.
+
+2. Strategy 비교
+   - `step_50_thres_all`
+   - `step_50_thres_no`
+   - `step_50_thres_ours`
+   - `step_50_thres_random`
+   - 질문 정책별 성능을 비교한 결과이다.
+
+주의:
+- 현재 CSV 기준으로 `tomato/step_50_thres_random`은 마지막 aggregate row에서 scene 하나가 비어 있다.
+- 따라서 아래 tomato random 평균은 비어 있지 않은 4개 scene 값만 사용한 평균이다.
+- 나머지 주요 CSV의 aggregate row에는 빈 값이 없다.
+
+
+2. Tomato
+=========
+
+2.1 Threshold sweep
+-------------------
+
+Threshold | Success | Questions | Reward | Steps  | Time
+0.2       | 0.210   | 3.120     | 6.825  | 39.635 | 37.486
+0.3       | 0.185   | 3.330     | 5.925  | 40.685 | 38.485
+0.4       | 0.085   | 4.445     | 4.875  | 46.220 | 44.013
+0.5       | 0.155   | 10.270    | 5.300  | 43.645 | 41.729
+0.6       | 0.280   | 12.665    | 5.700  | 40.060 | 37.941
+0.7       | 0.955   | 22.215    | 6.700  | 19.730 | 17.780
+0.8       | 0.980   | 24.330    | 7.025  | 20.235 | 18.360
+0.9       | 0.975   | 24.800    | 7.600  | 20.765 | 18.792
+1.0       | 0.975   | 43.550    | 7.325  | 23.495 | 21.337
+
+해석:
+- tomato의 threshold sweep은 0.7을 기준으로 성능이 급격히 바뀐다.
+- 0.2-0.6 구간은 질문 수가 적거나 중간 수준이지만 성공률이 0.085-0.280으로 낮다.
+- 0.7에서 성공률이 0.955로 크게 올라가며, step/time도 절반 이하로 줄어든다.
+- 최고 성공률은 threshold 0.8의 0.980이다.
+- 0.9와 1.0도 성공률은 0.975로 높지만, 0.8보다 질문 수가 많다.
+- 특히 1.0은 질문 수가 43.550으로 급증하므로 workload 관점에서 좋지 않다.
+
+Tomato threshold 결론:
+- 성공률 기준 최적값: 0.8
+- workload까지 고려한 실용적 후보: 0.7 또는 0.8
+- 논문에서는 0.7 이후 threshold가 task success를 크게 개선하지만, 너무 높은 threshold는 질문 부담을 키운다는 해석이 가능하다.
+
+2.2 Strategy 비교
+-----------------
+
+Strategy | Success | Questions | Reward | Steps  | Time
+all      | 1.000   | 34.000    | 6.000  | 21.200 | 18.479
+no       | 0.200   | 0.000     | 11.000 | 44.200 | 41.004
+ours     | 1.000   | 20.000    | 5.000  | 20.400 | 23.465
+random   | 0.000   | 19.250    | 5.000  | 50.000 | 46.246
+
+해석:
+- `ours`는 `all`과 동일하게 성공률 1.000을 달성한다.
+- `ours`는 `all` 대비 질문 수를 34.000에서 20.000으로 줄인다.
+  이는 약 41.2% 감소이다.
+- `no`는 질문을 하지 않지만 성공률이 0.200이고, step/time이 크다.
+- `random`은 질문 수가 `ours`와 비슷하지만 성공률은 0.000이다.
+  따라서 tomato에서는 단순히 질문을 많이 하는 것이 아니라, 불확실한 순간에 적절한 질문을 고르는 것이 중요하다는 주장이 강하게 드러난다.
+
+Tomato에서 강하게 주장 가능한 내용:
+- `ours` vs `all`: 같은 성공률, 더 적은 질문.
+- `ours` vs `random`: 비슷한 질문 수, 압도적으로 높은 성공률.
+- `ours` vs `no`: 인간 개입이 없으면 성공률이 크게 떨어짐.
+
+
+3. Wastesorting
+===============
+
+3.1 Threshold sweep
+-------------------
+
+Threshold | Success | Questions | Reward | Steps  | Time
+0.2       | 0.475   | 0.830     | 11.625 | 28.485 | 29.601
+0.3       | 0.515   | 0.795     | 12.250 | 28.370 | 29.339
+0.4       | 0.505   | 0.795     | 11.275 | 26.900 | 27.731
+0.5       | 0.565   | 1.410     | 12.550 | 24.850 | 25.452
+0.6       | 0.580   | 1.770     | 14.100 | 24.165 | 24.691
+0.7       | 0.925   | 3.205     | 17.500 | 10.595 | 9.486
+0.8       | 0.955   | 8.060     | 16.800 | 10.620 | 9.536
+0.9       | 0.960   | 8.750     | 17.125 | 11.190 | 10.037
+1.0       | 0.930   | 15.274    | 16.713 | 10.551 | 9.481
+
+해석:
+- wastesorting도 0.7부터 성공률이 크게 올라간다.
+- 최고 성공률은 threshold 0.9의 0.960이다.
+- 0.8도 성공률 0.955로 거의 동일하고 질문 수는 0.9보다 적다.
+- 0.7은 성공률 0.925이면서 질문 수가 3.205로 훨씬 낮다.
+- 1.0은 질문 수가 15.274로 가장 높지만 성공률은 0.930으로 떨어진다.
+
+Wastesorting threshold 결론:
+- 성공률 기준 최적값: 0.9
+- workload까지 고려한 실용적 후보: 0.7 또는 0.8
+- threshold를 높이면 어느 시점까지는 성공률이 좋아지지만, 1.0처럼 과도하게 높이면 질문 부담만 커질 수 있다.
+
+3.2 Strategy 비교
+-----------------
+
+Strategy | Success | Questions | Reward | Steps  | Time
+all      | 1.000   | 15.800    | 15.000 | 11.200 | 9.267
+no       | 0.800   | 0.000     | 16.000 | 10.800 | 8.919
+ours     | 1.000   | 9.200     | 15.000 | 11.200 | 9.308
+random   | 1.000   | 6.800     | 19.000 | 10.400 | 8.670
+
+해석:
+- `ours`는 `all`과 동일하게 성공률 1.000을 달성한다.
+- `ours`는 `all` 대비 질문 수를 15.800에서 9.200으로 줄인다.
+  이는 약 41.8% 감소이다.
+- 하지만 wastesorting에서는 `no`도 성공률 0.800으로 높고, `random`도 성공률 1.000이다.
+- 현재 CSV 기준으로 `random`은 질문 수, reward, step, time 모두에서 `ours`보다 좋아 보인다.
+- 따라서 wastesorting 결과만으로 `ours`가 random보다 우수하다고 주장하기는 어렵다.
+
+Wastesorting에서 안전한 해석:
+- `ours`는 `all`과 같은 성공률을 유지하면서 질문 수를 줄인다.
+- 다만 이 도메인은 쉬운 편이라 random baseline도 잘 작동한다.
+- 따라서 method superiority를 강조하기보다는, domain-dependent behavior와 질문 수 절감을 보여주는 보조 결과로 쓰는 편이 안전하다.
+
+
+4. 종합 해석
+============
+
+1. 두 도메인 모두 threshold 0.7 근처에서 성능이 크게 개선된다.
+   - tomato: 0.6 success 0.280 -> 0.7 success 0.955
+   - wastesorting: 0.6 success 0.580 -> 0.7 success 0.925
+   이는 불확실성 threshold가 너무 낮으면 필요한 질문을 충분히 하지 못하고, 일정 수준 이상에서 task success가 크게 좋아진다는 해석을 가능하게 한다.
+
+2. 너무 높은 threshold는 질문 부담을 키운다.
+   - tomato 1.0은 success 0.975로 높지만 questions 43.550으로 과도하다.
+   - wastesorting 1.0은 questions 15.274로 가장 높지만 success는 0.930으로 0.8/0.9보다 낮다.
+   따라서 threshold tuning은 success-workload trade-off 문제로 제시할 수 있다.
+
+3. `ours`는 두 도메인 모두에서 `all`과 같은 성공률을 달성하면서 질문 수를 약 41% 줄인다.
+   - tomato: 34.000 -> 20.000
+   - wastesorting: 15.800 -> 9.200
+   이 결과는 가장 안정적으로 사용할 수 있는 핵심 claim이다.
+
+4. Tomato는 제안 방법의 필요성을 가장 강하게 보여준다.
+   - `ours`: success 1.000
+   - `random`: success 0.000
+   - `no`: success 0.200
+   즉 질문의 개수만이 아니라 질문의 시점과 내용이 중요하다는 메시지가 명확하다.
+
+5. Wastesorting은 더 조심스럽게 다뤄야 한다.
+   - `random`이 success 1.000이고 questions 6.800으로 매우 좋다.
+   - 이 결과 때문에 "ours가 모든 도메인에서 random보다 낫다"는 주장은 현재 CSV 기준으로 성립하지 않는다.
+   - 대신 wastesorting은 쉬운 도메인에서의 보조 결과 또는 threshold sensitivity 결과로 사용하는 편이 좋다.
+
+
+5. 논문 작성 관점의 결론
+========================
+
+가장 좋은 framing:
+
+1. 로봇이 항상 질문하면 성공률은 높지만 인간 부담이 크다.
+2. 질문을 전혀 하지 않으면 일부 도메인, 특히 tomato에서 성공률이 크게 떨어진다.
+3. 제안 방법은 불확실성 기반으로 질문 시점과 내용을 선택하여, `all` 수준의 성공률을 유지하면서 질문 수를 크게 줄인다.
+4. Threshold sweep은 이 문제가 success-workload trade-off임을 보여준다.
+5. Random baseline과의 비교는 tomato에서 강하게 사용하고, wastesorting에서는 조심해서 해석한다.
+
+논문에서 강하게 쓸 수 있는 문장:
+- In both domains, our method achieves the same success rate as the all-query policy while reducing the number of questions by approximately 41%.
+- In the tomato domain, random querying fails despite asking a similar number of questions, suggesting that query timing and content are critical.
+- The threshold sweep shows a clear success-workload trade-off: overly conservative querying increases human burden without proportional gains.
+
+주의할 점:
+- `tomato/step_50_thres_random`은 현재 aggregate row에서 scene 하나가 비어 있다.
+- 최종 논문 수치로 쓰려면 해당 random CSV의 scene 누락 원인을 확인하거나 재생성하는 것이 좋다.

@@ -65,12 +65,12 @@ def parse_args():
 def tomato_dead_end_reason(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes):
     for tomato in discarded_tomatoes:
         if hidden_properties.get(tomato) == "ripe":
-            return f"Dead-end: true ripe tomato {tomato} was discarded."
+            return f"PLAN FAILURE: true ripe tomato {tomato} was discarded."
     for tomato in loaded_tomatoes:
         if hidden_properties.get(tomato) == "rotten":
-            return f"Dead-end: true rotten tomato {tomato} was loaded."
+            return f"PLAN FAILURE: true rotten tomato {tomato} was loaded."
     if held_tomato is not None and hidden_properties.get(held_tomato) == "unripe":
-        return f"Dead-end: true unripe tomato {held_tomato} is held."
+        return f"PLAN FAILURE: true unripe tomato {held_tomato} is held."
     return None
 
 
@@ -203,7 +203,7 @@ def main() -> None:
         if dead_end_reason is not None:
             console(dead_end_reason)
             stop_reason = dead_end_reason
-            log_json(f"Step {step} dead-end:", {
+            log_json(f"Step {step} plan failure:", {
                 "reason": dead_end_reason,
                 "held_tomato": held_tomato,
                 "loaded_tomatoes": loaded_tomatoes,

@@ -3,8 +3,11 @@ Docstring for main
 """
 
 from pathlib import Path
+import random
 import sys
 from time import time
+
+import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
@@ -74,6 +77,8 @@ def build_action_schema_summary(step_logs, query_logs):
 
 def main():
     args = parse_args("tomato")
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     
     env = Environment(args)
     
@@ -126,8 +131,8 @@ def main():
             }
             print(f"[Planner] Selected action: {action.name}")
         else:
-            print("[Planner] Dead-End")
-            plan_end_reason = "DEAD END"
+            print("[Planner] PLAN FAILURE")
+            plan_end_reason = "PLAN FAILURE"
             break
         
         # =========== 2. excute action and get observation ===========
@@ -197,6 +202,8 @@ def main():
 
     total_wall_time = time() - wall_start
     executed_steps = max(len(step_logs), 1)
+    if plan_end_reason is None:
+        plan_end_reason = "PLAN FAILURE"
     action_schema_summary = build_action_schema_summary(
         step_logs,
         belief_manager.feedback_manager.query_log,

@@ -3,13 +3,14 @@
 set -euo pipefail
 
 domains=(tomato wastesorting)
-strategies=(random)
+strategies=(all no ours random)
 scenes=(1 2 3 4 5)
 
 iterations=40
 max_step=50
-random_query_prob="0.3"
+random_query_prob="0.5"
 archive_existing=true
+log_root="experiments_logs/system_log"
 
 total=$((${#domains[@]} * ${#strategies[@]} * ${#scenes[@]} * iterations))
 current=0
@@ -24,7 +25,7 @@ if [[ "${archive_existing}" == "true" ]]; then
         for strategy in "${strategies[@]}"; do
             for scene in "${scenes[@]}"; do
                 scene_id=$(printf "%02d" "$((10#$scene))")
-                log_dir="logs/${domain}/scene_${scene_id}_step${max_step}/when_${strategy}_rand_${prob_label}"
+                log_dir="${log_root}/${domain}/scene_${scene_id}_step${max_step}/when_${strategy}_rand_${prob_label}"
                 if [[ -d "${log_dir}" ]]; then
                     mv "${log_dir}" "${log_dir}.backup_${timestamp}"
                 fi
@@ -53,6 +54,6 @@ for domain in "${domains[@]}"; do
     done
 done
 
-python3 exp_code/analysis_when.py >/dev/null
-python3 exp_code/read_csv_when_bar_v2.py >/dev/null
+python3 experiments/system_eval/analysis_experiment.py >/dev/null
+python3 experiments/system_eval/read_csv_experiment.py >/dev/null
 printf "\rProgress: 100%%\n"

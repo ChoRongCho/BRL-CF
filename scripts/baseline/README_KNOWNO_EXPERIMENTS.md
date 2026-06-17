@@ -7,12 +7,12 @@
 도메인별 multi-step planner는 다음 파일을 사용한다.
 
 - Unified runner: `knowno_baseline_experiment.py`
-- Shell runner: `run_knowno_baseline.sh`
+- Shell runner: `run/run_knowno_baseline.sh`
 - Tomato harvesting planner: `scripts/knowno_multistep_tomato.py`
 - Waste sorting planner: `scripts/knowno_multistep_wastesorting.py`
 - Waste sorting wrapper: `scripts/knowno_multistep_waste.py`
 
-`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `knowno_baseline_experiment.py` 또는 `run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/scripts/` 아래에 보관한다.
+`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/scripts/` 아래에 보관한다.
 
 ## Important Scene Note
 
@@ -23,7 +23,7 @@
 - Tomato: `--labels`, `--locations`
 - Waste sorting: `--labels`
 
-따라서 직접 planner를 실행할 때만 아래 표의 값을 인자로 넣으면 된다. 권장 실행 방식은 `knowno_baseline_experiment.py` 또는 `run_knowno_baseline.sh`이다.
+따라서 직접 planner를 실행할 때만 아래 표의 값을 인자로 넣으면 된다. 권장 실행 방식은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`이다.
 
 ## Setup
 
@@ -55,7 +55,7 @@ LLM 설정은 `scripts/baseline/llm_setting.json` 또는 환경 변수로 지정
 도메인과 scene은 shell script에서 수정한다.
 
 ```bash
-# scripts/baseline/run_knowno_baseline.sh
+# run/run_knowno_baseline.sh
 DOMAIN="tomato"        # tomato 또는 wastesorting
 SCENE="01"             # 01, 02, 03, 04, 05
 ```
@@ -63,7 +63,7 @@ SCENE="01"             # 01, 02, 03, 04, 05
 실행:
 
 ```bash
-bash scripts/baseline/run_knowno_baseline.sh
+bash run/run_knowno_baseline.sh
 ```
 
 Python runner를 직접 실행할 수도 있다.
@@ -273,8 +273,8 @@ python3 scripts/baseline/compute_qhat.py \
   --num-calibration 20 \
   --target-success 0.8 \
   --score-with-llm \
-  --output-csv scripts/baseline/logs/tomato/qhat_rows.csv \
-  --output-json scripts/baseline/logs/tomato/qhat_records.json
+  --output-csv experiments_logs/system_log/tomato/qhat_rows.csv \
+  --output-json experiments_logs/system_log/tomato/qhat_records.json
 ```
 
 이미 LLM scoring 결과를 저장한 JSON이 있으면 API 호출 없이 계산할 수 있다.
@@ -282,7 +282,7 @@ python3 scripts/baseline/compute_qhat.py \
 ```bash
 python3 scripts/baseline/compute_qhat.py \
   --domain tomato \
-  --scored-json scripts/baseline/logs/tomato/qhat_records.json \
+  --scored-json experiments_logs/system_log/tomato/qhat_records.json \
   --target-success 0.8
 ```
 

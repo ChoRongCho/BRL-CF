@@ -62,7 +62,7 @@ def waste_dead_end_reason(hidden_attributes, placed_objects):
     for obj, target_bin in placed_objects.items():
         true_bin = f"{hidden_attributes[obj]} bin"
         if target_bin != true_bin:
-            return f"Dead-end: true {hidden_attributes[obj]} waste {obj} was placed into {target_bin}."
+            return f"PLAN FAILURE: true {hidden_attributes[obj]} waste {obj} was placed into {target_bin}."
     return None
 
 
@@ -299,7 +299,7 @@ def main() -> None:
         # KnowNo decision rule: act only when the prediction set is a singleton
         # and not the fallback "option not listed here"; otherwise ask for help.
         if preds == [add_mc_prefix]:
-            console("Prediction set only includes 'an option not listed here'. Dead-end reached.")
+            console("Prediction set only includes 'an option not listed here'. PLAN FAILURE reached.")
             stop_reason = "prediction set only includes fallback"
             break
         help_needed = len(preds) != 1 or add_mc_prefix in preds
@@ -322,7 +322,7 @@ def main() -> None:
 
         selected_action = mc_gen_all[tokens.index(selected_token)]
         if selected_action == add_mc_prefix:
-            console("Selected 'an option not listed here'. Dead-end reached.")
+            console("Selected 'an option not listed here'. PLAN FAILURE reached.")
             stop_reason = "selected fallback option"
             break
 

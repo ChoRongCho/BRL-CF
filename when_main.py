@@ -170,6 +170,7 @@ def main():
     action_log = []
     step_logs = []
     plan_success = False
+    plan_end_reason = "NOT_STARTED"
     wall_start = time()
     cumulated_reward = 0.0
     belief_manager.feedback_manager.conf_threshold = WHEN_THRESHOLD
@@ -196,7 +197,9 @@ def main():
             }
             print(f"[Planner] Selected action: {action.name}")
         else:
-            print("[Planner] Dead-End")
+            print("[Planner] PLAN FAILURE")
+            plan_success = False
+            plan_end_reason = "PLAN FAILURE"
             break
         
         # =========== 2. excute action and get observation ===========
@@ -237,16 +240,19 @@ def main():
         done = env.check_done(belief=belief)
         if done == "GOAL DONE":
             plan_success = True
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
         elif done == "MAX STEP":
             plan_success = False
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
         elif done == "PLAN FAILURE":
             plan_success = False
+            plan_end_reason = done
             step_logs.append(step_log)
             break
         
@@ -267,6 +273,8 @@ def main():
 
     total_wall_time = time() - wall_start
     executed_steps = max(len(step_logs), 1)
+    if plan_end_reason == "NOT_STARTED":
+        plan_end_reason = "NO_STEPS_EXECUTED"
     log_path = logger_exp({
         "meta": {
             "domain": args.domain,
@@ -285,6 +293,7 @@ def main():
             "epsilon": args.epsilon,
         },
         "success": plan_success,
+        "end_reason": plan_end_reason,
         "steps": len(step_logs),
         "reward": {
             "cumulated": cumulated_reward,
