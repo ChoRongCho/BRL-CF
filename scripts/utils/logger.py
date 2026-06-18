@@ -24,6 +24,7 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
     if "scene" not in meta and meta.get("initial_state"):
         meta["scene"] = Path(meta["initial_state"]).stem
     timing = result.get("timing", {})
+    scale_metrics = result.get("scale_metrics", {})
     reward = result.get("reward", {})
     actions = result.get("actions", [])
     questions = result.get("questions", [])
@@ -49,13 +50,26 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
         "",
         "[Timing]",
     ])
-    for key in ("search_time", "execute_time", "update_time", "interaction_time", "pruning_time"):
+    for key in ("search_time", "execute_time", "update_time", "interaction_time", "pruning_time", "step_total_time"):
         value = timing.get(key, {})
         lines.append(
             f"{key}: total={_fmt_seconds(value.get('total', 0.0))}, "
             f"avg={_fmt_seconds(value.get('avg', 0.0))}"
         )
     lines.append(f"total_time: {_fmt_seconds(timing.get('total_time', 0.0))}")
+
+    if scale_metrics:
+        lines.extend(["", "[Scale Metrics]"])
+        for key in sorted(scale_metrics):
+            value = scale_metrics.get(key, {})
+            if isinstance(value, dict):
+                lines.append(
+                    f"{key}: total={value.get('total', 0.0):.4f}, "
+                    f"avg={value.get('avg', 0.0):.4f}, "
+                    f"max={value.get('max', 0.0):.4f}"
+                )
+            else:
+                lines.append(f"{key}: {value}")
 
     lines.extend(["", "[Full Plan]"])
     if actions:
@@ -67,6 +81,12 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
                 f"update={_fmt_seconds(item.get('update_time', 0.0))}, "
                 f"interaction={_fmt_seconds(item.get('interaction_time', 0.0))}, "
                 f"pruning={_fmt_seconds(item.get('pruning_time', 0.0))}, "
+                f"step_total={_fmt_seconds(item.get('step_total_time', 0.0))}, "
+                f"tree_nodes={item.get('tree_node_count', '-')}, "
+                f"expanded_nodes={item.get('tree_nodes_expanded_this_step', '-')}, "
+                f"root_actions={item.get('root_action_count', '-')}, "
+                f"max_tree_depth={item.get('max_tree_depth', '-')}, "
+                f"belief_frontier={item.get('post_update_belief_frontier_size', '-')}, "
                 f"step_reward={item.get('step_reward', 0.0)}, "
                 f"cumulated_reward={item.get('cumulated_reward', 0.0)})"
             )

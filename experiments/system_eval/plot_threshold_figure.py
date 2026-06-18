@@ -38,9 +38,9 @@ DOMAIN_COLORS = {
 METRICS = {
     "success_rate": "Success Rate",
     "average_step": "Average Step",
-    "average_step_success_only": "Average Step (Success Only)",
+    "average_step_success_only": "Average Step",
     "average_question": "Average Query Number",
-    "average_question_success_only": "Average Query Number (Success Only)",
+    "average_question_success_only": "Average Query Number",
     "query_probability_per_step": "Query Probability per Step",
     "average_reward": "Average Reward",
     "elapsed_time": "Elapsed Time",
@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default=str(DEFAULT_INPUT), help="raw_runs/domain_compare/raw_runs.csv path.")
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT), help="Directory where figures are written.")
     parser.add_argument("--metric", default="", help="Optional metric filter. By default, all metrics are plotted.")
-    parser.add_argument("--no-all", action="store_true", help="Do not plot the combined all-domain line.")
+    parser.add_argument("--include-all", action="store_true", help="Also plot the combined all-domain line.")
     return parser.parse_args()
 
 
@@ -186,34 +186,58 @@ def style_axis(ax) -> None:
     ax.spines["bottom"].set_color("#94a3b8")
 
 
+def use_percent_scale(metric: str) -> bool:
+    return metric.endswith("_rate")
+
+
+def plot_value(value: float, metric: str) -> float:
+    if math.isnan(value):
+        return value
+    return value * 100.0 if use_percent_scale(metric) else value
+
+
+def plot_label(metric: str) -> str:
+    label = METRICS[metric]
+    return f"{label} (%)" if use_percent_scale(metric) else label
+
+
 def plot_metric(summary: list[dict[str, str]], metric: str, output_dir: Path) -> None:
     metric_rows = [row for row in summary if row["metric"] == metric and row["mean"]]
     if not metric_rows:
         return
 
-    fig, ax = plt.subplots(figsize=(7.6, 4.8), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
     fig.patch.set_facecolor("#f8fafc")
     ax.set_facecolor("#ffffff")
 
-    domains = [domain for domain in ("tomato", "wastesorting", "all") if any(row["domain"] == domain for row in metric_rows)]
+    domains = [domain for domain in ("wastesorting", "tomato", "all") if any(row["domain"] == domain for row in metric_rows)]
     for domain in domains:
         rows = sorted((row for row in metric_rows if row["domain"] == domain), key=lambda row: as_float(row["threshold"]))
         xs = [as_float(row["threshold"]) for row in rows]
-        ys = [as_float(row["mean"]) for row in rows]
+        ys = [plot_value(as_float(row["mean"]), metric) for row in rows]
         ax.plot(
             xs,
             ys,
             marker="o",
-            linewidth=2.0,
+            linewidth=3.0,
+            markersize=8,
             color=DOMAIN_COLORS.get(domain, "#334155"),
             label=DOMAIN_LABELS.get(domain, domain),
         )
 
     ax.set_xticks([index / 10 for index in range(11)])
-    ax.set_xlabel("threshold")
-    ax.set_ylabel(METRICS[metric])
-    ax.set_title(METRICS[metric])
-    ax.legend(frameon=False)
+    ax.set_xlabel("")
+    ax.set_ylabel(plot_label(metric), fontsize=18)
+    ax.tick_params(axis="x", labelsize=18)
+    ax.tick_params(axis="y", labelsize=16)
+    ax.legend(
+        loc="upper left",
+        ncol=len(domains),
+        fontsize=17,
+        frameon=True,
+        fancybox=False,
+        edgecolor="#1e293b",
+    )
     style_axis(ax)
 
     for suffix in (".png", ".pdf"):
@@ -235,7 +259,7 @@ def main() -> None:
         raise ValueError(f"No threshold rows found in {args.input}")
 
     output_dir = make_run_dir(Path(args.output_root))
-    summary = build_summary(rows, include_all=not args.no_all)
+    summary = build_summary(rows, include_all=args.include_all)
     write_summary(output_dir / "threshold_summary.csv", summary)
     for metric in metrics:
         plot_metric(summary, metric, output_dir)

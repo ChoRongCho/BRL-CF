@@ -116,6 +116,12 @@ class ObservationTomato:
 
         return self.get_observation_distribution(state, action)
 
+    def likelihood(self, observation: Observation, state: State, action: Action) -> float | None:
+        action_name = action.name.split("(")[0]
+        if action_name != "detect":
+            return None
+        return self._detect_likelihood(observation, state, action)
+
     # ------------------------------------------------------------------
     # Generic fact expansion helpers
     # ------------------------------------------------------------------
@@ -522,3 +528,53 @@ class ObservationTomato:
         ]
 
         return self._merge_detect_choices(per_tomato_choices)
+
+    def _detect_likelihood(self, observation: Observation, state: State, action: Action) -> float:
+        """
+        Compute P(observation | state, detect) without materializing the full
+        Cartesian observation distribution. This is equivalent to
+        _build_detect_distribution(...), but avoids 3^N outcomes per frontier.
+        """
+        gt_state = state
+        tomato_entries = self._build_detect_tomato_entries(action)
+        if not tomato_entries:
+            return 1.0 if not observation.state.facts and not observation.state.fluents else self.noise
+
+        obs_set = set(observation.state.facts)
+        obs_fluents = observation.state.fluents
+        probability = 1.0
+        normalizer = 1.0
+
+        for entry in tomato_entries:
+            choices = self._build_detect_tomato_choices(state, gt_state, action, entry)
+            normalizer *= sum(choice["probability"] for choice in choices)
+
+            tomato = entry["tomato"]
+            tomato_obs = {
+                entry["observed_fact"],
+                f"ripe({tomato})",
+                f"unripe({tomato})",
+            }
+            local_obs = obs_set & tomato_obs
+            matching_prob = 0.0
+            for choice in choices:
+                choice_facts = set(choice["facts"])
+                if choice_facts == local_obs:
+                    matching_prob += choice["probability"]
+
+            if matching_prob <= 0.0:
+                return self.noise
+            probability *= matching_prob
+
+        if obs_fluents:
+            expected_fluents = {}
+            for entry in tomato_entries:
+                if entry["observed_fact"] in obs_set:
+                    for obj, values in self._get_observed_fluents(entry["tomato"], action).items():
+                        expected_fluents.setdefault(obj, {}).update(values)
+            if expected_fluents != obs_fluents:
+                return self.noise
+
+        if normalizer <= 0.0:
+            return self.noise
+        return probability / normalizer

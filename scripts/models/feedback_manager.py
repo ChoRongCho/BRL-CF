@@ -65,7 +65,7 @@ class FeedbackManger:
 
 
     def fact_in_state(self, state, fact: str) -> bool:
-        return fact in state.facts
+        return state.has_fact(fact)
 
 
     def get_changed_facts(self, knowledge, frontier):

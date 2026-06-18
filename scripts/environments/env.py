@@ -218,10 +218,10 @@ class Environment:
             "navprepared(",
         )
 
-        self.true_state.facts = [
+        self.true_state.set_facts([
             fact for fact in self.true_state.facts
             if not fact.startswith(dynamic_prefixes)
-        ]
+        ])
         for fact in self.state.facts:
             if fact.startswith(dynamic_prefixes):
                 self.true_state.add_fact(fact)

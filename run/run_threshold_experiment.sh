@@ -6,10 +6,10 @@ set -euo pipefail
 # Usage: ./run/run_threshold_experiment.sh [--domain tomato|wastesorting] [--scene N] [--iterations N] [--threshold N] [--seed random|N]
 # Example: ./run/run_threshold_experiment.sh --domain tomato --scene 3 --iterations 10 --threshold 0.8 --seed random
 THRESHOLD="0.8"
-# DOMAIN="wastesorting"
-DOMAIN="tomato"
-SCENE="5"
-ITERATIONS="10"
+DOMAIN="wastesorting"
+# DOMAIN="tomato"
+SCENE="11"
+ITERATIONS="1"
 MAXSTEP="50"
 SEED="random"
 
@@ -68,7 +68,11 @@ fi
 
 THRESHOLD_LABEL="${THRESHOLD/./-}"
 scene_id=$(printf "%02d" "$((10#$SCENE))")
-LOG_ROOT="experiments_logs/system_log"
+
+# Temporary log directory for this run
+LOG_ROOT="temp_test"
+
+# LOG_ROOT="experiments_logs/system_log"
 LOG_DIR="${LOG_ROOT}/${DOMAIN}/scene_${scene_id}_step${MAXSTEP}/thres_${THRESHOLD_LABEL}"
 
 initial_state="scripts/domain/${DOMAIN}/scene_${scene_id}.yaml"

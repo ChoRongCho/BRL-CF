@@ -124,6 +124,11 @@ class ObservationModel:
 
 
     def likelihood(self, observation: Observation, state: State, action: Action) -> float:
+        if hasattr(self.domain_model, "likelihood"):
+            likelihood = self.domain_model.likelihood(observation, state, action)
+            if likelihood is not None:
+                return max(0.0, float(likelihood))
+
         if hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
             outcomes = self.domain_model.get_observation_distribution_for_likelihood(state, action)
         else:

@@ -36,6 +36,8 @@ class POMCPPlanner:
 
         self.actions = env.actions
         self.action_map = {action.name: action for action in self.actions}
+        self._applicable_action_cache = {}
+        self._applicable_action_cache_limit = 20000
         self.belief: Belief = None
 
         self.env: Environment = env
@@ -54,7 +56,16 @@ class POMCPPlanner:
         return False
 
     def get_applicable_actions(self, knowledge: State):
-        return [action for action in self.actions if action.is_applicable(knowledge)]
+        cache_key = frozenset(knowledge.facts)
+        cached = self._applicable_action_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        applicable = [action for action in self.actions if action.is_applicable(knowledge)]
+        if len(self._applicable_action_cache) >= self._applicable_action_cache_limit:
+            self._applicable_action_cache.clear()
+        self._applicable_action_cache[cache_key] = applicable
+        return applicable
 
     def initialize(self, init_state: State):
         self.belief = self.belief_manager.initialize_belief(init_state)

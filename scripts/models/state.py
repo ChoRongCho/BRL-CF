@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import copy
-from typing import List, Dict
+from typing import List, Dict, Set
 from utils.asp import PossibleWorld
 
 
@@ -13,6 +13,14 @@ class State:
     """
     facts: List[str] = field(default_factory=list)
     fluents: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    _fact_set: Set[str] = field(default_factory=set, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._fact_set = set(self.facts)
+
+    def set_facts(self, facts: List[str]) -> None:
+        self.facts = list(facts)
+        self._fact_set = set(self.facts)
 
     def merge_state(self, other: State) -> State:
         for f in other.facts:
@@ -32,15 +40,17 @@ class State:
         return len(self.facts) + sum(len(values) for values in self.fluents.values())
 
     def has_fact(self, fact: str) -> bool:
-        return fact in self.facts
+        return fact in self._fact_set
 
     def add_fact(self, fact: str) -> None:
-        if fact not in self.facts:
+        if fact not in self._fact_set:
             self.facts.append(fact)
+            self._fact_set.add(fact)
 
     def remove_fact(self, fact: str) -> None:
-        if fact in self.facts:
+        if fact in self._fact_set:
             self.facts.remove(fact)
+            self._fact_set.remove(fact)
 
     def copy(self) -> State:
         return State(
@@ -50,11 +60,12 @@ class State:
     
     def clean_all(self) -> None:
         self.facts.clear()
+        self._fact_set.clear()
         self.fluents.clear()
 
     def convert_world_to_state(self, world: PossibleWorld) -> State:
         self.clean_all()
-        self.facts = world.atoms
+        self.set_facts(world.atoms)
 
     def set_fluent(self, obj: str, key: str, value: float) -> None:
         if obj not in self.fluents:
@@ -101,5 +112,5 @@ def get_state(init_config: Dict) -> List[State]:
 
 def world_2_state(world: PossibleWorld):
     new_state = State()
-    new_state.facts = world.atoms
+    new_state.set_facts(world.atoms)
     return new_state

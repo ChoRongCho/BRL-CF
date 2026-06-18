@@ -75,6 +75,28 @@ def build_action_schema_summary(step_logs, query_logs):
     return dict(sorted(summary.items()))
 
 
+def print_step_timing(step_log):
+    measured_parts = (
+        step_log.get("search_time", 0.0)
+        + step_log.get("execute_time", 0.0)
+        + step_log.get("update_time", 0.0)
+        + step_log.get("interaction_time", 0.0)
+        + step_log.get("pruning_time", 0.0)
+    )
+    step_total = step_log.get("step_total_time", 0.0)
+    overhead = max(0.0, step_total - measured_parts)
+    print(
+        "[TIME] "
+        f"step_total={step_total:.4f}s "
+        f"(search={step_log.get('search_time', 0.0):.4f}s, "
+        f"execute={step_log.get('execute_time', 0.0):.4f}s, "
+        f"update={step_log.get('update_time', 0.0):.4f}s, "
+        f"interaction={step_log.get('interaction_time', 0.0):.4f}s, "
+        f"pruning={step_log.get('pruning_time', 0.0):.4f}s, "
+        f"overhead={overhead:.4f}s)"
+    )
+
+
 def main():
     args = parse_args("tomato")
     random.seed(args.seed)
@@ -102,6 +124,7 @@ def main():
     total_update_time = 0.0
     total_interaction_time = 0.0
     total_prune_time = 0.0
+    total_step_wall_time = 0.0
     action_log = []
     step_logs = []
     plan_success = False
@@ -111,6 +134,7 @@ def main():
     
     while not done:     
         i += 1
+        step_wall_start = time()
         print(f"Step: {i}")
         search_start = time()
         
@@ -128,6 +152,7 @@ def main():
                 "update_time": 0.0,
                 "interaction_time": 0.0,
                 "pruning_time": 0.0,
+                "step_total_time": 0.0,
             }
             print(f"[Planner] Selected action: {action.name}")
         else:
@@ -171,23 +196,34 @@ def main():
         if done == "GOAL DONE":
             plan_success = True
             plan_end_reason = done
+            step_total_elapsed = time() - step_wall_start
+            total_step_wall_time += step_total_elapsed
+            step_log["step_total_time"] = step_total_elapsed
+            print_step_timing(step_log)
             step_logs.append(step_log)
             break
         
         elif done == "MAX STEP":
             plan_success = False
             plan_end_reason = done
+            step_total_elapsed = time() - step_wall_start
+            total_step_wall_time += step_total_elapsed
+            step_log["step_total_time"] = step_total_elapsed
+            print_step_timing(step_log)
             step_logs.append(step_log)
             break
         
         elif done == "PLAN FAILURE":
             plan_success = False
             plan_end_reason = done
+            step_total_elapsed = time() - step_wall_start
+            total_step_wall_time += step_total_elapsed
+            step_log["step_total_time"] = step_total_elapsed
+            print_step_timing(step_log)
             step_logs.append(step_log)
             break
         
         
-        print("==================\n")
         # print("Total Query", belief_manager.feedback_manager.num_of_query)
 
         # =========== 5. Pruning belief ===========
@@ -196,6 +232,11 @@ def main():
         prune_elapsed = time() - prune_start
         total_prune_time += prune_elapsed
         step_log["pruning_time"] = prune_elapsed
+        step_total_elapsed = time() - step_wall_start
+        total_step_wall_time += step_total_elapsed
+        step_log["step_total_time"] = step_total_elapsed
+        print_step_timing(step_log)
+        print("==================\n")
         step_logs.append(step_log)
         
         
@@ -251,6 +292,10 @@ def main():
                 "total": total_prune_time,
                 "avg": total_prune_time / executed_steps,
             },
+            "step_total_time": {
+                "total": total_step_wall_time,
+                "avg": total_step_wall_time / executed_steps,
+            },
             "total_time": total_wall_time,
         },
         "questions": belief_manager.feedback_manager.query_log,
@@ -269,6 +314,7 @@ def main():
     print(f"avg update: {total_update_time / executed_steps:.4f}s")
     print(f"avg interaction: {total_interaction_time / executed_steps:.4f}s")
     print(f"avg pruning: {total_prune_time / executed_steps:.4f}s")
+    print(f"avg step wall: {total_step_wall_time / executed_steps:.4f}s")
     print(f"total wall clock: {total_wall_time:.4f}s")
     
     print("=============Action Log=============")

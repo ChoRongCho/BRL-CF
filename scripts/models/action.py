@@ -40,9 +40,13 @@ class Action:
     observation: List[str] = field(default_factory=list)
     observation_fluents: List[str] = field(default_factory=list)
     cost: float = 1.0
+    _normalized_preconditions: Tuple[str, ...] = field(default=(), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._normalized_preconditions = tuple(normalize_fact(pre) for pre in self.preconditions)
 
     def is_applicable(self, state: State) -> bool:
-        return all(state.has_fact(normalize_fact(pre)) for pre in self.preconditions)
+        return all(state.has_fact(pre) for pre in self._normalized_preconditions)
 
     def apply_action(self, state: State, is_stochastic: bool = False) -> State:
         if not self.is_applicable(state):

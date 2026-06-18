@@ -22,14 +22,14 @@ import matplotlib.pyplot as plt
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONDITIONS = ("all", "no", "ours", "random", "knowno_gpt4", "knowno_gpt35turbo")
+CONDITIONS = ("all", "no", "random", "knowno_gpt4", "ours")
 DOMAINS = ("waste", "tomato")
 CONDITION_LABELS = {
     "all": "All",
     "no": "No",
     "ours": "Ours",
     "random": "Random",
-    "knowno_gpt4": "KnowNo GPT-4",
+    "knowno_gpt4": "KnowNo",
     "knowno_gpt35turbo": "KnowNo GPT-3.5",
 }
 DOMAIN_LABELS = {
@@ -115,10 +115,14 @@ def collect_raw_rows(rows: list[dict[str, str]]) -> dict[tuple[str, str], list[d
 def raw_metric_values(rows: list[dict[str, str]], metric: str) -> list[float]:
     if metric == "success_rate":
         return [1.0 if is_success(row) else 0.0 for row in rows]
+    if metric == "average_step":
+        return [as_float(row.get("planning_length", "")) for row in rows]
     if metric == "average_step_success_only":
         return [as_float(row.get("planning_length", "")) for row in rows if is_success(row)]
     if metric == "average_step_failure_only":
         return [as_float(row.get("planning_length", "")) for row in rows if not is_success(row)]
+    if metric == "average_question":
+        return [as_float(row.get("question_count", "")) for row in rows]
     if metric == "average_question_success_only":
         return [as_float(row.get("question_count", "")) for row in rows if is_success(row)]
     if metric == "average_question_failure_only":
@@ -208,19 +212,41 @@ def figure_name(metric: str, prefix: str = "") -> str:
     return f"{prefix}_{metric}" if prefix else metric
 
 
+def use_percent_scale(metric: str) -> bool:
+    return metric.endswith("_rate")
+
+
+def plot_value(value: float, metric: str) -> float:
+    if math.isnan(value):
+        return value
+    return value * 100.0 if use_percent_scale(metric) else value
+
+
+def plot_label(metric_label: str, metric: str) -> str:
+    metric_label = (
+        metric_label
+        .replace(" (Success Only)", "")
+        .replace(" (Failure Only)", "")
+        .replace(" (All)", "")
+    )
+    return f"{metric_label} (%)" if use_percent_scale(metric) else metric_label
+
+
 def plot_metric(row: dict[str, str], output_dir: Path, prefix: str = "") -> str:
     metric = row["metric"]
     metric_label = row.get("metric_label") or metric
-    positions = list(range(len(CONDITIONS)))
-    bar_width = 0.24
+    axis_label = plot_label(metric_label, metric)
+    group_gap = 0.82
+    positions = [index * group_gap for index in range(len(CONDITIONS))]
+    bar_width = 0.32
 
-    fig, ax = plt.subplots(figsize=(7.6, 4.8), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(8.2, 4.8), constrained_layout=True)
     fig.patch.set_facecolor("#f8fafc")
     ax.set_facecolor("#ffffff")
 
     for domain_index, domain in enumerate(DOMAINS):
         offset = (domain_index - 0.5) * bar_width
-        values = [as_float(row.get(f"{condition}_{domain}", "")) for condition in CONDITIONS]
+        values = [plot_value(as_float(row.get(f"{condition}_{domain}", "")), metric) for condition in CONDITIONS]
         plot_values = [0.0 if math.isnan(value) else value for value in values]
         bars = ax.bar(
             [position + offset for position in positions],
@@ -240,16 +266,23 @@ def plot_metric(row: dict[str, str], output_dir: Path, prefix: str = "") -> str:
                 f"{value:.2f}",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=12,
                 color="#334155",
             )
 
     ax.set_xticks(positions)
-    ax.set_xticklabels([CONDITION_LABELS[condition] for condition in CONDITIONS])
-    ax.set_xlabel("condition")
-    ax.set_ylabel(metric_label)
-    ax.set_title(metric_label)
-    ax.legend(frameon=False)
+    ax.set_xticklabels([CONDITION_LABELS[condition] for condition in CONDITIONS], fontsize=15)
+    ax.set_xlabel("")
+    ax.set_ylabel(axis_label, fontsize=15)
+    ax.tick_params(axis="y", labelsize=13)
+    ax.legend(
+        loc="upper right",
+        ncol=len(DOMAINS),
+        fontsize=14,
+        frameon=True,
+        fancybox=False,
+        edgecolor="#1e293b",
+    )
     style_axis(ax)
     filename = figure_name(metric, prefix)
     save_figure(fig, output_dir / filename)

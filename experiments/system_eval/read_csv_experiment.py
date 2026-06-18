@@ -24,8 +24,10 @@ DOMAINS = ("waste", "tomato", "all")
 DOMAIN_ALIASES = {"wastesorting": "waste", "tomato": "tomato"}
 METRICS = (
     "success_rate",
+    "average_step",
     "average_step_success_only",
     "average_step_failure_only",
+    "average_question",
     "average_question_success_only",
     "average_question_failure_only",
     "query_probability_per_step",
@@ -43,22 +45,24 @@ METRICS = (
 )
 METRIC_LABELS = {
     "success_rate": "Success Rate",
-    "average_step_success_only": "Average Step (Success Only)",
-    "average_step_failure_only": "Average Step (Failure Only)",
-    "average_question_success_only": "Average Query Number (Success Only)",
-    "average_question_failure_only": "Average Query Number (Failure Only)",
+    "average_step": "Average Step",
+    "average_step_success_only": "Average Step",
+    "average_step_failure_only": "Average Step",
+    "average_question": "Average Query Number",
+    "average_question_success_only": "Average Query Number",
+    "average_question_failure_only": "Average Query Number",
     "query_probability_per_step": "Query Probability per Step",
-    "query_probability_per_step_success_only": "Query Probability per Step (Success Only)",
-    "query_probability_per_step_failure_only": "Query Probability per Step (Failure Only)",
+    "query_probability_per_step_success_only": "Query Probability per Step",
+    "query_probability_per_step_failure_only": "Query Probability per Step",
     "average_reward": "Average Reward",
-    "average_reward_success_only": "Average Reward (Success Only)",
-    "average_reward_failure_only": "Average Reward (Failure Only)",
+    "average_reward_success_only": "Average Reward",
+    "average_reward_failure_only": "Average Reward",
     "elapsed_time": "Elapsed Time",
-    "elapsed_time_success_only": "Elapsed Time (Success Only)",
-    "elapsed_time_failure_only": "Elapsed Time (Failure Only)",
+    "elapsed_time_success_only": "Elapsed Time",
+    "elapsed_time_failure_only": "Elapsed Time",
     "prediction_set_size_when_asked": "Prediction Set Size When Asked",
-    "prediction_set_size_when_asked_success_only": "Prediction Set Size When Asked (Success Only)",
-    "prediction_set_size_when_asked_failure_only": "Prediction Set Size When Asked (Failure Only)",
+    "prediction_set_size_when_asked_success_only": "Prediction Set Size When Asked",
+    "prediction_set_size_when_asked_failure_only": "Prediction Set Size When Asked",
 }
 
 
@@ -118,10 +122,14 @@ def query_probability_or_blank(rows: list[dict[str, str]]) -> str:
 def metric_values(rows: list[dict[str, str]], metric: str) -> list[float]:
     if metric == "success_rate":
         return [1.0 if is_success(row) else 0.0 for row in rows]
+    if metric == "average_step":
+        return [as_float(row["planning_length"]) for row in rows]
     if metric == "average_step_success_only":
         return [as_float(row["planning_length"]) for row in rows if is_success(row)]
     if metric == "average_step_failure_only":
         return [as_float(row["planning_length"]) for row in rows if not is_success(row)]
+    if metric == "average_question":
+        return [as_float(row["question_count"]) for row in rows]
     if metric == "average_question_success_only":
         return [as_float(row["question_count"]) for row in rows if is_success(row)]
     if metric == "average_question_failure_only":
