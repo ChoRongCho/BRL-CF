@@ -20,7 +20,7 @@ from typing import Any
 
 
 DOMAINS = ("tomato", "wastesorting")
-SCENES = tuple(f"scene_{index:02d}" for index in range(1, 6))
+SCENES = tuple(f"scene_{index:02d}" for index in range(1, 16))
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 DEFAULT_LOGS_ROOT = PROJECT_ROOT / "experiments_logs" / "system_log"

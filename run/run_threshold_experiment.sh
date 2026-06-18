@@ -6,8 +6,8 @@ set -euo pipefail
 # Usage: ./run/run_threshold_experiment.sh [--domain tomato|wastesorting] [--scene N] [--iterations N] [--threshold N] [--seed random|N]
 # Example: ./run/run_threshold_experiment.sh --domain tomato --scene 3 --iterations 10 --threshold 0.8 --seed random
 THRESHOLD="0.8"
-DOMAIN="wastesorting"
-# DOMAIN="tomato"
+# DOMAIN="wastesorting"
+DOMAIN="tomato"
 SCENE="5"
 ITERATIONS="10"
 MAXSTEP="50"

@@ -10,7 +10,6 @@ from models.state import State
 from models.action import Action
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
-from models.llm_manager import get_llm_manager
 
 from collections import defaultdict
 
@@ -315,6 +314,8 @@ class FeedbackManger:
     def refining_query(self, target_fact, action_name):
         if self.use_llm:
             try:
+                from models.llm_manager import get_llm_manager
+
                 question = get_llm_manager().make_refining_query(
                     self.domain_name,
                     str(target_fact).replace(" ", ""),

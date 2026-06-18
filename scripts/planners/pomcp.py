@@ -24,7 +24,13 @@ class POMCPPlanner:
         self.gamma = args.gamma
         self.epsilon = args.epsilon
         self.c = args.c
-        self.max_node_particles = getattr(args, "max_node_particles", 128)
+        self.max_node_particles = getattr(args, "max_node_particles", None)
+        if self.max_node_particles is None:
+            self.max_node_particles = getattr(
+                args,
+                "max_belief_particles",
+                getattr(args, "max_particles", 250),
+            )
 
         self.tree = POMDPTree()
 

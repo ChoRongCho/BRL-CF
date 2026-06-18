@@ -162,8 +162,33 @@ class ObservationWastesorting:
                 return True
         return False
 
+    @staticmethod
+    def _occluding_pairs(gt_state: State) -> List[tuple[str, str]]:
+        pairs = []
+        for fact in gt_state.facts:
+            pred, args = _parse_fact(fact)
+            if pred == "on" and len(args) >= 2:
+                pairs.append((args[0], args[1]))
+        return pairs
+
+    def _waste_is_occluded(self, runtime_state: State, gt_state: State, waste: str) -> bool:
+        for top_waste, bottom_waste in self._occluding_pairs(gt_state):
+            if bottom_waste != waste:
+                continue
+
+            top_cleared = (
+                self._waste_is_unavailable(runtime_state, top_waste)
+                or self._waste_is_unavailable(gt_state, top_waste)
+            )
+            if not top_cleared:
+                return True
+
+        return False
+
     def _has_detectable_waste(self, runtime_state: State, gt_state: State, waste: str) -> bool:
         if self._waste_is_unavailable(runtime_state, waste):
+            return False
+        if self._waste_is_occluded(runtime_state, gt_state, waste):
             return False
         if self.use_true_init_observation:
             return self._category_label_for_state(gt_state, waste) is not None

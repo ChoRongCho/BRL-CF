@@ -22,7 +22,6 @@ import numpy as np
 
 # available domain
 DOMAIN = ["tomato", "wastesorting"]
-WHEN_THRESHOLD = 0.8
 STRATEGY_NAMES = {
     1: "no",
     2: "all",
@@ -140,7 +139,6 @@ def _run_feedback_policy(
 
 def main():
     args = parse_args("tomato")
-    args.threshold = WHEN_THRESHOLD
     random.seed(args.seed)
     np.random.seed(args.seed)
     random_query_rng = random.Random(args.seed)
@@ -173,7 +171,7 @@ def main():
     plan_end_reason = "NOT_STARTED"
     wall_start = time()
     cumulated_reward = 0.0
-    belief_manager.feedback_manager.conf_threshold = WHEN_THRESHOLD
+    belief_manager.feedback_manager.conf_threshold = args.threshold
     
     while not done:     
         i += 1

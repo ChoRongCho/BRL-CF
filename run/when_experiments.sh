@@ -139,6 +139,7 @@ for ((i = 1; i <= ITERATIONS; i++)); do
         --initial_state "$initial_state" \
         --robot_skill "$robot_skill" \
         --f_strategy "$F_STRATEGY" \
+        --threshold "$THRESHOLD" \
         --random_query_prob "$RANDOM_QUERY_PROB" \
         --seed "$seed" \
         --log_dir "$LOG_DIR" \

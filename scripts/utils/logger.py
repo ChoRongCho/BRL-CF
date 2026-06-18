@@ -20,7 +20,9 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
     domain = result.get("meta", {}).get("domain", "unknown")
     path = Path(log_dir) / f"exp_{domain}_{timestamp}.txt"
 
-    meta = result.get("meta", {})
+    meta = dict(result.get("meta", {}))
+    if "scene" not in meta and meta.get("initial_state"):
+        meta["scene"] = Path(meta["initial_state"]).stem
     timing = result.get("timing", {})
     reward = result.get("reward", {})
     actions = result.get("actions", [])

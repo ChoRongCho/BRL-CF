@@ -30,6 +30,11 @@ class BeliefManager:
         self.belief: Belief = None
         self.initial_belief = 1.0
         self.conf_threshold = args.threshold
+        self.max_belief_particles = getattr(
+            args,
+            "max_belief_particles",
+            getattr(args, "max_particles", 250),
+        )
         
         self.feedback_manager = FeedbackManger(self.args, self.conf_threshold)
         
@@ -48,6 +53,34 @@ class BeliefManager:
     
     def _get_transition_outcomes(self, state: State, action: Action) -> List[NextStateOutcome]:
         return self.transition_model.get_next_state_distribution(state, action)
+
+    def _sample_transition_particles(
+        self,
+        outcomes: List[NextStateOutcome],
+    ) -> List[NextStateOutcome]:
+        if self.max_belief_particles is None or self.max_belief_particles <= 0:
+            return outcomes
+
+        if len(outcomes) <= self.max_belief_particles:
+            return outcomes
+
+        probabilities = np.array(
+            [max(0.0, float(outcome.probability)) for outcome in outcomes],
+            dtype=float,
+        )
+        total = float(np.sum(probabilities))
+        if total <= 0.0:
+            probabilities = np.ones(len(outcomes), dtype=float) / len(outcomes)
+        else:
+            probabilities = probabilities / total
+
+        selected_indices = np.random.choice(
+            len(outcomes),
+            size=self.max_belief_particles,
+            replace=False,
+            p=probabilities,
+        )
+        return [outcomes[int(i)] for i in selected_indices]
         
 
     def _get_observation_likelihood(
@@ -244,6 +277,7 @@ class BeliefManager:
         # 1-1. Transition expansion from knowledge base
         # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
         outcomes = self._get_transition_outcomes(belief.knowledge, action)
+        outcomes = self._sample_transition_particles(outcomes)
                         
         tran_row = []
         obs_row = []

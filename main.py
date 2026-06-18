@@ -261,9 +261,7 @@ def main():
             "fluents": belief.knowledge.fluents,
         },
     }
-    log_path = None
-    if plan_end_reason != "MAX STEP":
-        log_path = logger_exp(log_data, log_dir=args.log_dir)
+    log_path = logger_exp(log_data, log_dir=args.log_dir)
 
     print("[TIME SUMMARY]")
     print(f"avg search: {total_search_time / executed_steps:.4f}s")
@@ -293,7 +291,7 @@ def main():
             f"expected_questions_per_action={stats['questions_per_action']:.4f}"
         )
     print("=============Log File=============")
-    print(log_path if log_path is not None else "Skipped because plan ended by MAX STEP")
+    print(log_path)
 
 
 if __name__ == "__main__":
