@@ -35,7 +35,7 @@ def parse_args(domain: str):
     parser.add_argument("--seed", type=int, default=None, help="Random seed. If omitted, a random seed is generated.")
     parser.add_argument("--max_step", type=int, default=50, help="Maximum steps per episode")
     parser.add_argument("--max_particles", type=int, default=250, help="Legacy alias for the maximum number of belief particles to keep after update")
-    parser.add_argument("--max_belief_particles", type=int, default=250, help="Maximum number of transition-outcome particles sampled for each belief update")
+    parser.add_argument("--max_belief_particles", type=int, default=8000, help="Maximum number of transition-outcome particles sampled for each belief update")
     parser.add_argument("--threshold", type=float, default=0.8, help="")
     parser.add_argument("--log_dir", type=str, default="experiments_logs/system_log", help="Directory where planning logs are saved")
     

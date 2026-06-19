@@ -1,0 +1,93 @@
+\section{Related Work}~\label{related}
+This section reviews prior work along three axes that define the scope of our problem: structured task knowledge, planning under uncertainty, and uncertainty-driven human feedback. Table~\ref{tab:comparison} summarizes representative lines of work according to whether they provide interpretable task knowledge, an explicit symbolic action model, uncertainty-aware planning, human feedback, and system-initiated queries. We use \textit{symbolic action model} to denote an explicit task-level model of action preconditions and effects. This distinction is central to our work because it links a queried state predicate to downstream feasible actions, belief updates, and future planning decisions.
+
+\begin{table*}[t]
+\caption{Qualitative comparison of related works. A symbolic action model denotes an explicit task-level model of action preconditions and effects.}
+\label{tab:comparison}
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\textwidth}{p{0.25\textwidth}
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X
+>{\centering\arraybackslash}X}
+\toprule
+Related Works
+& \makecell{Interpretable\\Knowledge}
+& \makecell{Symbolic\\Action Model}
+& \makecell{Uncertainty-Aware\\Planning}
+& \makecell{Human\\Feedback}
+& \makecell{System-Initiated\\Query} \\
+\midrule
+Logic-based knowledge inference
+~\cite{tenorth2012knowledge,liu2020graph,
+kunze2014using,hasegawa2023inferring,
+mota2021integrated,zhang2024icorpp,daruna2019robocse,
+mitrevsk2021ontology,olivares2019review,manzoor2021ontology}
+& $\bigcirc$ & $\times$ & △ & $\times$ & $\times$ \\
+
+Classical and symbolic planning
+~\cite{fikes1971strips,aeronautiques1998pddl,
+helmert2009concise,hoffmann2001ff,
+helmert2006fast,correa2024lifted}
+& $\bigcirc$ & $\bigcirc$ & $\times$ & $\times$ & $\times$ \\
+
+LLM-based knowledge and planning
+~\cite{ahn2022can,huang2022inner,singh2023progprompt,liang2023code,ding2023task,
+gu2024conceptgraphs,leanza2025conceptbot,singh2025adaptbot,zhouenhancing,xu2024p,
+wang2025instructrag,kumar2026open,huang2023voxposer,dai2024optimal,
+liu2025delta,paulius2025bootstrapping,quartey2025verifiably}
+& $\bigcirc$ & △ & △ & △ & $\times$ \\
+
+POMDP-based planning
+~\cite{somani2013despot,bai2015intention,cramer2021probabilistic,bravo2019use,
+lauri2016exploration,kim2021plgrim,vanegas2016uav,xiao2019objectsearch,
+pajarinen2022composition}
+& $\times$ & △ & $\bigcirc$ & $\times$ & $\times$ \\
+
+Symbolic planning under uncertainty
+~\cite{li2026uncertainty,sanner2010symbolic,zhang2015corpp,serrano2021knowledge,
+tang2025tru}
+& $\bigcirc$ & $\bigcirc$ & $\bigcirc$ & $\times$ & $\times$ \\
+
+Interactive help-seeking systems
+~\cite{singi2023hula,igbinedion2024learning,zhao2025conformalized,mangalindan2025seek}
+& $\times$ & $\times$ & △ & $\bigcirc$ & $\bigcirc$ \\
+
+Clarification and learning-by-asking
+~\cite{shen2024elba,testoni2024asking}
+& △ & $\times$ & △ & $\bigcirc$ & $\bigcirc$ \\
+
+LLM action-query systems
+~\cite{ren2023robots,liang2024introspective,mullen2025lbap}
+& △ & $\times$ & $\bigcirc$ & $\bigcirc$ & $\bigcirc$ \\
+
+\midrule
+\textbf{Ours}
+& $\bigcirc$ & $\bigcirc$ & $\bigcirc$ & $\bigcirc$ & $\bigcirc$ \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\subsection{Knowledge-Based State and Action Models}~\label{rel:kb}
+Knowledge-based robotic systems use structured representations of objects, attributes, relations, and actions to support task reasoning. Logic-based knowledge bases and ontologies provide interpretable facts and relational inference over objects and environments~\cite{brachman2004knowledge,russell1995modern,tenorth2012knowledge,liu2020graph,kunze2014using,hasegawa2023inferring,mitrevsk2021ontology,olivares2019review,manzoor2021ontology}. Such representations are valuable because they allow task-relevant information to be expressed as human-readable predicates, such as object categories, locations, containment relations, or object states.
+
+Symbolic planning languages such as STRIPS, PDDL, and FDR go further by defining actions through explicit preconditions and effects~\cite{fikes1971strips,aeronautiques1998pddl,helmert2009concise}. This symbolic action model is important for our setting because it determines how a state predicate affects future feasible actions. For example, knowing whether an object is \texttt{plastic} or whether a tomato is \texttt{ripe} is not merely a semantic label; it changes which placement, harvesting, or discarding actions are valid. As shown in Table~\ref{tab:comparison}, classical symbolic planning provides interpretable knowledge and symbolic action models, but it typically assumes a deterministic world state and does not initiate feedback when observations or inferred facts are uncertain.
+
+Recent LLM-based robotic systems broaden the use of task knowledge by generating plans, grounding instructions, retrieving external knowledge, or combining language outputs with constraints~\cite{ahn2022can,huang2022inner,singh2023progprompt,liang2023code,ding2023task,gu2024conceptgraphs,leanza2025conceptbot,singh2025adaptbot,zhouenhancing,xu2024p,wang2025instructrag,kumar2026open,huang2023voxposer,dai2024optimal,liu2025delta,paulius2025bootstrapping,quartey2025verifiably}. These approaches are flexible, but their knowledge is often not represented as an explicit uncertainty-bearing symbolic state tied to action preconditions and effects. This matters for corrective interaction: without a symbolic action model, the system can ask for help about a plan or action, but it cannot easily ask which uncertain state fact should be verified to constrain subsequent planning. Our framework addresses this gap by maintaining multiple symbolic world hypotheses and asking about task-state predicates whose answers directly update the belief and affect future symbolic planning.
+
+\subsection{Planning Under Uncertainty}~\label{rel:PlanningUncertainty}
+POMDPs provide a principled framework for sequential decision making under partial observability by maintaining a belief over possible states~\cite{somani2013despot,bai2015intention,cramer2021probabilistic,bravo2019use}. Online POMDP methods and Monte Carlo tree search approaches can plan under sensor noise, occlusions, and incomplete observations~\cite{pineau2003point,ross2008online,silver2010monte}. Particle-based belief approximations are widely used because they can preserve multimodal hypotheses and support sampling-based online planning~\cite{doshi2005particle,lim2023optimality,somani2013despot,sunberg2018pomcpow}. In robotics, such beliefs have been applied to navigation, exploration, object search, and manipulation~\cite{lauri2016exploration,kim2021plgrim,vanegas2016uav,xiao2019objectsearch,pajarinen2022composition}.
+
+However, many POMDP systems do not expose uncertainty as symbolic task facts that are easy for users to verify. Conversely, symbolic planning under uncertainty preserves interpretable state structure but often focuses on inference or planning rather than human feedback. Prior work has integrated symbolic knowledge with probabilistic planning, first-order POMDPs, or structured possible worlds~\cite{sanner2010symbolic,zhang2015corpp,serrano2021knowledge,li2026uncertainty}. These methods show that symbolic structure can help organize uncertainty, but they usually do not decide when to ask a human or what state predicate should be queried. Table~\ref{tab:comparison} reflects this split: POMDP-based methods are strong in uncertainty-aware planning, while symbolic planning under uncertainty adds interpretable action structure, but neither line generally closes the loop with system-initiated corrective feedback.
+
+Our method combines these two directions. We use particle-based local beliefs over symbolic possible worlds and plan with POMCP, but the belief particles are grounded in an interpretable task model. This design lets the system identify uncertain state predicates that matter for reachable actions. Human feedback is therefore not treated as an external interruption; it becomes an observation that filters symbolic hypotheses and changes the downstream planning problem.
+
+\subsection{Uncertainty-Driven Human Feedback and Queries}~\label{rel:HCS}
+Human-in-the-loop and human-on-the-loop systems allow robots to recover from failures by requesting or receiving assistance from human operators~\cite{scharre2015introduction,nahavandi2017trusted,kelly2019hg,mandlekar2020human}. A major challenge is deciding when assistance is worth the cost. Help-seeking and interactive learning methods address this by asking for expert actions, manual control, or intervention labels when the system is uncertain~\cite{singi2023hula,igbinedion2024learning,zhao2025conformalized}. Trust-aware assistance-seeking further models how asking for help affects human trust and team performance~\cite{mangalindan2025seek}. These methods are important because they move beyond continuous monitoring, but their feedback target is usually an action, intervention, or assistance request rather than a symbolic task-state hypothesis.
+
+Other work studies systems that ask clarification questions when ambiguity is detected. ELBA learns when and what to ask in embodied vision-language task completion~\cite{shen2024elba}, and dialogue-based clarification work shows that model uncertainty can be more useful than imitating human clarification behavior for deciding when to ask~\cite{testoni2024asking}. These works support the broader idea that agents should ask targeted questions under uncertainty. However, the generated questions are not tied to symbolic action preconditions and effects, so answers do not directly update a symbolic belief used for robot task planning.
+
+KnowNo and related LLM planning systems are the closest baselines to our setting. They use conformal prediction or uncertainty estimates to form prediction sets over candidate actions or plans and ask the user when the set is not sufficiently resolved~\cite{ren2023robots,liang2024introspective,mullen2025lbap}. This provides a principled mechanism for deciding when an LLM planner should ask for help. The key difference is the query target. In KnowNo-style action-query systems, the user typically selects among candidate next actions or plans. In our framework, the robot asks the user to verify a symbolic task-state predicate, such as whether an object has a certain category or whether a tomato has a certain state. Because this predicate is connected to action preconditions and effects through the symbolic action model, the answer updates the belief state and changes future feasible plans. This is the intersection highlighted in Table~\ref{tab:comparison}: our system combines interpretable task knowledge, a symbolic action model, uncertainty-aware planning, human feedback, and system-initiated state-level queries within a single execution loop.

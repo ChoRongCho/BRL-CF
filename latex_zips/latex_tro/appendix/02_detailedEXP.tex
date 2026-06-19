@@ -1,0 +1,59 @@
+\section{Detailed Experimental Settings}~\label{appx:settings}
+
+\cp{This appendix summarizes implementation details that support the experimental setup in Sec.~\ref{exp:setup}. The standard system-evaluation experiments use five scenario files per domain, \texttt{scene\_01.yaml}--\texttt{scene\_05.yaml}. For each threshold or policy condition, we evaluate all five scenarios with $40$ randomized episodes per scenario, yielding $200$ episodes per domain-condition cell. The maximum standard episode length is $50$ steps, and all POMCP searches use $100$ simulations per planning step, maximum simulation depth $20$, discount factor $\gamma=0.95$, and UCB exploration constant $c=1.0$.}
+
+\begin{table}[h]
+\centering
+\caption{Planner and evaluation parameters used in the system experiments.}
+\label{tab:app_planner_params}
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+POMCP simulations per planning step & $100$ \\
+Maximum simulation depth & $20$ \\
+Discount factor $\gamma$ & $0.95$ \\
+UCB exploration constant $c$ & $1.0$ \\
+Maximum episode steps & $50$ \\
+Scenarios per domain & $5$ \\
+Episodes per scenario-condition & $40$ \\
+Episodes per domain-condition & $200$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Domain model probabilities used in the reported experiments.}
+\label{tab:app_model_params}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Domain} & \textbf{Model component} & \textbf{Probability} \\
+\midrule
+Waste sorting & Detect observed transition & $0.90$ \\
+Waste sorting & Detect category transition & $0.50$ \\
+Waste sorting & Pick transition & $0.90$ \\
+Waste sorting & Place transition & $0.90$ \\
+Waste sorting & Detect observed observation & $0.90$ \\
+Waste sorting & Detect category observation & $0.80$ \\
+Waste sorting & Pick/place observation & $0.95$ \\
+\midrule
+Tomato harvesting & Navigate transition & $0.90$ \\
+Tomato harvesting & Detect transition & $0.95$ \\
+Tomato harvesting & Pick transition & $0.95$ \\
+Tomato harvesting & Scan transition & $0.90$ \\
+Tomato harvesting & Place/discard transition & $0.99$ \\
+Tomato harvesting & Detect observed observation & $0.85$ \\
+Tomato harvesting & Detect classification observation & $0.95$ \\
+Tomato harvesting & Scan observation & $0.85$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The waste-sorting detect category transition probability of $0.50$ defines the controlled category-ambiguity profile used in the experiments. It creates competing category hypotheses after detection, allowing the planner and query policy to be evaluated in a setting where category uncertainty matters for bin placement. The observation model is specified separately from this transition uncertainty; for example, the waste detect category observation probability is $0.80$ and is used when computing the likelihood term $O(o \mid s_k^{\star})$ during belief update.
+
+\cp{For each episode, the runner generates and records a pseudorandom seed. The seed is passed to the execution script and controls Python \texttt{random}, NumPy sampling, randomized initial arrangements, and the random-query policy when applicable. This allows individual raw episodes to be traced back to the scenario, threshold or policy condition, and sampled execution trajectory.}
+
+\cp{The scalability experiment uses the same planner parameters but evaluates the proposed policy on larger six-object scenarios, \texttt{scene\_06.yaml}--\texttt{scene\_10.yaml}. Each scaled scene is run for $40$ randomized episodes, again yielding $200$ episodes per domain. Because these scenarios have longer optimal plans, the maximum episode length is increased to $90$ steps and the maximum number of belief particles is set to $800$. The scalability table in Sec.~\ref{exp:sys_scale} reports means over these scaled episodes and compares them with the corresponding standard \textbf{Ours} results at $\tau=0.8$.}

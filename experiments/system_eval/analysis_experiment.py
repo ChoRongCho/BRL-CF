@@ -54,6 +54,32 @@ RUN_FIELDS = [
     "average_prediction_set_size",
     "average_prediction_set_size_when_asked",
     "token_overall",
+    "max_step",
+    "max_belief_particles",
+    "search_time_total",
+    "search_time_avg",
+    "execute_time_total",
+    "execute_time_avg",
+    "update_time_total",
+    "update_time_avg",
+    "interaction_time_total",
+    "interaction_time_avg",
+    "pruning_time_total",
+    "pruning_time_avg",
+    "step_total_time_total",
+    "step_total_time_avg",
+    "tree_node_count_avg",
+    "tree_node_count_max",
+    "tree_nodes_expanded_this_step_avg",
+    "tree_nodes_expanded_this_step_max",
+    "root_action_count_avg",
+    "root_action_count_max",
+    "max_tree_depth_avg",
+    "max_tree_depth_max",
+    "belief_frontier_size_avg",
+    "belief_frontier_size_max",
+    "belief_entropy_avg",
+    "belief_entropy_max",
 ]
 
 
@@ -109,6 +135,49 @@ def parse_section_key_values(text: str, section_name: str) -> dict[str, Any]:
     return values
 
 
+def parse_timing_values(text: str) -> dict[str, Any]:
+    marker = "[Timing]"
+    start = text.find(marker)
+    if start == -1:
+        return {}
+    next_section = text.find("\n[", start + len(marker))
+    block = text[start: next_section if next_section != -1 else len(text)]
+    values: dict[str, Any] = {}
+    for raw_line in block.splitlines()[1:]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        total_match = re.match(r"^([a-z_]+):\s*total=([0-9.]+)s,\s*avg=([0-9.]+)s$", line)
+        if total_match:
+            key = total_match.group(1)
+            values[f"{key}_total"] = float(total_match.group(2))
+            values[f"{key}_avg"] = float(total_match.group(3))
+            continue
+        total_time_match = re.match(r"^total_time:\s*([0-9.]+)s$", line)
+        if total_time_match:
+            values["total_time"] = float(total_time_match.group(1))
+    return values
+
+
+def parse_scale_metrics(text: str) -> dict[str, Any]:
+    marker = "[Scale Metrics]"
+    start = text.find(marker)
+    if start == -1:
+        return {}
+    next_section = text.find("\n[", start + len(marker))
+    block = text[start: next_section if next_section != -1 else len(text)]
+    values: dict[str, Any] = {}
+    for raw_line in block.splitlines()[1:]:
+        line = raw_line.strip()
+        match = re.match(r"^([a-z_]+):\s*total=([0-9.]+),\s*avg=([0-9.]+),\s*max=([0-9.]+)$", line)
+        if not match:
+            continue
+        key = match.group(1)
+        values[f"{key}_avg"] = float(match.group(3))
+        values[f"{key}_max"] = float(match.group(4))
+    return values
+
+
 def parse_question_steps(text: str) -> set[int]:
     return {
         int(match.group(1))
@@ -137,7 +206,7 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
         return None
 
     summary = parse_section_key_values(text, "Plan Summary")
-    timing = parse_section_key_values(text, "Timing")
+    timing = parse_timing_values(text)
     if not summary:
         return None
 
@@ -155,11 +224,16 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
     elif parent_name.startswith("thres_"):
         experiment = "threshold"
         threshold = parent_name.removeprefix("thres_").replace("-", ".")
+    elif parent_name.startswith("scale_ours_"):
+        experiment = "scalability"
+        policy = "ours"
+        threshold = parse_line_value(text, "threshold")
     else:
         return None
 
     steps = int(summary.get("steps", 0) or 0)
     question_steps = parse_question_steps(text)
+    scale_metrics = parse_scale_metrics(text)
     return {
         "domain": domain,
         "experiment": experiment,
@@ -189,6 +263,32 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
         "average_prediction_set_size": "",
         "average_prediction_set_size_when_asked": "",
         "token_overall": "",
+        "max_step": parse_line_value(text, "max_step"),
+        "max_belief_particles": parse_line_value(text, "max_belief_particles"),
+        "search_time_total": timing.get("search_time_total", ""),
+        "search_time_avg": timing.get("search_time_avg", ""),
+        "execute_time_total": timing.get("execute_time_total", ""),
+        "execute_time_avg": timing.get("execute_time_avg", ""),
+        "update_time_total": timing.get("update_time_total", ""),
+        "update_time_avg": timing.get("update_time_avg", ""),
+        "interaction_time_total": timing.get("interaction_time_total", ""),
+        "interaction_time_avg": timing.get("interaction_time_avg", ""),
+        "pruning_time_total": timing.get("pruning_time_total", ""),
+        "pruning_time_avg": timing.get("pruning_time_avg", ""),
+        "step_total_time_total": timing.get("step_total_time_total", ""),
+        "step_total_time_avg": timing.get("step_total_time_avg", ""),
+        "tree_node_count_avg": scale_metrics.get("tree_node_count_avg", ""),
+        "tree_node_count_max": scale_metrics.get("tree_node_count_max", ""),
+        "tree_nodes_expanded_this_step_avg": scale_metrics.get("tree_nodes_expanded_this_step_avg", ""),
+        "tree_nodes_expanded_this_step_max": scale_metrics.get("tree_nodes_expanded_this_step_max", ""),
+        "root_action_count_avg": scale_metrics.get("root_action_count_avg", ""),
+        "root_action_count_max": scale_metrics.get("root_action_count_max", ""),
+        "max_tree_depth_avg": scale_metrics.get("max_tree_depth_avg", ""),
+        "max_tree_depth_max": scale_metrics.get("max_tree_depth_max", ""),
+        "belief_frontier_size_avg": scale_metrics.get("belief_frontier_size_avg", ""),
+        "belief_frontier_size_max": scale_metrics.get("belief_frontier_size_max", ""),
+        "belief_entropy_avg": scale_metrics.get("belief_entropy_avg", ""),
+        "belief_entropy_max": scale_metrics.get("belief_entropy_max", ""),
     }
 
 
@@ -344,7 +444,9 @@ def collect_original_runs(logs_root: Path) -> list[dict[str, Any]]:
         if not root.exists():
             continue
         run_id = 0
-        for path in sorted(root.glob("scene_*_step50/*/*.txt")):
+        paths = list(root.glob("scene_*_step50/*/*.txt"))
+        paths.extend(root.glob("scene_*/scale_ours_step*/*.txt"))
+        for path in sorted(paths):
             parsed = parse_original_log(path, domain, run_id + 1)
             if parsed is not None:
                 run_id += 1

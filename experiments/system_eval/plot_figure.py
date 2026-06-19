@@ -368,7 +368,7 @@ def main() -> None:
     if not csv_paths:
         raise FileNotFoundError(f"No CSV files found for --csv {args.csv}")
 
-    output_root = Path(args.output_root) if args.output_root else SCRIPT_DIR / "figure"
+    output_root = Path(args.output_root) if args.output_root else SCRIPT_DIR / "figure" / "ablation"
     output_dir = make_run_dir(output_root)
     use_prefix = len(csv_paths) > 1
     raw_grouped = load_raw_grouped_rows()

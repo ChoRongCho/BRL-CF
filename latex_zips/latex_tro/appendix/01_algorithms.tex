@@ -1,0 +1,106 @@
+\section{Planning Algorithms}~\label{appx:algorithms}
+
+This appendix provides the detailed pseudocode for the POMCP-based search routines described in Sec.~\ref{method:PM}.
+
+\normalem
+\begin{algorithm}[h]
+\caption{POMCP Search with Applicable Actions}
+\label{alg:search}
+\textbf{Input}: belief $b$ \\
+\textbf{Output}: selected action $a \in \mathcal{A}$
+\BlankLine
+
+\Proc{\Search{$b$}}{
+    $h \gets$ root history\\
+    $s^{K} \gets knowledge(b)$\\
+    
+    \Repeat{\Timeout}{
+        \eIf{$B(h) \neq \emptyset$}{
+            sample $s \sim B(h)$ \label{alg_search:sample}\\
+        }{
+            $s \gets s^{K}$\\
+        }
+        
+        \Simulate{$s, h, 0$} \label{alg_search:simulate}\\
+    }
+    $a \gets$ \SearchBest{$h, s^{K}, \textnormal{false}$}  \label{alg_search:search_best}\\
+    \KwRet $a$ \\
+}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{POMCP Simulation with Applicable Actions}
+\label{alg:simulate}
+\textbf{Input}: state $s$, history $h$, depth $depth$ \\
+\textbf{Output}: simulated return $R$
+\BlankLine
+
+\Proc{\Simulate{$s, h, depth$}}{
+    \If{$\gamma^{depth} < \epsilon$}{
+        \KwRet $0$\\
+    }
+
+    \If{there is no $a\llbracket s \rrbracket \in \mathcal{A}$}{
+        $N(h) \gets N(h) + 1$\\
+        \KwRet $0$\\
+    }
+
+    \If{$h \notin T$}{
+        \ForEach{$a\llbracket s \rrbracket \in \mathcal{A}$ \label{alg_simulate:applicable}}{
+            $T, N(ha), V(ha) \gets T \cup \{ha\}, 0, 0$ \label{alg_simulate:tree_expand}\\
+        }
+        $N(h) \gets N(h) + 1$\\
+        \KwRet \Rollout{$s, depth$} \label{alg_simulate:rollout}\\
+    }
+
+    $a \gets$ \SearchBest{$h, s, \textnormal{true}$} \label{alg_simulate:search_best}\\
+    sample $(s^\prime, o, r)$ from simulator $\mathcal{G}(s, a)$ \label{alg_simulate:simulate}\\
+
+    $R \gets r + \gamma \cdot$ \Simulate{$s^\prime, hao, depth + 1$}\\
+
+    $B(h)\gets B(h) \cup \{s\}$\\
+    $N(h) \gets N(h)+1$\\
+    $N(ha) \gets N(ha)+1$\\
+    $V(ha) \gets V(ha) + \frac{R - V(ha)}{N(ha)}$\\
+
+    \KwRet $R$\\
+}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{Action Selection and Rollout}
+\label{alg:selection}
+\textbf{Input}: history $h$, state $s$
+\BlankLine
+
+\Proc{\SearchBest{$h, s, use\_ucb$}}{
+    $\mathcal{C} \gets \{a \mid a\llbracket s \rrbracket \in \mathcal{A},\ ha \in T\}$\\
+    
+    \If{$\mathcal{C} = \emptyset$}{
+        \KwRet $\emptyset$\\
+    }
+
+    \eIf{$use\_ucb$}{
+        \KwRet $\arg\max_{a \in \mathcal{C}} V(ha) + c \cdot \sqrt{\frac{\log N(h)}{1 + N(ha)}}$\\
+    }{
+        \KwRet $\arg\max_{a \in \mathcal{C}} V(ha)$\\
+    }
+}
+    
+\BlankLine
+
+\Proc{\Rollout{$s, depth$}}{
+    \If{$(\gamma^{depth} < \epsilon \lor \gamma = 0) \land depth > 0$}{
+        \KwRet $0$\\
+    }
+
+    \If{there is no $a\llbracket s \rrbracket \in \mathcal{A}$}{
+        \KwRet $0$\\
+    }
+
+    $a \sim \mathrm{Uniform}(\{ a \mid  a\llbracket s \rrbracket \in \mathcal{A}\}  )$ \label{alg_rollout:uniform}\\
+    sample $(s^\prime, o, r)$ from simulator $\mathcal{G}(s, a)$ \label{alg_rollout:simulator}\\
+
+    \KwRet $r + \gamma \cdot$ \Rollout{$s^\prime, depth + 1$}\\
+}
+\end{algorithm}

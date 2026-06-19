@@ -1,0 +1,188 @@
+\subsection{System Evaluation}~\label{exp:sys_eval}
+We evaluate the proposed framework from three perspectives. We first examine how the confidence threshold $\tau$ influences the trade-off between task performance and user feedback. We then compare the proposed query strategy with representative baselines under identical task settings. Finally, we analyze the computational scalability of the method as the symbolic state space increases.
+
+\subsubsection{Threshold Ablation}~\label{exp:sys_threshold}
+We first evaluate the effect of the confidence threshold $\tau$ on system performance. Fig.~\ref{fig:sys_tau} and Table~\ref{tab:sys_tau} report the resulting success rate, execution steps, and number of user queries across different threshold values.
+
+
+\begin{figure*}[t!]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_thres_success_rate.pdf}
+        \caption{Success rate}
+        \label{fig:sys_tau_success}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_thres_average_question.pdf}
+        \caption{Average queries}
+        \label{fig:sys_tau_queries}
+    \end{subfigure}
+    \vspace{0.4em}
+
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_thres_query_probability_per_step.pdf}
+        \caption{Query probability}
+        \label{fig:sys_tau_query_prob}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_thres_average_step_success_only.pdf}
+        \caption{Planning length}
+        \label{fig:sys_tau_steps}
+    \end{subfigure}
+    \caption{Effect of the confidence threshold $\tau$ on system behavior. (a) Task success rate. (b) Average number of questions per episode. (c) Query probability per execution step. (d) Planning length for successful runs. Increasing $\tau$ generally increases feedback, but very high thresholds can add interaction without improving success.}
+    \label{fig:sys_tau}
+\end{figure*}
+
+\begin{table*}[t]
+\centering
+\caption{Threshold sensitivity for all evaluated values of $\tau$. Success rates are percentages. Query counts are average questions per episode, query rate is the fraction of execution steps with at least one question, and average steps are computed over successful runs. Each domain-threshold cell aggregates $200$ episodes.}
+\label{tab:sys_tau}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc}
+\toprule
+\multirow{2}{*}{$\boldsymbol{\tau}$} & \multicolumn{4}{c}{\textbf{Waste Sorting}} & \multicolumn{4}{c}{\textbf{Tomato Harvesting}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+& \textbf{Success Rate (\%)} & \textbf{Avg. Queries} & \textbf{Query Rate} & \textbf{Avg. Steps} & \textbf{Success Rate (\%)} & \textbf{Avg. Queries} & \textbf{Query Rate} & \textbf{Avg. Steps} \\
+\midrule
+0.0 & 12.0 & 0.0 & 0.00 & 11.4 & 1.0 & 0.0 & 0.00 & 16.5 \\
+0.1 & 11.5 & 0.1 & 0.00 & 11.3 & 1.5 & 0.3 & 0.02 & 15.3 \\
+0.2 & 82.0 & 4.8 & 0.18 & 11.1 & 0.5 & 0.2 & 0.02 & 12.0 \\
+0.3 & 80.5 & 4.5 & 0.17 & 11.3 & 3.5 & 0.8 & 0.04 & 14.1 \\
+0.4 & 86.5 & 5.0 & 0.20 & 10.9 & 12.0 & 3.8 & 0.30 & 15.9 \\
+0.5 & 86.0 & 5.4 & 0.21 & 11.3 & 22.5 & 7.7 & 0.38 & 16.2 \\
+0.6 & 89.0 & 6.9 & 0.34 & 11.1 & 23.5 & 9.3 & 0.41 & 17.7 \\
+0.7 & 93.0 & 8.2 & 0.39 & 11.5 & 48.0 & 14.0 & 0.44 & 17.4 \\
+0.8 & 91.5 & 8.4 & 0.38 & 11.2 & 82.5 & 29.4 & 0.49 & 20.6 \\
+0.9 & 91.0 & 8.8 & 0.41 & 11.5 & 79.5 & 28.8 & 0.50 & 19.9 \\
+1.0 & 95.5 & 15.3 & 1.00 & 11.2 & 76.0 & 45.2 & 1.00 & 22.8 \\
+\bottomrule
+\end{tabular*}
+\end{table*}
+
+The results show that the two domains respond differently to the confidence threshold. In waste sorting, performance improves rapidly once a small amount of uncertainty is resolved, increasing from $11.5\%$ at $\tau=0.1$ to $82.0\%$ at $\tau=0.2$. Because task success primarily depends on identifying the correct waste category, additional feedback provides limited benefit once the category is determined. In contrast, tomato harvesting involves a longer sequence of dependent decisions, including navigation, detection, picking, scanning, and execution. Unresolved uncertainty can therefore propagate through multiple stages of the task, causing performance to remain low at small threshold values. Success increases substantially only at higher thresholds and reaches $82.5\%$ at $\tau=0.8$.
+
+Increasing $\tau$ consistently increases interaction because the planner requests feedback for a larger fraction of uncertain beliefs. This trend is reflected in both the average number of queries and the query rate. However, the additional interaction does not always translate into higher task success. In tomato harvesting, increasing the threshold from $\tau=0.8$ to $\tau=1.0$ increases the average number of queries from $29.4$ to $45.2$ and the query rate from $0.49$ to $1.00$, while success decreases from $82.5\%$ to $76.0\%$. This suggests that over-querying can introduce unnecessary interaction and may expose the belief update to additional noisy corrections without improving downstream decisions. In waste sorting, by contrast, the simpler category-assignment structure benefits from high confidence and reaches $95.5\%$ at $\tau=1.0$. Based on the cross-domain trade-off between success and interaction cost, we use $\tau=0.8$ in the remaining experiments.
+
+
+
+\subsubsection{Baseline Comparison}~\label{exp:sys_baseline}
+We next compare the proposed query strategy with representative alternatives. \textbf{All} requests feedback whenever multiple frontier hypotheses remain, regardless of the current confidence level. \textbf{No} performs autonomous execution without user feedback. \textbf{Random} selects queries uniformly at random. \textbf{KnowNo}~\cite{ren2023robots} is a GPT-4o-based action-query baseline~\cite{achiam2023gpt}. In contrast, \textbf{Ours} selectively requests state-level feedback based on belief confidence and expected information gain. All methods are evaluated under identical task settings using $\tau=0.8$.
+
+
+We note that \textbf{All} is not equivalent to setting $\tau=1.0$. The \textbf{All} policy requests feedback whenever multiple frontier hypotheses remain, whereas $\tau=1.0$ continues querying until complete confidence is achieved. Consequently, \textbf{All} may terminate querying even when uncertainty remains, while $\tau=1.0$ attempts to eliminate all uncertainty before acting.
+
+
+\begin{figure*}[t!]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_ablation_success_rate.pdf}
+        \caption{Success rate}
+        \label{fig:sys_baseline_success}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_ablation_average_question_success_only.pdf}
+        \caption{Average queries}
+        \label{fig:sys_baseline_queries}
+    \end{subfigure}
+    \vspace{0.4em}
+
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_ablation_query_probability_per_step_success_only.pdf}
+        \caption{Query rate}
+        \label{fig:sys_baseline_query_rate}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/system_eval/fig_ablation_average_step_success_only.pdf}
+        \caption{Planning length}
+        \label{fig:sys_baseline_steps}
+    \end{subfigure}
+    \caption{Baseline comparison at $\tau=0.8$. (a) Task success rate. (b) Average number of questions in successful runs. (c) Query rate, computed as the fraction of successful-run execution steps in which at least one question is asked. (d) Planning length for successful runs. The proposed policy preserves high task success while asking substantially fewer questions than dense supervision.}
+    \label{fig:sys_baseline}
+\end{figure*}
+
+\begin{table*}[t]
+\centering
+\caption{Baseline comparison at $\tau=0.8$. Average queries, query rate, and average steps are computed over successful runs to compare the interaction cost of completed tasks.}
+\label{tab:system_eval}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccccccc}
+\toprule
+\multirow{2}{*}{\textbf{Condition}} & \multicolumn{4}{c}{\textbf{Waste Sorting}} & \multicolumn{4}{c}{\textbf{Tomato Harvesting}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+& \textbf{Success Rate (\%)} & \textbf{Avg. Queries} & \textbf{Query Rate} & \textbf{Avg. Steps} & \textbf{Success Rate (\%)} & \textbf{Avg. Queries} & \textbf{Query Rate} & \textbf{Avg. Steps} \\
+\midrule
+\textbf{All}    & \textbf{97.5} & 16.1 & 1.00 & 11.4 & 81.5 & 48.6 & 1.00 & 23.1 \\
+\textbf{No}     & 13.5 & 0.0  & 0.00 & 11.7 & 1.5  & 0.0  & 0.00 & 15.0 \\
+\textbf{Random} & 84.0 & 9.8  & 0.51 & 12.2 & 11.0 & 18.9 & 0.58 & 17.8 \\
+\textbf{KnowNo} & 38.5 & \textbf{2.6}  & \textbf{0.26} & \textbf{10.0} & 42.0 & \textbf{2.9}  & \textbf{0.20} & \textbf{14.0} \\
+\textbf{Ours}   & 91.5 & 8.5  & 0.38 & 11.2 & \textbf{84.5} & 28.8 & 0.48 & 19.7 \\
+\bottomrule
+\end{tabular*}
+\end{table*}
+
+
+\textbf{All} achieves high success rates in both domains. In waste sorting, it obtains the highest success rate of $97.5\%$. In tomato harvesting, it achieves a success rate of $81.5\%$. These gains come at the cost of frequent interaction, requiring an average of $16.1$ and $48.6$ queries in the two domains, respectively. The query rate reaches $1.00$ in both domains because feedback is requested whenever a query is available. Despite this intensive supervision, the average number of execution steps remains comparable to the other methods, suggesting that additional feedback mainly improves decision quality rather than shortening the task itself.
+
+As expected, \textbf{No} performs poorly in both domains, achieving only $13.5\%$ success in waste sorting and $1.5\%$ in tomato harvesting. Without user feedback, incorrect observations remain uncorrected and propagate through subsequent symbolic decisions. \textbf{Random} improves over \textbf{No} in waste sorting, increasing the success rate from $13.5\%$ to $84.0\%$. This relatively strong waste-sorting result reflects the shorter task horizon and the fact that resolving any object-category uncertainty can often help the next placement decision. However, random querying does not transfer to the longer tomato workflow: it achieves only $11.0\%$ success despite requiring $18.9$ queries on average and maintaining a query rate of $0.58$. This domain gap indicates that query selection becomes more important when uncertainty can propagate across multiple dependent actions.
+
+In contrast, \textbf{Ours} provides a favorable balance between task success and interaction cost. In waste sorting, it reduces the average number of queries from $16.1$ to $8.5$, but this reduction comes with a success-rate decrease from $97.5\%$ for \textbf{All} to $91.5\%$ for \textbf{Ours}. In tomato harvesting, \textbf{Ours} slightly outperforms \textbf{All}, achieving $84.5\%$ success while reducing the average number of queries from $48.6$ to $28.8$. The query rates of $0.38$ and $0.48$ indicate that only a subset of uncertain decision points require human feedback. These results support a trade-off interpretation: \textbf{Ours} does not always maximize success rate, but it maintains high task performance while substantially reducing interaction.
+
+\textbf{KnowNo} exhibits a different trade-off. It achieves the lowest query rates among all feedback-based methods, requiring only $2.6$ and $2.9$ queries on average in the two domains. It also records the shortest successful execution sequences, with average planning lengths of $10.0$ and $14.0$ steps in waste sorting and tomato harvesting, respectively. Consequently, the overall amount of user interaction remains substantially lower than both \textbf{All} and \textbf{Ours}. Unlike state-level feedback, action-level feedback directly influences the planning process. By selecting the next action, the user provides information while simultaneously guiding future execution. This guidance reduces both planning length and query frequency, leading to fewer subsequent queries and shorter execution trajectories.
+
+However, this efficiency does not translate into reliable task completion in our domains. The success rates remain limited to $38.5\%$ and $42.0\%$. Although action-level guidance can efficiently steer execution, it does not consistently resolve the underlying state uncertainty. Users must choose among candidate actions without direct access to the planner's belief state, whereas state-level questions focus on observable facts that can be verified directly. We report the KnowNo implementation details in Appendix~\ref{appx:exp} to clarify the baseline setup and the prompt configuration used in this comparison.
+
+
+\subsubsection{Scalability Test}~\label{exp:sys_scale}
+We next examine whether the proposed framework remains effective as task complexity increases. The original setting contains four objects per domain. The scaled setting contains six objects in both domains, increasing the symbolic belief space, the number of possible object assignments, and the planning complexity. We keep the policy fixed to \textbf{Ours} with $\tau=0.8$ and increase the maximum planning horizon to accommodate the longer task sequences.
+
+
+\begin{table}[t]
+\centering
+\caption{Scalability results for \textbf{Ours} on six-object scenes. Values are means over $200$ scaled episodes per domain.}
+\label{tab:sys_scale}
+\footnotesize
+\setlength{\tabcolsep}{0pt}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Metric}} & \multicolumn{2}{c}{\textbf{Waste}} & \multicolumn{2}{c}{\textbf{Tomato}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+& \textbf{Orig.} & \textbf{Scale} & \textbf{Orig.} & \textbf{Scale} \\
+\midrule
+Success (\%)        & 91.5 & 92.0 & 84.5 & 74.0 \\
+Avg. steps          & 11.2 & 15.3 & 19.7 & 33.1 \\
+Avg. queries        & 8.3  & 11.3 & 27.3 & 80.6 \\
+Query rate          & 0.38 & 0.33 & 0.48 & 0.54 \\
+Episode time (s)    & 5.3  & 22.9 & 56.0 & 159.9 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The scaled waste sorting results show that the proposed framework remains effective as the number of objects increases from four to six. The success rate remains nearly unchanged at approximately $92.0\%$, while the average plan length increases from $11.2$ to $15.3$ steps. The average number of queries also increases from $8.3$ to $11.3$. However, the query rate decreases slightly from $0.38$ to $0.33$, indicating that the additional objects primarily increase task length rather than the fraction of decision points that require feedback.
+
+The tomato harvesting domain presents a more challenging scalability test because uncertainty is distributed across multiple state variables, including object identity, stem location, ripeness, scan outcomes, and grasped objects. As the number of tomatoes increases, the success rate decreases from $84.5\%$ to $74.0\%$, while the average plan length increases from $19.7$ to $33.1$ steps. The average number of queries also rises from $27.3$ to $80.6$. Despite this increase, the query rate changes only moderately from $0.48$ to $0.54$. This result suggests that the policy continues to request feedback selectively rather than querying at every decision step. The primary scalability cost appears in planning and belief maintenance, as reflected by the increase in episode execution time from $56.0$ to $159.9$ seconds.
+
+Overall, the scalability results suggest that the proposed policy generalizes to larger symbolic scenes while preserving its selective feedback mechanism. As task complexity increases, the method requires more interaction in the harder tomato domain, but the query rate increases only moderately and does not collapse into dense supervision.
+
+
+\subsubsection{System Discussion}~\label{exp:sys_discuss}
+The system evaluation highlights two key questions in human-robot interaction. The first is \textit{when} the robot should ask for feedback. The second is \textit{what} information it should request. The results suggest that both decisions are important for maintaining task performance while reducing user interaction.
+
+The threshold experiment shows that more feedback is not always better. Low thresholds leave important uncertainty unresolved and lead to poor task performance. High thresholds increase the number of questions but do not provide proportional gains in success rate. The best performance is obtained when feedback is requested only for uncertainty that is likely to affect future planning decisions.
+
+The baseline comparison shows that asking the right question is as important as deciding when to ask. \textbf{All} achieves high success rates but requires frequent interaction. \textbf{Random} also asks many questions, yet often fails because the selected questions are unrelated to the uncertainty that drives the task. \textbf{KnowNo} reduces both planning length and interaction by allowing users to directly guide action selection. However, action-level guidance does not reliably resolve the underlying state uncertainty, resulting in substantially lower task success. In contrast, \textbf{Ours} focuses on state uncertainty that directly affects planning and requests feedback only when that uncertainty becomes important. This allows the system to maintain high success rates while avoiding unnecessary questions.
+
+The scalability experiment shows that larger problems primarily increase planning and belief maintenance costs. In the waste sorting domain, performance remains stable as the number of objects increases. In the tomato harvesting domain, the larger belief space leads to longer planning horizons, more queries, and higher computational cost. However, the query rate increases only moderately, indicating that the policy remains selective rather than asking for feedback at every opportunity. The results demonstrate that the proposed query policy maintains efficient and selective feedback acquisition even as task complexity and belief-space size increase.

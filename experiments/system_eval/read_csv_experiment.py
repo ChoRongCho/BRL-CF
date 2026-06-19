@@ -5,6 +5,7 @@ Input:
 
 Output:
     <script_dir>/data/policy_compare_total.csv
+    <script_dir>/data/scale_compare.csv
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONDITIONS = ("all", "no", "ours", "random", "knowno_gpt4", "knowno_gpt35turbo")
 DOMAINS = ("waste", "tomato", "all")
+SCALE_CONDITIONS = ("original", "scaled")
+SCALE_DOMAINS = ("waste", "tomato")
 DOMAIN_ALIASES = {"wastesorting": "waste", "tomato": "tomato"}
 METRICS = (
     "success_rate",
@@ -63,6 +66,36 @@ METRIC_LABELS = {
     "prediction_set_size_when_asked": "Prediction Set Size When Asked",
     "prediction_set_size_when_asked_success_only": "Prediction Set Size When Asked",
     "prediction_set_size_when_asked_failure_only": "Prediction Set Size When Asked",
+}
+SCALE_METRICS = (
+    "success_rate",
+    "average_step_success_only",
+    "average_question",
+    "query_probability_per_step",
+    "elapsed_time",
+    "search_time_avg",
+    "update_time_avg",
+    "step_total_time_avg",
+    "tree_node_count_avg",
+    "tree_nodes_expanded_this_step_avg",
+    "root_action_count_avg",
+    "max_tree_depth_avg",
+    "belief_frontier_size_avg",
+)
+SCALE_METRIC_LABELS = {
+    "success_rate": "Success Rate",
+    "average_step_success_only": "Average Step",
+    "average_question": "Average Query Number",
+    "query_probability_per_step": "Query Probability per Step",
+    "elapsed_time": "Elapsed Time",
+    "search_time_avg": "Search Time per Step",
+    "update_time_avg": "Update Time per Step",
+    "step_total_time_avg": "Step Time",
+    "tree_node_count_avg": "Tree Nodes",
+    "tree_nodes_expanded_this_step_avg": "Expanded Nodes",
+    "root_action_count_avg": "Root Actions",
+    "max_tree_depth_avg": "Max Tree Depth",
+    "belief_frontier_size_avg": "Belief Frontier Size",
 }
 
 
@@ -146,6 +179,17 @@ def metric_values(rows: list[dict[str, str]], metric: str) -> list[float]:
         return [as_float(row["elapsed_seconds"]) for row in rows if is_success(row)]
     if metric == "elapsed_time_failure_only":
         return [as_float(row["elapsed_seconds"]) for row in rows if not is_success(row)]
+    if metric in {
+        "search_time_avg",
+        "update_time_avg",
+        "step_total_time_avg",
+        "tree_node_count_avg",
+        "tree_nodes_expanded_this_step_avg",
+        "root_action_count_avg",
+        "max_tree_depth_avg",
+        "belief_frontier_size_avg",
+    }:
+        return [as_float(row.get(metric)) for row in rows]
     if metric.startswith("prediction_set_size_when_asked"):
         if metric.endswith("_success_only"):
             rows = rows_for_outcome(rows, "success")
@@ -211,9 +255,56 @@ def build_output(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return output
 
 
-def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
+def scene_number(row: dict[str, str]) -> int:
+    scene = row.get("scene", "")
+    try:
+        return int(scene.removeprefix("scene_"))
+    except ValueError:
+        return -1
+
+
+def scale_condition_for_row(row: dict[str, str]) -> str:
+    scene = scene_number(row)
+    if row.get("experiment") == "when" and row.get("policy") == "ours" and 1 <= scene <= 5:
+        return "original"
+    if row.get("experiment") == "scalability" and row.get("policy") == "ours" and 6 <= scene <= 10:
+        return "scaled"
+    return ""
+
+
+def collect_scale_rows(rows: list[dict[str, str]]) -> dict[tuple[str, str], list[dict[str, str]]]:
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        condition = scale_condition_for_row(row)
+        domain = DOMAIN_ALIASES.get(row.get("domain", ""))
+        if condition not in SCALE_CONDITIONS or domain not in SCALE_DOMAINS:
+            continue
+        grouped[(condition, domain)].append(row)
+    return grouped
+
+
+def scale_output_fields() -> list[str]:
+    fields = ["metric", "metric_label"]
+    for condition in SCALE_CONDITIONS:
+        for domain in SCALE_DOMAINS:
+            fields.append(f"{condition}_{domain}")
+    return fields
+
+
+def build_scale_output(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    grouped = collect_scale_rows(rows)
+    output: list[dict[str, str]] = []
+    for metric in SCALE_METRICS:
+        row = {"metric": metric, "metric_label": SCALE_METRIC_LABELS[metric]}
+        for condition in SCALE_CONDITIONS:
+            for domain in SCALE_DOMAINS:
+                row[f"{condition}_{domain}"] = metric_result(grouped[(condition, domain)], metric)
+        output.append(row)
+    return output
+
+
+def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fields = output_fields()
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
@@ -223,10 +314,16 @@ def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input) if args.input else SCRIPT_DIR / "data" / "raw_runs" / "domain_compare" / "raw_runs.csv"
-    rows = build_output(read_rows(input_path))
+    raw_rows = read_rows(input_path)
+    rows = build_output(raw_rows)
     output_path = Path(args.output) if args.output else SCRIPT_DIR / "data" / "policy_compare_total.csv"
-    write_csv(output_path, rows)
+    write_csv(output_path, rows, output_fields())
     print(f"Wrote {len(rows)} rows to {output_path}")
+    if not args.output:
+        scale_rows = build_scale_output(raw_rows)
+        scale_output_path = SCRIPT_DIR / "data" / "scale_compare.csv"
+        write_csv(scale_output_path, scale_rows, scale_output_fields())
+        print(f"Wrote {len(scale_rows)} rows to {scale_output_path}")
 
 
 if __name__ == "__main__":
