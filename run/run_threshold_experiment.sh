@@ -69,10 +69,7 @@ fi
 THRESHOLD_LABEL="${THRESHOLD/./-}"
 scene_id=$(printf "%02d" "$((10#$SCENE))")
 
-# Temporary log directory for this run
-LOG_ROOT="temp_test"
-
-# LOG_ROOT="experiments_logs/system_log"
+LOG_ROOT="experiments_logs/system_log"
 LOG_DIR="${LOG_ROOT}/${DOMAIN}/scene_${scene_id}_step${MAXSTEP}/thres_${THRESHOLD_LABEL}"
 
 initial_state="scripts/domain/${DOMAIN}/scene_${scene_id}.yaml"

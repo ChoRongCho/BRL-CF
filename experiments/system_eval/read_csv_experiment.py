@@ -76,11 +76,9 @@ SCALE_METRICS = (
     "search_time_avg",
     "update_time_avg",
     "step_total_time_avg",
-    "tree_node_count_avg",
     "tree_nodes_expanded_this_step_avg",
-    "root_action_count_avg",
-    "max_tree_depth_avg",
     "belief_frontier_size_avg",
+    "belief_frontier_size_max",
 )
 SCALE_METRIC_LABELS = {
     "success_rate": "Success Rate",
@@ -91,11 +89,9 @@ SCALE_METRIC_LABELS = {
     "search_time_avg": "Search Time per Step",
     "update_time_avg": "Update Time per Step",
     "step_total_time_avg": "Step Time",
-    "tree_node_count_avg": "Tree Nodes",
     "tree_nodes_expanded_this_step_avg": "Expanded Nodes",
-    "root_action_count_avg": "Root Actions",
-    "max_tree_depth_avg": "Max Tree Depth",
     "belief_frontier_size_avg": "Belief Frontier Size",
+    "belief_frontier_size_max": "Max Belief Frontier Size",
 }
 
 
@@ -183,11 +179,9 @@ def metric_values(rows: list[dict[str, str]], metric: str) -> list[float]:
         "search_time_avg",
         "update_time_avg",
         "step_total_time_avg",
-        "tree_node_count_avg",
         "tree_nodes_expanded_this_step_avg",
-        "root_action_count_avg",
-        "max_tree_depth_avg",
         "belief_frontier_size_avg",
+        "belief_frontier_size_max",
     }:
         return [as_float(row.get(metric)) for row in rows]
     if metric.startswith("prediction_set_size_when_asked"):
@@ -265,7 +259,7 @@ def scene_number(row: dict[str, str]) -> int:
 
 def scale_condition_for_row(row: dict[str, str]) -> str:
     scene = scene_number(row)
-    if row.get("experiment") == "when" and row.get("policy") == "ours" and 1 <= scene <= 5:
+    if row.get("experiment") == "scalability" and row.get("policy") == "ours" and 1 <= scene <= 5:
         return "original"
     if row.get("experiment") == "scalability" and row.get("policy") == "ours" and 6 <= scene <= 10:
         return "scaled"

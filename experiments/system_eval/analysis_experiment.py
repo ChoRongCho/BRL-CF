@@ -25,6 +25,88 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 DEFAULT_LOGS_ROOT = PROJECT_ROOT / "experiments_logs" / "system_log"
 
+# Edit this block to change which log folders are analyzed.
+# Paths are relative to experiments_logs/system_log/{domain}.
+STEP50_SCENE_DIRS = tuple(f"scene_{index:02d}_step50" for index in range(1, 6))
+ANALYSIS_TARGETS = {
+    "tomato": {
+        "threshold": (
+            "thres_0-0",
+            "thres_0-1",
+            "thres_0-2",
+            "thres_0-3",
+            "thres_0-4",
+            "thres_0-5",
+            "thres_0-6",
+            "thres_0-7",
+            "thres_0-8",
+            "thres_0-9",
+            "thres_1-0",
+        ),
+        "when": (
+            "when_all_rand_0-5",
+            "when_no_rand_0-5",
+            "when_ours_rand_0-5",
+            "when_random_rand_0-48",
+        ),
+        "knowno": (
+            "when_knowno_gpt35turbo",
+            "when_knowno_gpt4",
+        ),
+        "scale": (
+            "scene_01/scale_ours_step50",
+            "scene_02/scale_ours_step50",
+            "scene_03/scale_ours_step50",
+            "scene_04/scale_ours_step50",
+            "scene_05/scale_ours_step50",
+            "scene_06/scale_ours_step90",
+            "scene_07/scale_ours_step90",
+            "scene_08/scale_ours_step90",
+            "scene_09/scale_ours_step90",
+            "scene_10/scale_ours_step90",
+            # "scene_11/scale_ours_step30",
+        ),
+    },
+    "wastesorting": {
+        "threshold": (
+            "thres_0-0",
+            "thres_0-1",
+            "thres_0-2",
+            "thres_0-3",
+            "thres_0-4",
+            "thres_0-5",
+            "thres_0-6",
+            "thres_0-7",
+            "thres_0-8",
+            "thres_0-9",
+            "thres_1-0",
+        ),
+        "when": (
+            "when_all_rand_0-5",
+            "when_no_rand_0-5",
+            "when_ours_rand_0-5",
+            "when_random_rand_0-38",
+        ),
+        "knowno": (
+            "when_knowno_gpt35turbo",
+            "when_knowno_gpt4",
+        ),
+        "scale": (
+            "scene_01/scale_ours_step50",
+            "scene_02/scale_ours_step50",
+            "scene_03/scale_ours_step50",
+            "scene_04/scale_ours_step50",
+            "scene_05/scale_ours_step50",
+            "scene_06/scale_ours_step90",
+            "scene_07/scale_ours_step90",
+            "scene_08/scale_ours_step90",
+            "scene_09/scale_ours_step90",
+            "scene_10/scale_ours_step90",
+            # "scene_11/scale_ours_step125",
+        ),
+    },
+}
+
 RUN_FIELDS = [
     "domain",
     "experiment",
@@ -437,6 +519,51 @@ def parse_knowno_log(path: Path, output_domain: str, run_id: int, domain_root: P
     }
 
 
+def configured_original_dirs(domain_root: Path, domain: str) -> list[Path]:
+    targets = ANALYSIS_TARGETS[domain]
+    paths: list[Path] = []
+
+    for scene_dir in STEP50_SCENE_DIRS:
+        for condition_dir in targets["threshold"]:
+            paths.append(domain_root / scene_dir / condition_dir)
+        for condition_dir in targets["when"]:
+            paths.append(domain_root / scene_dir / condition_dir)
+
+    paths.extend(domain_root / scale_dir for scale_dir in targets["scale"])
+    return paths
+
+
+def configured_knowno_dirs(domain_root: Path, domain: str) -> list[Path]:
+    targets = ANALYSIS_TARGETS[domain]
+    return [
+        domain_root / scene_dir / condition_dir
+        for scene_dir in STEP50_SCENE_DIRS
+        for condition_dir in targets["knowno"]
+    ]
+
+
+def collect_txt_files(directories: list[Path]) -> list[Path]:
+    paths: list[Path] = []
+    for directory in directories:
+        if directory.exists():
+            paths.extend(directory.glob("*.txt"))
+    return sorted(paths)
+
+
+def print_target_summary(logs_root: Path, knowno_root: Path) -> None:
+    print("Analysis targets:")
+    for domain in DOMAINS:
+        original_dirs = configured_original_dirs(logs_root / domain, domain)
+        knowno_dirs = configured_knowno_dirs(knowno_root / domain, domain)
+        original_files = collect_txt_files(original_dirs)
+        knowno_files = collect_txt_files(knowno_dirs)
+        print(
+            f"  {domain}: "
+            f"{len(original_files)} original files from {len(original_dirs)} dirs, "
+            f"{len(knowno_files)} KnowNo files from {len(knowno_dirs)} dirs"
+        )
+
+
 def collect_original_runs(logs_root: Path) -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     for domain in DOMAINS:
@@ -444,9 +571,7 @@ def collect_original_runs(logs_root: Path) -> list[dict[str, Any]]:
         if not root.exists():
             continue
         run_id = 0
-        paths = list(root.glob("scene_*_step50/*/*.txt"))
-        paths.extend(root.glob("scene_*/scale_ours_step*/*.txt"))
-        for path in sorted(paths):
+        for path in collect_txt_files(configured_original_dirs(root, domain)):
             parsed = parse_original_log(path, domain, run_id + 1)
             if parsed is not None:
                 run_id += 1
@@ -462,7 +587,7 @@ def collect_knowno_runs(knowno_root: Path) -> list[dict[str, Any]]:
         if not root.exists():
             continue
         run_id = 0
-        for path in sorted(root.glob("scene_*_step50/when_knowno_*/*.txt")):
+        for path in collect_txt_files(configured_knowno_dirs(root, input_domain)):
             parsed = parse_knowno_log(path, output_domain, run_id + 1, root)
             if parsed is not None and parsed["scene"] in SCENES:
                 run_id += 1
@@ -484,6 +609,7 @@ def main() -> None:
     args = parse_args()
     logs_root = Path(args.logs_root)
     knowno_root = Path(args.knowno_root) if args.knowno_root else logs_root
+    print_target_summary(logs_root, knowno_root)
     runs = collect_original_runs(logs_root)
     runs.extend(collect_knowno_runs(knowno_root))
 

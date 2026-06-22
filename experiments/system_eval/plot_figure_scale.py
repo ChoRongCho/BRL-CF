@@ -25,6 +25,35 @@ DEFAULT_CSV = SCRIPT_DIR / "data" / "scale_compare.csv"
 DEFAULT_OUTPUT_ROOT = SCRIPT_DIR / "figure" / "scale"
 CONDITIONS = ("original", "scaled")
 DOMAINS = ("waste", "tomato")
+
+# Edit this block to change figure design.
+PLOT_STYLE = {
+    "figure_size": (7.2, 5.2),
+    "figure_facecolor": "#f8fafc",
+    "axis_facecolor": "#ffffff",
+    "domain_colors": {
+        "waste": "#f2d675",
+        "tomato": "#b8a1d9",
+    },
+    "bar_edge_color": "#1e293b",
+    "bar_edge_width": 0.8,
+    "bar_width": 0.32,
+    "group_gap": 0.82,
+    "value_label_fontsize": 12,
+    "value_label_color": "#334155",
+    "x_tick_fontsize": 16,
+    "y_tick_fontsize": 14,
+    "y_label_fontsize": 16,
+    "legend_fontsize": 14,
+    "legend_location": "upper right",
+    "grid_color": "#cbd5e1",
+    "grid_alpha": 0.7,
+    "grid_linewidth": 0.8,
+    "spine_color": "#94a3b8",
+    "save_dpi": 200,
+    "save_formats": (".png", ".pdf"),
+}
+
 CONDITION_LABELS = {
     "original": "Original",
     "scaled": "Scaled",
@@ -32,10 +61,6 @@ CONDITION_LABELS = {
 DOMAIN_LABELS = {
     "waste": "Waste",
     "tomato": "Tomato",
-}
-DOMAIN_COLORS = {
-    "waste": "#f2d675",
-    "tomato": "#b8a1d9",
 }
 
 
@@ -83,11 +108,16 @@ def make_run_dir(output_root: Path) -> Path:
 
 
 def style_axis(ax) -> None:
-    ax.grid(axis="y", color="#cbd5e1", alpha=0.7, linewidth=0.8)
+    ax.grid(
+        axis="y",
+        color=PLOT_STYLE["grid_color"],
+        alpha=PLOT_STYLE["grid_alpha"],
+        linewidth=PLOT_STYLE["grid_linewidth"],
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#94a3b8")
-    ax.spines["bottom"].set_color("#94a3b8")
+    ax.spines["left"].set_color(PLOT_STYLE["spine_color"])
+    ax.spines["bottom"].set_color(PLOT_STYLE["spine_color"])
 
 
 def row_has_data(row: dict[str, str]) -> bool:
@@ -99,16 +129,30 @@ def row_has_data(row: dict[str, str]) -> bool:
     return any(not math.isnan(value) for value in values)
 
 
+def write_scale_compare(path: Path, rows: list[dict[str, str]]) -> None:
+    if not rows:
+        return
+    fields = ["metric", "metric_label"]
+    for condition in CONDITIONS:
+        for domain in DOMAINS:
+            fields.append(f"{condition}_{domain}")
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows({field: row.get(field, "") for field in fields} for row in rows)
+    print(path)
+
+
 def plot_metric(row: dict[str, str], output_dir: Path) -> None:
     metric = row["metric"]
     metric_label = row.get("metric_label") or metric
-    group_gap = 0.82
+    group_gap = PLOT_STYLE["group_gap"]
     positions = [index * group_gap for index in range(len(CONDITIONS))]
-    bar_width = 0.32
+    bar_width = PLOT_STYLE["bar_width"]
 
-    fig, ax = plt.subplots(figsize=(7.2, 5.2), constrained_layout=True)
-    fig.patch.set_facecolor("#f8fafc")
-    ax.set_facecolor("#ffffff")
+    fig, ax = plt.subplots(figsize=PLOT_STYLE["figure_size"], constrained_layout=True)
+    fig.patch.set_facecolor(PLOT_STYLE["figure_facecolor"])
+    ax.set_facecolor(PLOT_STYLE["axis_facecolor"])
 
     for domain_index, domain in enumerate(DOMAINS):
         offset = (domain_index - 0.5) * bar_width
@@ -118,9 +162,9 @@ def plot_metric(row: dict[str, str], output_dir: Path) -> None:
             [position + offset for position in positions],
             plot_values,
             width=bar_width,
-            color=DOMAIN_COLORS[domain],
-            edgecolor="#1e293b",
-            linewidth=0.8,
+            color=PLOT_STYLE["domain_colors"][domain],
+            edgecolor=PLOT_STYLE["bar_edge_color"],
+            linewidth=PLOT_STYLE["bar_edge_width"],
             label=DOMAIN_LABELS[domain],
         )
         for bar, value in zip(bars, values):
@@ -132,28 +176,31 @@ def plot_metric(row: dict[str, str], output_dir: Path) -> None:
                 f"{value:.2f}",
                 ha="center",
                 va="bottom",
-                fontsize=12,
-                color="#334155",
+                fontsize=PLOT_STYLE["value_label_fontsize"],
+                color=PLOT_STYLE["value_label_color"],
             )
 
     ax.set_xticks(positions)
-    ax.set_xticklabels([CONDITION_LABELS[condition] for condition in CONDITIONS], fontsize=16)
+    ax.set_xticklabels(
+        [CONDITION_LABELS[condition] for condition in CONDITIONS],
+        fontsize=PLOT_STYLE["x_tick_fontsize"],
+    )
     ax.set_xlabel("")
-    ax.set_ylabel(plot_label(metric_label, metric), fontsize=16)
-    ax.tick_params(axis="y", labelsize=14)
+    ax.set_ylabel(plot_label(metric_label, metric), fontsize=PLOT_STYLE["y_label_fontsize"])
+    ax.tick_params(axis="y", labelsize=PLOT_STYLE["y_tick_fontsize"])
     ax.legend(
-        loc="upper right",
+        loc=PLOT_STYLE["legend_location"],
         ncol=len(DOMAINS),
-        fontsize=14,
+        fontsize=PLOT_STYLE["legend_fontsize"],
         frameon=True,
         fancybox=False,
-        edgecolor="#1e293b",
+        edgecolor=PLOT_STYLE["bar_edge_color"],
     )
     style_axis(ax)
 
-    for suffix in (".png", ".pdf"):
+    for suffix in PLOT_STYLE["save_formats"]:
         path = output_dir / f"{metric}{suffix}"
-        fig.savefig(path, dpi=200)
+        fig.savefig(path, dpi=PLOT_STYLE["save_dpi"])
         print(path)
     plt.close(fig)
 
@@ -165,6 +212,7 @@ def main() -> None:
         rows = [row for row in rows if row["metric"] == args.metric]
     rows = [row for row in rows if row_has_data(row)]
     output_dir = make_run_dir(Path(args.output_root))
+    write_scale_compare(output_dir / "scale_compare.csv", rows)
     for row in rows:
         plot_metric(row, output_dir)
 

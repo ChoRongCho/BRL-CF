@@ -25,15 +25,39 @@ import matplotlib.pyplot as plt
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT = SCRIPT_DIR / "data" / "raw_runs" / "domain_compare" / "raw_runs.csv"
 DEFAULT_OUTPUT_ROOT = SCRIPT_DIR / "figure" / "threshold"
+
+# Edit this block to change figure design.
+PLOT_STYLE = {
+    "figure_size": (5.5, 4),
+    "figure_facecolor": "#f8fafc",
+    "axis_facecolor": "#ffffff",
+    "domain_colors": {
+        "tomato": "#b8a1d9",
+        "wastesorting": "#f2d675",
+        # "all": "#64748b",
+    },
+    "fallback_line_color": "#334155",
+    "line_width": 3.0,
+    "marker": "s",
+    "marker_size": 8,
+    "x_tick_fontsize": 15,
+    "y_tick_fontsize": 13,
+    "y_label_fontsize": 15,
+    "legend_fontsize": 14,
+    "legend_location": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),    "legend_edge_color": "#1e293b",
+    "grid_color": "#cbd5e1",
+    "grid_alpha": 0.7,
+    "grid_linewidth": 0.8,
+    "spine_color": "#94a3b8",
+    "save_dpi": 200,
+    "save_formats": (".png", ".pdf"),
+}
+
 DOMAIN_LABELS = {
     "tomato": "Tomato",
     "wastesorting": "Waste",
     "all": "All",
-}
-DOMAIN_COLORS = {
-    "tomato": "#b8a1d9",
-    "wastesorting": "#f2d675",
-    "all": "#64748b",
 }
 METRICS = {
     "success_rate": "Success Rate",
@@ -53,7 +77,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT), help="Directory where figures are written.")
     parser.add_argument("--metric", default="", help="Optional metric filter. By default, all metrics are plotted.")
     parser.add_argument("--include-all", action="store_true", help="Also plot the combined all-domain line.")
+    parser.add_argument("--test", nargs="?", const=True, default=False, type=parse_bool, help="Save figures under 00_test.")
     return parser.parse_args()
+
+
+def parse_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = value.lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"invalid boolean value: {value}")
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
@@ -140,7 +176,11 @@ def grouped_rows(rows: list[dict[str, str]], include_all: bool) -> dict[tuple[st
     return grouped
 
 
-def make_run_dir(output_root: Path) -> Path:
+def make_run_dir(output_root: Path, test: bool = False) -> Path:
+    if test:
+        output_dir = output_root / "00_test"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
     timestamp = datetime.now().strftime("00_%Y%m%d_%H%M%S")
     output_dir = output_root / timestamp
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -179,11 +219,16 @@ def write_summary(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def style_axis(ax) -> None:
-    ax.grid(axis="y", color="#cbd5e1", alpha=0.7, linewidth=0.8)
+    ax.grid(
+        axis="y",
+        color=PLOT_STYLE["grid_color"],
+        alpha=PLOT_STYLE["grid_alpha"],
+        linewidth=PLOT_STYLE["grid_linewidth"],
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#94a3b8")
-    ax.spines["bottom"].set_color("#94a3b8")
+    ax.spines["left"].set_color(PLOT_STYLE["spine_color"])
+    ax.spines["bottom"].set_color(PLOT_STYLE["spine_color"])
 
 
 def use_percent_scale(metric: str) -> bool:
@@ -206,9 +251,9 @@ def plot_metric(summary: list[dict[str, str]], metric: str, output_dir: Path) ->
     if not metric_rows:
         return
 
-    fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
-    fig.patch.set_facecolor("#f8fafc")
-    ax.set_facecolor("#ffffff")
+    fig, ax = plt.subplots(figsize=PLOT_STYLE["figure_size"], constrained_layout=True)
+    fig.patch.set_facecolor(PLOT_STYLE["figure_facecolor"])
+    ax.set_facecolor(PLOT_STYLE["axis_facecolor"])
 
     domains = [domain for domain in ("wastesorting", "tomato", "all") if any(row["domain"] == domain for row in metric_rows)]
     for domain in domains:
@@ -218,37 +263,42 @@ def plot_metric(summary: list[dict[str, str]], metric: str, output_dir: Path) ->
         ax.plot(
             xs,
             ys,
-            marker="o",
-            linewidth=3.0,
-            markersize=8,
-            color=DOMAIN_COLORS.get(domain, "#334155"),
+            marker=PLOT_STYLE["marker"],
+            linewidth=PLOT_STYLE["line_width"],
+            markersize=PLOT_STYLE["marker_size"],
+            color=PLOT_STYLE["domain_colors"].get(domain, PLOT_STYLE["fallback_line_color"]),
             label=DOMAIN_LABELS.get(domain, domain),
         )
 
     ax.set_xticks([index / 10 for index in range(11)])
+    ax.set_xticklabels([f".{index}" if index < 10 else "1.0" for index in range(11)])
     ax.set_xlabel("")
-    ax.set_ylabel(plot_label(metric), fontsize=18)
-    ax.tick_params(axis="x", labelsize=18)
-    ax.tick_params(axis="y", labelsize=16)
+    ax.set_ylabel(plot_label(metric), fontsize=PLOT_STYLE["y_label_fontsize"])
+    ax.tick_params(axis="x", labelsize=PLOT_STYLE["x_tick_fontsize"])
+    ax.tick_params(axis="y", labelsize=PLOT_STYLE["y_tick_fontsize"])
     ax.legend(
-        loc="upper left",
+        loc=PLOT_STYLE["legend_location"],
+        bbox_to_anchor=PLOT_STYLE["legend_bbox_to_anchor"],
         ncol=len(domains),
-        fontsize=17,
+        fontsize=PLOT_STYLE["legend_fontsize"],
         frameon=True,
         fancybox=False,
-        edgecolor="#1e293b",
+        edgecolor=PLOT_STYLE["legend_edge_color"],
+        borderaxespad=0.0,
     )
     style_axis(ax)
 
-    for suffix in (".png", ".pdf"):
+    for suffix in PLOT_STYLE["save_formats"]:
         path = output_dir / f"{metric}{suffix}"
-        fig.savefig(path, dpi=200)
+        fig.savefig(path, dpi=PLOT_STYLE["save_dpi"], bbox_inches="tight")
         print(path)
     plt.close(fig)
 
 
 def main() -> None:
     args = parse_args()
+    args.test = True
+    
     metrics = [args.metric] if args.metric else list(METRICS)
     unknown_metrics = [metric for metric in metrics if metric not in METRICS]
     if unknown_metrics:
@@ -258,7 +308,7 @@ def main() -> None:
     if not rows:
         raise ValueError(f"No threshold rows found in {args.input}")
 
-    output_dir = make_run_dir(Path(args.output_root))
+    output_dir = make_run_dir(Path(args.output_root), args.test)
     summary = build_summary(rows, include_all=args.include_all)
     write_summary(output_dir / "threshold_summary.csv", summary)
     for metric in metrics:

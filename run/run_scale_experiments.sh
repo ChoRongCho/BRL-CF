@@ -3,6 +3,7 @@
 set -euo pipefail
 
 # Usage: ./run/run_scale_experiments.sh [--domain tomato|wastesorting] [--scene N] [--iter N] [--seed random|N]
+# Scene 01-05 defaults to max_step=50 and max_belief_particles=800.
 # Scene 06-10 defaults to max_step=90 and max_belief_particles=800.
 # Scene 11-15 defaults to max_step=125 and max_belief_particles=8000.
 
@@ -11,7 +12,7 @@ SCENE="11"
 ITERATIONS="1"
 THRESHOLD="0.8"
 SEED="random"
-MAXSTEP="30"
+MAXSTEP=""
 MAX_BELIEF_PARTICLES=""
 
 usage() {

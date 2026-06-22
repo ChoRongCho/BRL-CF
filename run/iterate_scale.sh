@@ -2,8 +2,12 @@
 
 set -euo pipefail
 
+# domains=(tomato wastesorting)
+# scenes=(1 2 3 4 5)
 domains=(wastesorting)
-scenes=(6 7 8 9 10 11)
+scenes=(1)
+
+
 
 iterations="${ITERATIONS:-40}"
 threshold="${THRESHOLD:-0.8}"
@@ -22,7 +26,9 @@ echo "global_index,domain,scene,threshold,seed_mode,max_step,max_belief_particle
 
 max_step_for_scene() {
     local scene="$1"
-    if (( scene >= 6 && scene <= 10 )); then
+    if (( scene >= 1 && scene <= 5 )); then
+        echo "50"
+    elif (( scene >= 6 && scene <= 10 )); then
         echo "90"
     elif (( scene >= 11 && scene <= 15 )); then
         echo "125"
@@ -33,7 +39,9 @@ max_step_for_scene() {
 
 max_belief_particles_for_scene() {
     local scene="$1"
-    if (( scene >= 6 && scene <= 10 )); then
+    if (( scene >= 1 && scene <= 5 )); then
+        echo "800"
+    elif (( scene >= 6 && scene <= 10 )); then
         echo "800"
     elif (( scene >= 11 && scene <= 15 )); then
         echo "8000"
@@ -41,6 +49,14 @@ max_belief_particles_for_scene() {
         echo "8000"
     fi
 }
+
+for domain in "${domains[@]}"; do
+    for scene in "${scenes[@]}"; do
+        scene_id=$(printf "%02d" "$((10#$scene))")
+        max_step=$(max_step_for_scene "$scene")
+        printf "Target output dir: %s\n" "${log_root}/${domain}/scene_${scene_id}/scale_ours_step${max_step}"
+    done
+done
 
 printf "\rProgress: %3d%%" 0
 

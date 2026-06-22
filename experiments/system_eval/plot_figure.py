@@ -24,6 +24,36 @@ import matplotlib.pyplot as plt
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONDITIONS = ("all", "no", "random", "knowno_gpt4", "ours")
 DOMAINS = ("waste", "tomato")
+
+# Edit this block to change figure design.
+PLOT_STYLE = {
+    "figure_size": (5.5, 4),
+    "figure_facecolor": "#f8fafc",
+    "axis_facecolor": "#ffffff",
+    "domain_colors": {
+        "waste": "#f2d675",
+        "tomato": "#b8a1d9",
+    },
+    "bar_edge_color": "#1e293b",
+    "bar_edge_width": 0.8,
+    "bar_width": 0.35,
+    "group_gap": 0.82,
+    "value_label_fontsize": 12,
+    "value_label_color": "#334155",
+    "x_tick_fontsize": 15,
+    "y_tick_fontsize": 13,
+    "y_label_fontsize": 15,
+    "legend_fontsize": 14,
+    "legend_location": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),
+    "grid_color": "#cbd5e1",
+    "grid_alpha": 0.7,
+    "grid_linewidth": 0.8,
+    "spine_color": "#94a3b8",
+    "save_dpi": 200,
+    "save_formats": (".png", ".pdf"),
+}
+
 CONDITION_LABELS = {
     "all": "All",
     "no": "No",
@@ -36,10 +66,6 @@ DOMAIN_LABELS = {
     "waste": "Waste",
     "tomato": "Tomato",
 }
-DOMAIN_COLORS = {
-    "waste": "#f2d675",
-    "tomato": "#b8a1d9",
-}
 DOMAIN_ALIASES = {"wastesorting": "waste", "tomato": "tomato"}
 
 
@@ -48,7 +74,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--csv", required=True, help="Wide CSV from read_csv_experiment.py, or 'all' for every CSV in data/.")
     parser.add_argument("--output-root", default="", help="Root figure directory. Defaults to <script_dir>/figure.")
     parser.add_argument("--metric", default="", help="Optional metric filter. By default, all metrics are plotted.")
+    parser.add_argument("--test", nargs="?", const=True, default=False, type=parse_bool, help="Save figures under 00_test.")
     return parser.parse_args()
+
+
+def parse_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = value.lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"invalid boolean value: {value}")
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
@@ -186,7 +224,11 @@ def load_raw_grouped_rows() -> dict[tuple[str, str], list[dict[str, str]]]:
     return collect_raw_rows(read_rows(raw_path))
 
 
-def make_run_dir(output_root: Path) -> Path:
+def make_run_dir(output_root: Path, test: bool = False) -> Path:
+    if test:
+        output_dir = output_root / "00_test"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
     timestamp = datetime.now().strftime("00_%Y%m%d_%H%M%S")
     output_dir = output_root / timestamp
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -232,17 +274,24 @@ def plot_label(metric_label: str, metric: str) -> str:
     return f"{metric_label} (%)" if use_percent_scale(metric) else metric_label
 
 
+def value_label(value: float, metric: str) -> str:
+    if metric.startswith("query_probability_per_step"):
+        label = f"{value:.2f}"
+        return label[1:] if 0.0 <= value < 1.0 else label
+    return f"{value:.1f}"
+
+
 def plot_metric(row: dict[str, str], output_dir: Path, prefix: str = "") -> str:
     metric = row["metric"]
     metric_label = row.get("metric_label") or metric
     axis_label = plot_label(metric_label, metric)
-    group_gap = 0.82
+    group_gap = PLOT_STYLE["group_gap"]
     positions = [index * group_gap for index in range(len(CONDITIONS))]
-    bar_width = 0.32
+    bar_width = PLOT_STYLE["bar_width"]
 
-    fig, ax = plt.subplots(figsize=(8.2, 4.8), constrained_layout=True)
-    fig.patch.set_facecolor("#f8fafc")
-    ax.set_facecolor("#ffffff")
+    fig, ax = plt.subplots(figsize=PLOT_STYLE["figure_size"], constrained_layout=True)
+    fig.patch.set_facecolor(PLOT_STYLE["figure_facecolor"])
+    ax.set_facecolor(PLOT_STYLE["axis_facecolor"])
 
     for domain_index, domain in enumerate(DOMAINS):
         offset = (domain_index - 0.5) * bar_width
@@ -252,9 +301,9 @@ def plot_metric(row: dict[str, str], output_dir: Path, prefix: str = "") -> str:
             [position + offset for position in positions],
             plot_values,
             width=bar_width,
-            color=DOMAIN_COLORS[domain],
-            edgecolor="#1e293b",
-            linewidth=0.8,
+            color=PLOT_STYLE["domain_colors"][domain],
+            edgecolor=PLOT_STYLE["bar_edge_color"],
+            linewidth=PLOT_STYLE["bar_edge_width"],
             label=DOMAIN_LABELS[domain],
         )
         for bar, value in zip(bars, values):
@@ -263,25 +312,30 @@ def plot_metric(row: dict[str, str], output_dir: Path, prefix: str = "") -> str:
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
-                f"{value:.2f}",
+                value_label(value, metric),
                 ha="center",
                 va="bottom",
-                fontsize=12,
-                color="#334155",
+                fontsize=PLOT_STYLE["value_label_fontsize"],
+                color=PLOT_STYLE["value_label_color"],
             )
 
     ax.set_xticks(positions)
-    ax.set_xticklabels([CONDITION_LABELS[condition] for condition in CONDITIONS], fontsize=15)
+    ax.set_xticklabels(
+        [CONDITION_LABELS[condition] for condition in CONDITIONS],
+        fontsize=PLOT_STYLE["x_tick_fontsize"],
+    )
     ax.set_xlabel("")
-    ax.set_ylabel(axis_label, fontsize=15)
-    ax.tick_params(axis="y", labelsize=13)
+    ax.set_ylabel(axis_label, fontsize=PLOT_STYLE["y_label_fontsize"])
+    ax.tick_params(axis="y", labelsize=PLOT_STYLE["y_tick_fontsize"])
     ax.legend(
-        loc="upper right",
+        loc=PLOT_STYLE["legend_location"],
+        bbox_to_anchor=PLOT_STYLE["legend_bbox_to_anchor"],
         ncol=len(DOMAINS),
-        fontsize=14,
+        fontsize=PLOT_STYLE["legend_fontsize"],
         frameon=True,
         fancybox=False,
-        edgecolor="#1e293b",
+        edgecolor=PLOT_STYLE["bar_edge_color"],
+        borderaxespad=0.0,
     )
     style_axis(ax)
     filename = figure_name(metric, prefix)
@@ -347,29 +401,38 @@ def write_figure_table(output_dir: Path, rows: list[dict[str, str]]) -> None:
 
 
 def style_axis(ax) -> None:
-    ax.grid(axis="y", color="#cbd5e1", alpha=0.7, linewidth=0.8)
+    ax.grid(
+        axis="y",
+        color=PLOT_STYLE["grid_color"],
+        alpha=PLOT_STYLE["grid_alpha"],
+        linewidth=PLOT_STYLE["grid_linewidth"],
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#94a3b8")
-    ax.spines["bottom"].set_color("#94a3b8")
+    ax.spines["left"].set_color(PLOT_STYLE["spine_color"])
+    ax.spines["bottom"].set_color(PLOT_STYLE["spine_color"])
 
 
 def save_figure(fig, output_stem: Path) -> None:
-    for suffix in (".png", ".pdf"):
+    for suffix in PLOT_STYLE["save_formats"]:
         path = output_stem.with_suffix(suffix)
-        fig.savefig(path, dpi=200)
+        fig.savefig(path, dpi=PLOT_STYLE["save_dpi"], bbox_inches="tight")
         print(path)
     plt.close(fig)
 
 
 def main() -> None:
     args = parse_args()
+    
+    # Changmin ADD
+    args.test = True  
+    
     csv_paths = resolve_csv_paths(args.csv)
     if not csv_paths:
         raise FileNotFoundError(f"No CSV files found for --csv {args.csv}")
 
     output_root = Path(args.output_root) if args.output_root else SCRIPT_DIR / "figure" / "ablation"
-    output_dir = make_run_dir(output_root)
+    output_dir = make_run_dir(output_root, args.test)
     use_prefix = len(csv_paths) > 1
     raw_grouped = load_raw_grouped_rows()
     table_rows: list[dict[str, str]] = []

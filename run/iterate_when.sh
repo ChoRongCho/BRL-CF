@@ -3,12 +3,12 @@
 set -euo pipefail
 
 domains=(tomato wastesorting)
-strategies=(all no ours random)
+# strategies=(all no ours random)
+strategies=(random)
 scenes=(1 2 3 4 5)
 
 iterations=40
 max_step=50
-random_query_prob="0.5"
 archive_existing=true
 log_root="experiments_logs/system_log"
 
@@ -18,10 +18,26 @@ current=0
 printf "\rProgress: %3d%%" 0
 
 timestamp=$(date +%Y%m%d_%H%M%S)
-prob_label="${random_query_prob/./-}"
+
+random_query_prob_for_domain() {
+    case "$1" in
+        tomato)
+            printf "0.48"
+            ;;
+        wastesorting)
+            printf "0.38"
+            ;;
+        *)
+            echo "Unknown domain: $1" >&2
+            exit 1
+            ;;
+    esac
+}
 
 if [[ "${archive_existing}" == "true" ]]; then
     for domain in "${domains[@]}"; do
+        random_query_prob=$(random_query_prob_for_domain "$domain")
+        prob_label="${random_query_prob/./-}"
         for strategy in "${strategies[@]}"; do
             for scene in "${scenes[@]}"; do
                 scene_id=$(printf "%02d" "$((10#$scene))")
@@ -35,6 +51,7 @@ if [[ "${archive_existing}" == "true" ]]; then
 fi
 
 for domain in "${domains[@]}"; do
+    random_query_prob=$(random_query_prob_for_domain "$domain")
     for strategy in "${strategies[@]}"; do
         for scene in "${scenes[@]}"; do
             for ((i = 1; i <= iterations; i++)); do
