@@ -1,0 +1,302 @@
+KnowNo LLM Prompt Format
+========================
+
+This file summarizes the actual prompt formats passed to the LLM in the
+KnowNo notebooks:
+
+- scripts/baseline/ipynb_files/KnowNo_Demo.ipynb
+- scripts/baseline/ipynb_files/KnowNo_MobileManipulation.ipynb
+- scripts/baseline/ipynb_files/KnowNo_TabletopSim.ipynb
+
+KnowNo uses two LLM calls per decision:
+
+1. Multiple-choice generation
+   The LLM receives a task/context prompt and generates candidate actions.
+
+2. Choice scoring
+   The LLM receives the current scenario plus the generated action options
+   and is asked to answer with one option letter. The next-token log
+   probabilities of A/B/C/D/E are used for conformal prediction.
+
+
+1. Office-kitchen / Mobile-manipulation MC generation prompt
+-----------------------------------------------------------
+
+Template:
+
+We: You are a robot operating in an office kitchen. You are in front of a
+counter with two closed drawers, a top one and a bottom one. There is also a
+landfill bin, a recycling bin, and a compost bin.
+
+We: On the counter, there is an orange soda, a Pepsi, and an apple.
+We: Put that drink in the top drawer.
+You:
+A) open the top drawer and put the orange soda in it
+B) open the bottom drawer and put the Pepsi in it
+C) open the bottom drawer and put the orange soda in it
+D) open the top drawer and put the Pepsi in it
+
+We: On the counter, there is an energy bar, a banana, and a microwave.
+We: Put the snack next to the microwave.
+You:
+A) pick up the energy bar and put it next to the microwave
+B) pick up the banana and put it next to the energy bar
+C) pick up the banana and put it next to the microwave
+D) pick up the energy bar and put it next to the banana
+
+We: On the counter, there is a Coke, a Sprite, and a sponge.
+We: Can you dispose of the can? It should have expired.
+You:
+A) pick up the sponge and put it in the landfill bin
+B) pick up the Coke and put it in the recycling bin
+C) pick up the Sprite and put it in the recycling bin
+D) pick up the Coke and put it in the landfill bin
+
+We: On the counter, there is a bottled water, a bag of jalapeno chips, and a bag of rice chips.
+We: I would like a bag of chips.
+You:
+A) pick up the bottled water
+B) pick up the jalapeno chips
+C) pick up the kettle chips
+D) pick up the rice chips
+
+We: On the counter, there is {scene_objects}
+We: {task}
+You:
+
+Fields:
+
+- {scene_objects}: objects currently visible in the scene.
+- {task}: natural-language user instruction.
+
+LLM output expected:
+
+A) <candidate action>
+B) <candidate action>
+C) <candidate action>
+D) <candidate action>
+
+
+2. Office-kitchen / Mobile-manipulation scoring prompt
+-----------------------------------------------------
+
+Template:
+
+You are a robot operating in an office kitchen. You are in front of a counter
+with two closed drawers, a top one and a middle one. There is also a landfill
+bin, a recycling bin, and a compost bin.
+
+We: On the counter, there is {scene_objects}
+We: {task}
+You:
+A) <generated option A>
+B) <generated option B>
+C) <generated option C>
+D) <generated option D>
+E) an option not listed here
+We: Which option is correct? Answer with a single letter.
+You:
+
+Scoring:
+
+- The LLM is called with max_tokens=1 and logprobs enabled.
+- The top-token log probabilities are read for A/B/C/D/E.
+- These log probabilities are temperature-scaled.
+- The prediction set includes every option whose probability is at least
+  1 - qhat.
+
+
+3. Tabletop simulation MC generation prompt
+-------------------------------------------
+
+Template:
+
+We: You are a robot, and you are asked to move objects to precise locations on
+the table. Our instructions can be ambiguous.
+
+We: On the table there are these objects: blue block, yellow bowl, yellow block,
+green bowl, green block, blue bowl.
+We: Now, put the grass-colored bowl at the right side of the blue round object
+You: These are some options:
+A) put blue bowl at the right side of blue block
+B) put green bowl at the right side of blue bowl
+C) put green block at the right side of blue bowl
+D) put yellow bowl at the right side of blue bowl
+
+We: On the table there are these objects: yellow bowl, green bowl, green block,
+yellow block, blue block, blue bowl.
+We: Now, put the yellow square object near the green box
+You: These are some options:
+A) put yellow block in front of green block
+B) put yellow block behind green block
+C) put yellow block to the left of green block
+D) put yellow block to the right of green block
+
+We: On the table there are these objects: blue bowl, yellow block, green bowl,
+blue block, green block, yellow bowl.
+We: Now, put the yellow bowl along the horizontal axis of the grass-colored block
+You: These are some options:
+A) put yellow bowl at the front of the green block
+B) put yellow bowl at the left side of the green block
+C) put yellow bowl at the left side of the blue block
+D) put yellow bowl at the right side of the green block
+
+We: On the table there are these objects: green bowl, yellow block, blue bowl,
+yellow bowl, green block, blue block.
+We: Now, {instruction}
+You: These are some options:
+
+Fields:
+
+- {instruction}: sampled or user-specified tabletop instruction.
+
+
+4. Tabletop simulation scoring prompt
+-------------------------------------
+
+Template:
+
+We: You are a robot, and you are asked to move objects to precise locations on
+the table. Our instructions can be ambiguous.
+
+We: On the table there are these objects: green bowl, yellow block, blue bowl,
+yellow bowl, green block, blue block.
+We: Now, {instruction}
+You: These are some options:
+A) <generated option A>
+B) <generated option B>
+C) <generated option C>
+D) <generated option D>
+E) an option not listed here
+We: Which option is correct? Answer with a single letter.
+You:
+
+
+5. Tomato-harvesting prompt used in this repository
+--------------------------------------------------
+
+The tomato calibration prompt follows the same KnowNo two-call structure but
+uses the tomato domain context and action vocabulary.
+
+MC generation prompt:
+
+We: You are a tomato harvesting robot. The robot moves between a dock station
+and tomato stems, observes tomatoes, picks ripe tomatoes, scans held tomatoes
+for quality, loads good tomatoes, and discards rotten tomatoes.
+
+Action roles:
+- navigate to <location>: move the robot to dock_station, stem_01, or stem_02.
+- detect <location>: observe tomatoes at the current robot stem.
+- pick <tomato>: pick one detected ripe tomato at the current robot stem with an empty hand.
+- scan <tomato>: inspect the currently held tomato.
+- place <tomato>: load the held ripe tomato.
+- discard <tomato>: discard the held rotten or bad tomato.
+
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: navigate to <location>, detect <location>,
+  pick <tomato>, scan, scan <tomato>, place <tomato>, discard <tomato>.
+- Do not generate descriptive phrases, retries, requests for assistance,
+  system checks, or any action outside these formats.
+
+<few-shot tomato examples>
+
+We: Overall instruction: {instruction}
+We: Robot location: {robot_location}
+We: Active tomatoes: {active_tomatoes}
+We: Tomato states:
+{tomato_state_text}
+We: Held tomato: {held_tomato}
+We: Loaded tomatoes: {loaded_tomatoes}
+We: Discarded tomatoes: {discarded_tomatoes}
+We: Actions already completed:
+{history_text}
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+
+Scoring prompt:
+
+You are a tomato harvesting robot. The robot moves between a dock station and
+tomato stems, observes tomatoes, picks ripe tomatoes, scans held tomatoes for
+quality, loads good tomatoes, and discards rotten tomatoes.
+
+We: Overall instruction: {instruction}
+We: Robot location: {robot_location}
+We: Active tomatoes: {active_tomatoes}
+We: Tomato states:
+{tomato_state_text}
+We: Held tomato: {held_tomato}
+We: Loaded tomatoes: {loaded_tomatoes}
+We: Discarded tomatoes: {discarded_tomatoes}
+We: Actions already completed:
+{history_text}
+We: What should the robot do next?
+You:
+A) <generated option A>
+B) <generated option B>
+C) <generated option C>
+D) <generated option D>
+E) an option not listed here
+We: Which option is correct? Answer with a single capital letter.
+You:
+
+
+6. Waste-sorting prompt used in this repository
+----------------------------------------------
+
+The waste-sorting calibration prompt also follows the same KnowNo two-call
+structure.
+
+MC generation prompt:
+
+We: You are a robot operating in a waste sorting station. You are in front of
+a counter. There are four bins: a general bin, a plastic bin, a paper bin, and
+a can bin.
+
+Action roles:
+- detect: observe waste attributes for objects on the counter.
+- pick <object>: pick one observed object from the counter with an empty hand.
+- place <object> into <bin>: place the held object into the bin matching the observed attribute.
+
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: detect, pick <object>, place <object> into <bin>.
+- Do not generate descriptive phrases, retries, requests for assistance,
+  system checks, or any action outside these formats.
+
+<few-shot waste examples>
+
+We: Overall instruction: {instruction}
+We: Objects still on the counter: {remaining_objects}
+We: Available bins: {available_bins}
+We: Occluded waste objects: {occlusion_text}
+We: Observed waste attributes: {observed_text}
+We: Object currently held by the robot: {held_text}
+We: Actions already completed:
+{history_text}
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+
+Scoring prompt:
+
+You are a robot operating in a waste sorting station. You are in front of a
+counter. There are four bins: a general bin, a plastic bin, a paper bin, and a
+can bin.
+
+We: Overall instruction: {instruction}
+We: Objects still on the counter: {remaining_objects}
+We: Available bins: {available_bins}
+We: Occluded waste objects: {occlusion_text}
+We: Observed waste attributes: {observed_text}
+We: Object currently held by the robot: {held_text}
+We: Actions already completed:
+{history_text}
+We: What should the robot do next?
+You:
+A) <generated option A>
+B) <generated option B>
+C) <generated option C>
+D) <generated option D>
+E) an option not listed here
+We: Which option is correct? Answer with a single capital letter.
+You:

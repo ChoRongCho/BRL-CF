@@ -12,7 +12,9 @@ DATA_DIR = BASELINE_DIR / "data"
 MOBILE_SCENARIO_FILE = DATA_DIR / "metabot-tasks-info.txt"
 MOBILE_MC_PROMPT_FILE = DATA_DIR / "metabot-mc-gen-prompt.txt"
 WASTE_MC_PROMPT_FILE = DATA_DIR / "waste-mc-gen-prompt.txt"
+WASTE_SCENARIO_FILE = DATA_DIR / "waste-tasks-info.txt"
 TOMATO_MC_PROMPT_FILE = DATA_DIR / "tomato-mc-gen-prompt.txt"
+TOMATO_SCENARIO_FILE = DATA_DIR / "tomato-tasks-info.txt"
 
 
 def ensure_mobile_dataset() -> Tuple[Path, Path]:

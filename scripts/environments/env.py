@@ -12,6 +12,7 @@ from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
 from models.reward import RewardModel
 from models.belief import Belief
+from environments.check_done import check_done as evaluate_done
 
 class Environment:
     def __init__(self, args):
@@ -256,97 +257,7 @@ class Environment:
             self.observation_model.domain_model.true_state = self.true_state
 
     def check_done(self, belief: Belief):
-        """Goal 달성 또는 max_step 초과 시 episode 종료"""
-        def parse_fact(raw_fact):
-            fact = raw_fact.replace(" ", "")
-            if not fact.endswith(")"):
-                return None, ()
-
-            predicate, sep, args = fact[:-1].partition("(")
-            if not sep:
-                return None, ()
-
-            return predicate, tuple(args.split(","))
-
-        if self.domain_name == "tomato":
-            true_at_tomatoes = set()
-            true_moved_tomatoes = set()
-            unripe_tomatoes = set()
-            ripe_tomatoes = set()
-            rotten_tomatoes = set()
-            held_tomatoes = set()
-            discarded_tomatoes = set()
-            loaded_tomatoes = set()
-
-            for raw_fact in self.true_state.facts:
-                predicate, args = parse_fact(raw_fact)
-                if not args:
-                    continue
-
-                if predicate == "at":
-                    true_at_tomatoes.add(args[0])
-                elif predicate in {"holding", "holded", "loaded", "discarded"}:
-                    tomato = args[1] if predicate == "holding" and len(args) >= 2 else args[0]
-                    true_moved_tomatoes.add(tomato)
-
-            for raw_fact in belief.knowledge.facts:
-                predicate, args = parse_fact(raw_fact)
-                if not args:
-                    continue
-
-                tomato = args[0]
-                if predicate == "unripe":
-                    unripe_tomatoes.add(tomato)
-                elif predicate == "ripe":
-                    ripe_tomatoes.add(tomato)
-                elif predicate == "rotten":
-                    rotten_tomatoes.add(tomato)
-                elif predicate == "holding" and len(args) >= 2:
-                    held_tomatoes.add(args[1])
-                elif predicate == "discarded":
-                    discarded_tomatoes.add(tomato)
-                elif predicate == "loaded":
-                    loaded_tomatoes.add(tomato)
-
-            if (
-                held_tomatoes & unripe_tomatoes
-                or discarded_tomatoes & ripe_tomatoes
-                or loaded_tomatoes & rotten_tomatoes
-            ):
-                return "PLAN FAILURE"
-
-            if true_at_tomatoes & true_moved_tomatoes:
-                return "PLAN FAILURE"
-
-        elif self.domain_name == "wastesorting":
-            goal_bin_by_waste = {}
-
-            if self.goal:
-                for goal_fact in self.goal.facts:
-                    predicate, args = parse_fact(goal_fact)
-                    if predicate == "in_bin" and len(args) >= 2:
-                        goal_bin_by_waste[args[0]] = args[1]
-
-            for raw_fact in belief.knowledge.facts:
-                predicate, args = parse_fact(raw_fact)
-                if not args:
-                    continue
-
-                if predicate != "in_bin" or len(args) < 2:
-                    continue
-
-                waste, bin_name = args[:2]
-                goal_bin = goal_bin_by_waste.get(waste)
-                if goal_bin and bin_name != goal_bin:
-                    return "PLAN FAILURE"
-
-        if self.goal and all(belief.knowledge.has_fact(f) for f in self.goal.facts):
-            return "GOAL DONE"
-
-        if self.step_count >= self.max_step:
-            return "MAX STEP"
-
-        return False
+        return evaluate_done(self, belief)
 
 
     def _get_info(self) -> Dict[str, Any]:

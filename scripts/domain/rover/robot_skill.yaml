@@ -1,0 +1,131 @@
+actions:
+- name: navigate
+  type: move
+  parameters:
+  - R
+  - W1
+  - W2
+  cost: 1.0
+  preconditions:
+  - rover(R)
+  - waypoint(W1)
+  - waypoint(W2)
+  - can_traverse(W1,W2)
+  - in(R,W1)
+  - visible(W1,W2)
+  add_effects:
+  - in(R,W2)
+  del_effects:
+  - in(R,W1)
+  observation:
+  - in(R,W1)
+  - in(R,W2)
+
+- name: detect_road
+  type: observe
+  parameters:
+  - R
+  - W1
+  - W2
+  cost: 0.5
+  preconditions:
+  - rover(R)
+  - waypoint(W1)
+  - waypoint(W2)
+  - in(R,W1)
+  add_effects: []
+  del_effects: []
+  observation:
+  - visible(W1,W2)
+  - can_traverse(W1,W2)
+
+- name: sample_soil
+  type: task
+  parameters:
+  - R
+  - W
+  cost: 1.0
+  preconditions:
+  - rover(R)
+  - waypoint(W)
+  - in(R,W)
+  - at_soil_sample(W)
+  add_effects:
+  - have_soil_analysis(R,W)
+  del_effects:
+  - at_soil_sample(W)
+  observation:
+  - have_soil_analysis(R,W)
+  - at_soil_sample(W)
+
+
+- name: communicate_soil_data
+  type: task
+  parameters:
+  - R
+  - L
+  - W
+  - W1
+  - W2
+  cost: 1.0
+  preconditions:
+  - rover(R)
+  - lander(L)
+  - waypoint(W)
+  - waypoint(W1)
+  - waypoint(W2)
+  - in(R,W1)
+  - at_lander(L,W2)
+  - have_soil_analysis(R,W)
+  - visible(W1,W2)
+  add_effects:
+  - communicated_soil_data(W)
+  del_effects: []
+  observation:
+  - communicated_soil_data(W)
+
+
+- name: take_image
+  type: task
+  parameters:
+  - R
+  - O
+  - W
+  cost: 1.0
+  preconditions:
+  - rover(R)
+  - objective(O)
+  - waypoint(W)
+  - in(R,W)
+  - visible_from(O,W)
+  add_effects:
+  - have_image(R,O)
+  del_effects: []
+  observation:
+  - have_image(R,O)
+
+  
+- name: communicate_image_data
+  type: task
+  parameters:
+  - R
+  - L
+  - O
+  - W1
+  - W2
+  cost: 1.0
+  preconditions:
+  - rover(R)
+  - lander(L)
+  - objective(O)
+  - waypoint(W1)
+  - waypoint(W2)
+  - in(R,W1)
+  - at_lander(L,W2)
+  - have_image(R,O)
+  - visible(W1,W2)
+  add_effects:
+  - communicated_image_data(O)
+  del_effects: []
+  observation:
+  - communicated_image_data(O)

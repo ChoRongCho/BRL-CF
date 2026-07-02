@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import copy
 import yaml
+from importlib import import_module
 from typing import Any, Dict, List, Optional, Iterable, Tuple
 
 from utils.asp import DomainRuleBridge, solve_asp
@@ -28,12 +29,20 @@ class FeedbackManger:
         """
         self.f_strategy = self.args.f_strategy
         self.q_strategy = self.args.q_strategy
-        if self.args.answer_type == "auto":
+        self.answer_type = self.args.answer_type
+        if self.answer_type == "auto":
+            self.answer_type = "human-proxy"
+
+        if self.answer_type in {"oracle", "human-proxy", "random"}:
             self.is_human_answer = False
-        elif self.args.answer_type == "human":
+        elif self.answer_type == "human":
             self.is_human_answer = True
         else:
-            raise ValueError(f"Wrong answer type: {self.args.answer_type} | 'auto' or 'human'")
+            raise ValueError(
+                f"Wrong answer type: {self.args.answer_type} | "
+                "'oracle', 'human-proxy', 'random', or 'human'"
+            )
+        self.answer_module = None if self.is_human_answer else self._load_answer_module()
         self._true_init_facts = None
         
 
@@ -234,10 +243,7 @@ class FeedbackManger:
         
         self.refining_query(target_fact, action_name)
         
-        
-        
-        
-        
+
         if self.is_human_answer:
             """
             """
@@ -250,66 +256,33 @@ class FeedbackManger:
                 print("    [Human] Invalid input. Please enter 't' or 'f'.")
                 
         else:
-            """
-            """
-            if self._true_init_facts is None:
-                yaml_file_path = self.args.initial_state
-                with open(yaml_file_path, "r", encoding="utf-8") as f:
-                    init_config = yaml.safe_load(f) or {}
-                self._true_init_facts = {
-                    str(fact).replace(" ", "")
-                    for fact in init_config.get("true_init", []) or []
-                }
-
-            target_fact = str(target_fact).replace(" ", "")
-            action = "" if action_name is None else str(action_name)
-
-            if self.domain_name == "tomato":
-                if action.startswith("pick") and target_fact.startswith("at("):
-                    # return bool(np.random.random() < 0.1)
-                    return False
-                
-                if action.startswith("detect("):
-                    # detect(R,S)
-                    stem = action[action.rfind(",") + 1:-1].strip()
-                    if target_fact.startswith("ripe("):
-                        tomato = target_fact[len("ripe("):-1]
-                        q_fact = f"at({tomato},{stem})"
-                        if q_fact in self._true_init_facts:
-                            if f"rotten({tomato})" in self._true_init_facts:
-                                return True
-                            else:
-                                return target_fact in self._true_init_facts
-                        else:
-                            return False
-                        
-                    elif target_fact.startswith("unripe("):
-                        tomato = target_fact[len("unripe("):-1]
-                        q_fact = f"at({tomato},{stem})"
-                        if q_fact in self._true_init_facts:
-                            return target_fact in self._true_init_facts
-                        else:
-                            return False
-                        
-                    elif target_fact.startswith("at("):
-                        return target_fact in self._true_init_facts
-                    
-                if action.startswith("scan("):
-                    return target_fact in self._true_init_facts
-                    
-                if (action.startswith("place") or action.startswith("discard")) and target_fact.startswith("handempty("):
-                    # return bool(np.random.random() < 0.8)
-                    return True
-                
-                return bool(np.random.random() < 0.5)
-                
-
-            if self.domain_name == "wastesorting":
-                return target_fact in self._true_init_facts
-
-            return bool(np.random.random() < 0.8)
+            return self.answer_module.answer_question(
+                self.answer_type,
+                target_fact,
+                action_name,
+                self._get_true_init_facts(),
+            )
 
     
+    def _load_answer_module(self):
+        try:
+            return import_module(f"models.{self.domain_name}.answer")
+        except ModuleNotFoundError as exc:
+            raise ValueError(f"No answer module found for domain: {self.domain_name}") from exc
+
+
+    def _get_true_init_facts(self):
+        if self._true_init_facts is None:
+            yaml_file_path = self.args.initial_state
+            with open(yaml_file_path, "r", encoding="utf-8") as f:
+                init_config = yaml.safe_load(f) or {}
+            self._true_init_facts = {
+                str(fact).replace(" ", "")
+                for fact in init_config.get("true_init", []) or []
+            }
+        return self._true_init_facts
+
+
     # LLM-based refining vs Machine 
     def refining_query(self, target_fact, action_name):
         if self.use_llm:

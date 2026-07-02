@@ -14,8 +14,9 @@ from scripts.calibration import (
 )
 from log_tomato import RunLogger
 from scripts.llm import call_llm, configure_openai
-from scripts.env import TOMATO_MC_PROMPT_FILE
+from scripts.env import TOMATO_MC_PROMPT_FILE, TOMATO_SCENARIO_FILE
 from scripts.prompt import process_mc_raw, temperature_scaling, top_choice_logprobs
+from scripts.auto_answer import select_tomato_answer
 from utils import GREEN, RESET, YELLOW, usage_total
 from tomato_utils import (
     LOCATIONS,
@@ -35,7 +36,7 @@ def parse_args():
     parser.add_argument("--api-key", default="")
     parser.add_argument("--settings", default=str(Path(__file__).with_name("llm_setting.json")))
     parser.add_argument("--instruction", default="Harvest all ripe tomatoes and discard rotten tomatoes.")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--tomatoes", default="tomato1, tomato2, tomato3, tomato4")
     parser.add_argument("--qhat", type=float, default=0.92)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=3.0)
@@ -53,7 +54,9 @@ def parse_args():
     parser.add_argument("--log-file", default="")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", action="store_true", help="Also print detailed log records to the terminal.")
+    parser.add_argument("--auto-answer", action="store_true", help="Automatically answer help queries from true task state.")
     parser.add_argument("--calibration-file", default=str(TOMATO_MC_PROMPT_FILE))
+    parser.add_argument("--calibration-info-file", default=str(TOMATO_SCENARIO_FILE))
     parser.add_argument("--target-success", type=float, default=0.8)
     parser.add_argument("--write-calibration-template", default="")
     parser.add_argument("--run-calibration", action="store_true")
@@ -83,6 +86,25 @@ def tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_to
         if prop == "rotten" and tomato not in discarded_tomatoes:
             return False
     return True
+
+
+def format_option_snapshot(tokens, options):
+    parts = []
+    for token, option in zip(tokens, options):
+        if option == "an option not listed here":
+            continue
+        parts.append(f"{token} {option}")
+    return "[" + ", ".join(parts) + "]"
+
+
+def append_action_attempt(action_history, action_text, tokens, options):
+    action_history.append(f"{action_text} {format_option_snapshot(tokens, options)}")
+
+
+def append_failed_attempt(action_history, selected_action, stop_reason, tokens, options):
+    action_history.append(
+        f"{selected_action} (invalid: {stop_reason}) {format_option_snapshot(tokens, options)}"
+    )
 
 
 def required_tomato_next_action(
@@ -143,7 +165,13 @@ def main() -> None:
     detected_stems = set()
     tokens = ["A", "B", "C", "D", "E"]
 
-    logger = RunLogger(__file__, args.log_file, args.verbose, prefix="knowno_multistep_tomato")
+    logger = RunLogger(
+        __file__,
+        args.log_file,
+        args.verbose,
+        prefix="knowno_multistep_tomato",
+        write_immediately=False,
+    )
     console = logger.console
     console_colored = logger.colored
     log = logger.file_only
@@ -177,6 +205,7 @@ def main() -> None:
             domain_name="tomato",
             background=TOMATO_BACKGROUND,
             generation_prompt_builder=build_tomato_calibration_prompt,
+            info_path=args.calibration_info_file,
         )
     console("qhat:", qhat)
     console("Detailed log file:", logger.path)
@@ -287,7 +316,17 @@ def main() -> None:
             "usage": gen_usage,
             "raw_text": mc_gen_raw,
         })
-        mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw(mc_gen_raw.strip())
+        try:
+            mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw(mc_gen_raw.strip())
+        except ValueError as exc:
+            completed_iterations = step
+            stop_reason = f"malformed option generation: {exc}"
+            console(stop_reason)
+            log_json(f"Step {step} malformed generation:", {
+                "error": str(exc),
+                "raw_text": mc_gen_raw,
+            })
+            break
         completed_iterations = step
         candidate_counts.append(len(mc_gen_all))
 
@@ -372,11 +411,31 @@ def main() -> None:
             help_count += 1
             help_candidate_counts.append(len(mc_gen_all))
             help_prediction_set_sizes.append(len(preds))
-            while True:
-                selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
-                if selected_token in tokens:
-                    break
-                console("Invalid option. Please enter one of A, B, C, D, or E.")
+            if args.auto_answer:
+                auto_answer = select_tomato_answer(
+                    mc_gen_all,
+                    tokens,
+                    add_mc_prefix,
+                    robot_location,
+                    active_tomatoes,
+                    hidden_properties,
+                    hidden_locations,
+                    observed_properties,
+                    observed_locations,
+                    held_tomato,
+                    loaded_tomatoes,
+                    discarded_tomatoes,
+                    scanned_properties,
+                )
+                selected_token = auto_answer["selected_token"]
+                console(f"Auto answer selected option {selected_token}.")
+                log_json(f"Step {step} auto answer:", auto_answer)
+            else:
+                while True:
+                    selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
+                    if selected_token in tokens:
+                        break
+                    console("Invalid option. Please enter one of A, B, C, D, or E.")
         else:
             autonomous_count += 1
             selected_token = preds[0]
@@ -388,17 +447,20 @@ def main() -> None:
         if action_type == "done":
             console("Planner selected a terminal action. Stopping.")
             stop_reason = "planner selected terminal action"
+            append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
             break
         if action_type is None:
             console(f"Planner: {action_type}")
             console("Planner selected a terminal or non-executable action. Stopping.")
             stop_reason = f"non-executable action selected: {selected_action}"
+            append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
             break
 
         if action_type == "navigate":
             if held_tomato is not None:
                 console("Robot is holding a tomato; place or discard it before navigating.")
                 stop_reason = "invalid navigate while holding tomato"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             failure_roll = random.random()
             failed = failure_roll <= args.navigate_failure_prob
@@ -409,17 +471,18 @@ def main() -> None:
             })
             if failed:
                 action_failure_count += 1
-                action_history.append(f"navigate to {action_arg} (failed)")
+                append_action_attempt(action_history, f"navigate to {action_arg} (failed)", tokens, mc_gen_all)
                 result_text = f"Navigate failed: stayed at {robot_location}"
             else:
                 robot_location = action_arg
-                action_history.append(f"navigate to {robot_location}")
+                append_action_attempt(action_history, f"navigate to {robot_location}", tokens, mc_gen_all)
                 result_text = f"Executed: navigate to {robot_location}"
 
         elif action_type == "detect":
             if robot_location not in STEMS:
                 console("Detect requires the robot to be at a stem.")
                 stop_reason = "invalid detect outside stem"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             new_observations = []
             detect_rolls = []
@@ -453,7 +516,7 @@ def main() -> None:
                 detect_rolls.append(roll_info)
             log_json(f"Step {step} detect rolls:", detect_rolls)
             detected_stems.add(robot_location)
-            action_history.append(f"detect {robot_location}")
+            append_action_attempt(action_history, f"detect {robot_location}", tokens, mc_gen_all)
             result_text = "Detect result: " + (", ".join(new_observations) if new_observations else "no new tomato observed")
 
         elif action_type == "pick":
@@ -461,18 +524,22 @@ def main() -> None:
             if tomato not in active_tomatoes:
                 console("Selected tomato is not active.")
                 stop_reason = f"invalid pick inactive tomato: {tomato}"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             if held_tomato is not None:
                 console("Robot is already holding a tomato.")
                 stop_reason = "invalid pick while holding tomato"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             if observed_locations.get(tomato) != robot_location:
                 console("Tomato is not observed at the current robot location.")
                 stop_reason = f"invalid pick tomato not observed here: {tomato}"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
-            if observed_properties.get(tomato) != "ripe":
-                console("Pick requires an observed ripe tomato.")
+            if hidden_properties.get(tomato) == "unripe":
+                console("Pick is intended for ripe or rotten tomatoes that must be handled; leave true unripe tomatoes.")
                 stop_reason = f"invalid pick non-ripe or unknown tomato: {tomato}"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             failure_roll = random.random()
             failed = failure_roll <= args.pick_failure_prob
@@ -483,21 +550,23 @@ def main() -> None:
             })
             if failed:
                 action_failure_count += 1
-                action_history.append(f"pick {tomato} (failed)")
+                append_action_attempt(action_history, f"pick {tomato} (failed)", tokens, mc_gen_all)
                 result_text = f"Pick failed: {tomato} was not picked"
             else:
                 held_tomato = tomato
-                action_history.append(f"pick {tomato}")
+                append_action_attempt(action_history, f"pick {tomato}", tokens, mc_gen_all)
                 result_text = f"Executed: pick {tomato}"
 
         elif action_type == "scan":
             if held_tomato is None:
                 console("Scan requires a held tomato.")
                 stop_reason = "invalid scan without held tomato"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             if action_arg is not None and action_arg != held_tomato:
                 console("Scan action does not match the held tomato.")
                 stop_reason = "invalid scan target mismatch"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             scan_roll = random.random()
             scan_info = {
@@ -522,17 +591,19 @@ def main() -> None:
             else:
                 result_text = "Scan result: no property observed"
             log_json(f"Step {step} scan roll:", scan_info)
-            action_history.append("scan")
+            append_action_attempt(action_history, "scan", tokens, mc_gen_all)
 
         elif action_type == "place":
             tomato = action_arg
             if held_tomato != tomato:
                 console("Place action does not match the held tomato.")
                 stop_reason = "invalid place target mismatch"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
-            if scanned_properties.get(tomato, observed_properties.get(tomato)) != "ripe":
-                console("Place is intended for ripe tomatoes; discard non-ripe/rotten tomatoes.")
+            if hidden_properties.get(tomato) != "ripe":
+                console("Place is intended for true ripe tomatoes; discard rotten tomatoes.")
                 stop_reason = f"invalid place non-ripe tomato: {tomato}"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             failure_roll = random.random()
             failed = failure_roll <= args.place_failure_prob
@@ -543,12 +614,12 @@ def main() -> None:
             })
             if failed:
                 action_failure_count += 1
-                action_history.append(f"place {tomato} (failed)")
+                append_action_attempt(action_history, f"place {tomato} (failed)", tokens, mc_gen_all)
                 result_text = f"Place failed: still holding {tomato}"
             else:
                 held_tomato = None
                 loaded_tomatoes.append(tomato)
-                action_history.append(f"place {tomato}")
+                append_action_attempt(action_history, f"place {tomato}", tokens, mc_gen_all)
                 result_text = f"Executed: place {tomato}"
 
         elif action_type == "discard":
@@ -556,6 +627,7 @@ def main() -> None:
             if held_tomato != tomato:
                 console("Discard action does not match the held tomato.")
                 stop_reason = "invalid discard target mismatch"
+                append_failed_attempt(action_history, selected_action, stop_reason, tokens, mc_gen_all)
                 break
             failure_roll = random.random()
             failed = failure_roll <= args.discard_failure_prob
@@ -566,12 +638,12 @@ def main() -> None:
             })
             if failed:
                 action_failure_count += 1
-                action_history.append(f"discard {tomato} (failed)")
+                append_action_attempt(action_history, f"discard {tomato} (failed)", tokens, mc_gen_all)
                 result_text = f"Discard failed: still holding {tomato}"
             else:
                 held_tomato = None
                 discarded_tomatoes.append(tomato)
-                action_history.append(f"discard {tomato}")
+                append_action_attempt(action_history, f"discard {tomato}", tokens, mc_gen_all)
                 result_text = f"Executed: discard {tomato}"
 
         source = "user" if help_needed else "prediction set"
@@ -623,12 +695,14 @@ def main() -> None:
     total_elapsed = time.perf_counter() - run_start
     console("Total elapsed seconds:", total_elapsed)
     final_success = tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes)
+    query_rate = help_count / completed_iterations if completed_iterations else 0.0
     summary = {
         "success": final_success,
         "stop_reason": stop_reason,
         "planning_length": len(action_history),
         "planning_iterations": completed_iterations,
         "question_count": help_count,
+        "query_rate": query_rate,
         "autonomous_action_count": autonomous_count,
         "fallback_in_prediction_count": fallback_in_prediction_count,
         "average_candidate_count": (sum(candidate_counts) / len(candidate_counts)) if candidate_counts else 0.0,
@@ -652,18 +726,36 @@ def main() -> None:
         "token_usage": total_usage,
         "total_elapsed_seconds": total_elapsed,
     }
-    log_json("Summary:", summary)
-    console("\n====== Summary ======")
+    logger.enable_file_logging()
+    console("====== Result Summary ======")
     console("Success:", final_success)
     console("Stop reason:", stop_reason)
     console("Planning length:", len(action_history))
     console("Planning iterations:", completed_iterations)
     console("Question count:", help_count)
+    console("Query rate:", query_rate)
+    console("Average candidate count:", summary["average_candidate_count"])
     console("Average candidate count when asked:", summary["average_candidate_count_when_asked"])
+    console("Average prediction set size:", summary["average_prediction_set_size"])
     console("Average prediction set size when asked:", summary["average_prediction_set_size_when_asked"])
     console("Autonomous action count:", autonomous_count)
     console("Fallback in prediction count:", fallback_in_prediction_count)
     console("Action failure count:", action_failure_count)
+    console("====== Final Plan ======")
+    if action_history:
+        for i, action in enumerate(action_history, start=1):
+            console(f"{i}. {action}")
+    else:
+        console("No action executed.")
+    if held_tomato is not None:
+        console("Held tomato:", held_tomato)
+    if remaining:
+        console("Unhandled tomatoes:", ", ".join(remaining))
+    log_json("Token usage totals:", total_usage)
+    console("Total elapsed seconds:", total_elapsed)
+    logger.discard_buffer_from_marker("====== Final Plan ======")
+    log_json("Summary:", summary)
+    logger.flush_buffer()
     logger.close()
 
 

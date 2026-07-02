@@ -21,48 +21,97 @@ def write_template(path: str, template: str) -> None:
     print("Wrote calibration template:", template_path)
 
 
+SECTION_TITLES = "Prompt|Context|True actions|Options|Correct options|Source"
+
+
 def _section(entry: str, title: str) -> str:
-    section_titles = "Prompt|Context|True actions|Options|Correct options"
+    section_titles = SECTION_TITLES
     pattern = rf"(?ims)^{re.escape(title)}:\s*(.*?)(?=^(?:{section_titles}):\s*$|\Z)"
     match = re.search(pattern, entry)
     return match.group(1).strip() if match else ""
 
 
-def _load_text_records(text: str) -> list[dict]:
+def _strip_index(entry: str) -> str:
+    lines = entry.strip().splitlines()
+    if lines and re.fullmatch(r"\d+", lines[0].strip()):
+        return "\n".join(lines[1:]).strip()
+    return entry.strip()
+
+
+def _split_indexed_records(text: str) -> list[str]:
+    records = []
+    current = []
+    for line in text.splitlines():
+        if re.fullmatch(r"\d+", line.strip()) and current:
+            records.append("\n".join(current).strip())
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        records.append("\n".join(current).strip())
+    return [record for record in records if record]
+
+
+def _parse_record(entry: str) -> dict:
+    entry = _strip_index(entry)
+    prompt = _section(entry, "Prompt")
+    context = _section(entry, "Context")
+    if not prompt and not context and "You:" in entry:
+        prompt = entry
+    if prompt and not context:
+        context = prompt.split("\n\n")[-1].strip()
+
+    true_actions = [
+        line.strip().lower()
+        for line in _section(entry, "True actions").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    options = []
+    for line in _section(entry, "Options").splitlines():
+        match = re.match(r"^\s*[A-Ea-e]\)\s*(.+?)\s*$", line)
+        if match:
+            options.append(match.group(1).strip().lower())
+    true_options = re.findall(r"[A-Ea-e]", _section(entry, "Correct options").upper())
+
+    return {
+        "context": context,
+        "mc_gen_prompt": prompt,
+        "true_actions": true_actions,
+        "options": options,
+        "true_options": true_options,
+    }
+
+
+def _load_structured_records(text: str) -> list[dict]:
     records = []
     for entry in re.split(r"(?m)^--0+--\s*$", text):
         entry = entry.strip()
         if not entry or entry.startswith("#"):
             continue
+        record = _parse_record(entry)
+        if record.get("context") or record.get("mc_gen_prompt"):
+            records.append(record)
+    return records
 
-        prompt = _section(entry, "Prompt")
-        context = _section(entry, "Context")
-        if not prompt and not context and "You:" in entry:
-            prompt = entry
-        if prompt and not context:
-            context = prompt.split("\n\n")[-1].strip()
-        if not context:
+
+def _load_prompt_records(text: str) -> list[dict]:
+    records = []
+    for entry in re.split(r"(?m)^--0+--\s*$", text):
+        prompt = entry.strip()
+        if not prompt or prompt.startswith("#"):
             continue
+        records.append({"mc_gen_prompt": prompt, "context": prompt.split("\n\n")[-1].strip()})
+    return records
 
-        true_actions = [
-            line.strip().lower()
-            for line in _section(entry, "True actions").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        ]
-        options = []
-        for line in _section(entry, "Options").splitlines():
-            match = re.match(r"^\s*[A-Ea-e]\)\s*(.+?)\s*$", line)
-            if match:
-                options.append(match.group(1).strip().lower())
-        true_options = re.findall(r"[A-Ea-e]", _section(entry, "Correct options").upper())
 
-        records.append({
-            "context": context,
-            "mc_gen_prompt": prompt,
-            "true_actions": true_actions,
-            "options": options,
-            "true_options": true_options,
-        })
+def _load_info_records(text: str) -> list[dict]:
+    records = []
+    for entry in _split_indexed_records(text):
+        if not entry or entry.startswith("#"):
+            continue
+        record = _parse_record(entry)
+        if record.get("context") or record.get("true_actions") or record.get("true_options"):
+            records.append(record)
     return records
 
 
@@ -71,15 +120,31 @@ def load_calibration_dataset(
     num_calibration_data: int,
     num_test_data: int,
     domain_name: str,
+    info_path: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
     dataset_path = Path(path).expanduser().resolve()
-    print("Calibration dataset file:", dataset_path)
+    print("Calibration prompt file:", dataset_path)
     text = dataset_path.read_text(encoding="utf-8")
     if dataset_path.suffix.lower() == ".json":
         data = json.loads(text)
         records = data["records"] if isinstance(data, dict) else data
+    elif info_path:
+        info_dataset_path = Path(info_path).expanduser().resolve()
+        print("Calibration info file:", info_dataset_path)
+        info_records = _load_info_records(info_dataset_path.read_text(encoding="utf-8"))
+        prompt_records = _load_prompt_records(text)
+        dataset_size = min(len(info_records), len(prompt_records))
+        records = []
+        for index in range(dataset_size):
+            merged = dict(info_records[index])
+            merged["mc_gen_prompt"] = prompt_records[index]["mc_gen_prompt"]
+            if not merged.get("context"):
+                merged["context"] = prompt_records[index].get("context", "")
+            records.append(merged)
     else:
-        records = _load_text_records(text)
+        records = _load_structured_records(text)
+        if not any(record.get("true_actions") or record.get("true_options") for record in records):
+            records = _load_prompt_records(text)
 
     requested_size = num_calibration_data + num_test_data
     if requested_size > len(records):
@@ -134,15 +199,14 @@ def prepare_calibration_choices(
             record["_generated_options"] = False
         elif record.get("options"):
             options = [option.strip().lower() for option in record["options"]]
-            if "an option not listed here" not in options and len(options) < 5:
-                options.append("an option not listed here")
+            options = [option for option in options if option != "an option not listed here"]
+            options = list(dict.fromkeys(options))[:4]
+            while len(options) < 4:
+                options.append("do nothing")
+            options.append("an option not listed here")
             record["mc_gen_all"] = options
             record["mc_gen_full"] = "\n".join(f"{TOKENS[i]}) {option}" for i, option in enumerate(options))
-            record["add_mc_prefix"] = (
-                TOKENS[options.index("an option not listed here")]
-                if "an option not listed here" in options
-                else "E"
-            )
+            record["add_mc_prefix"] = "E"
             record["_generated_options"] = False
 
         record["true_options"] = label_true_options(record, record["mc_gen_all"], record["add_mc_prefix"])
@@ -157,7 +221,10 @@ def prepare_calibration_choices(
 
 
 def score_calibration_choices(dataset: list[dict], logprobs_count: int = 20) -> None:
+    total = len(dataset)
     for index, record in enumerate(dataset):
+        if index == 0 or (index + 1) % 10 == 0 or index + 1 == total:
+            print(f"Scoring calibration record {index + 1}/{total}")
         response, _ = call_llm(record["mc_score_prompt"], max_tokens=1, logprobs=logprobs_count)
         _top_tokens, _top_logprobs, top_logprobs_full = top_choice_logprobs(response)
         option_logprobs = {}
@@ -167,8 +234,6 @@ def score_calibration_choices(dataset: list[dict], logprobs_count: int = 20) -> 
                 option_logprobs[token] = max(float(logprob), option_logprobs.get(token, -np.inf))
         top_tokens = list(option_logprobs.keys())
         top_logprobs = list(option_logprobs.values())
-        if index < 5:
-            print(top_tokens, top_logprobs)
         record["top_logprobs_full"] = top_logprobs_full
         record["top_tokens"] = top_tokens
         record["top_logprobs"] = top_logprobs
@@ -221,12 +286,14 @@ def run_knowno_calibration(
     domain_name: str,
     background: str,
     generation_prompt_builder: Callable[[dict], str],
+    info_path: str | None = None,
 ) -> float:
     calibration_set, test_set = load_calibration_dataset(
         path,
         num_calibration_data,
         num_test_data,
         domain_name=domain_name,
+        info_path=info_path,
     )
 
     if calibration_set:

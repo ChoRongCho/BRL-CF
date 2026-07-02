@@ -1,0 +1,108 @@
+domain: kitchen
+meta_data:
+  description: fixed manipulator cooking domain under partial observability
+  semantics: ASP-style world generation under hidden ingredient and vessel state
+  purpose: belief state initialization / possible world enumeration
+  assumptions:
+  - The manipulator is fixed in the kitchen.
+  - Ingredient refrigerator assignment is hidden until checked.
+  - Objects must be picked before they can be inspected.
+  - Cooking requires putting a clean ingredient into a clean pot and boiling it.
+  - Serving requires moving cooked food from a pot into a clean dish.
+  - Ingredient, pot, and dish cleanliness are hidden until inspected.
+
+predicates:
+- predicate: robot(R)
+  meaning: R is the fixed kitchen robot.
+
+- predicate: refrigerator(F)
+  meaning: F is the refrigerator storing ingredients.
+
+- predicate: ingredient(I)
+  meaning: I is a food ingredient.
+- predicate: tomato(I)
+  meaning: Ingredient I is a tomato.
+- predicate: onion(I)
+  meaning: Ingredient I is an onion.
+- predicate: cheese(I)
+  meaning: Ingredient I is cheese.
+- predicate: cooked_tomato_soup(P)
+  meaning: Tomato soup has been cooked in pot P.
+- predicate: cooked_onion_soup(P)
+  meaning: Onion soup has been cooked in pot P.
+- predicate: cooked_tomato_oniton_soup(P)
+  meaning: Tomato onion soup has been cooked in pot P.
+
+- predicate: pot(P)
+  meaning: P is the cooking pot.
+- predicate: dish(D)
+  meaning: D is the serving dish.
+
+- predicate: clean(O)
+  meaning: Ingredient, pot, or dish O is clean.
+- predicate: dirty(O)
+  meaning: Ingredient, pot, or dish O is dirty.
+
+- predicate: handempty(R)
+  meaning: Robot R is not holding any object.
+- predicate: holding(R,O)
+  meaning: Robot R is holding ingredient, pot, dish, or soup O.
+
+- predicate: in_fridge(I,F)
+  meaning: Ingredient type I is available in refrigerator F.
+- predicate: in_pot(I,P)
+  meaning: Ingredient I has been placed in pot P.
+- predicate: served_tomato_soup(D)
+  meaning: Dish D has been served with tomato soup.
+- predicate: served_onion_soup(D)
+  meaning: Dish D has been served with onion soup.
+- predicate: served_tomato_oniton_soup(D)
+  meaning: Dish D has been served with tomato onion soup.
+  
+choice_rules:
+- elements:
+  - atom: clean(I)
+  - atom: dirty(I)
+  given:
+  - ingredient(I)
+  cardinality: 1..1
+- elements:
+  - atom: clean(P)
+  - atom: dirty(P)
+  given:
+  - pot(P)
+  cardinality: 1..1
+- elements:
+  - atom: clean(D)
+  - atom: dirty(D)
+  given:
+  - dish(D)
+  cardinality: 1..1
+- choose: in_fridge(I,F)
+  over:
+  - refrigerator(F)
+  given:
+  - ingredient(I)
+  cardinality: 1..1
+constraint: []
+show:
+- '#show robot/1'
+- '#show refrigerator/1'
+- '#show ingredient/1'
+- '#show tomato/1'
+- '#show onion/1'
+- '#show cheese/1'
+- '#show cooked_tomato_soup/1'
+- '#show cooked_onion_soup/1'
+- '#show cooked_tomato_oniton_soup/1'
+- '#show pot/1'
+- '#show dish/1'
+- '#show clean/1'
+- '#show dirty/1'
+- '#show handempty/1'
+- '#show holding/2'
+- '#show in_fridge/2'
+- '#show in_pot/2'
+- '#show served_tomato_soup/1'
+- '#show served_onion_soup/1'
+- '#show served_tomato_oniton_soup/1'

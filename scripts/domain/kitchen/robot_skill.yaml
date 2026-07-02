@@ -1,0 +1,422 @@
+actions:
+- name: open_fridge
+  type: observe
+  parameters:
+  - R
+  - I
+  - F
+  cost: 0.5
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - refrigerator(F)
+  add_effects: []
+  del_effects: []
+  observation:
+  - in_fridge(I,F)
+
+- name: pick_ingredient
+  type: task
+  parameters:
+  - R
+  - I
+  - F
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - refrigerator(F)
+  - handempty(R)
+  - in_fridge(I,F)
+  add_effects:
+  - holding(R,I)
+  del_effects:
+  - handempty(R)
+  observation:
+  - holding(R,I)
+  - handempty(R)
+  - in_fridge(I,F)
+
+- name: inspect_ingredient
+  type: observe
+  parameters:
+  - R
+  - I
+  cost: 0.5
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - holding(R,I)
+  add_effects: []
+  del_effects: []
+  observation:
+  - clean(I)
+  - dirty(I)
+
+- name: pick_ingredient_from_pot
+  type: task
+  parameters:
+  - R
+  - I
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - pot(P)
+  - handempty(R)
+  - in_pot(I,P)
+  add_effects:
+  - holding(R,I)
+  del_effects:
+  - handempty(R)
+  - in_pot(I,P)
+  observation:
+  - holding(R,I)
+  - handempty(R)
+  - in_pot(I,P)
+
+- name: wash_ingredient
+  type: task
+  parameters:
+  - R
+  - I
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - holding(R,I)
+  - dirty(I)
+  add_effects:
+  - clean(I)
+  del_effects:
+  - dirty(I)
+  observation:
+  - clean(I)
+  - dirty(I)
+
+- name: pick_pot
+  type: task
+  parameters:
+  - R
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - pot(P)
+  - handempty(R)
+  add_effects:
+  - holding(R,P)
+  del_effects:
+  - handempty(R)
+  observation:
+  - holding(R,P)
+  - handempty(R)
+
+- name: inspect_pot
+  type: observe
+  parameters:
+  - R
+  - P
+  cost: 0.5
+  preconditions:
+  - robot(R)
+  - pot(P)
+  - holding(R,P)
+  add_effects: []
+  del_effects: []
+  observation:
+  - clean(P)
+  - dirty(P)
+
+- name: wash_pot
+  type: task
+  parameters:
+  - R
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - pot(P)
+  - holding(R,P)
+  - dirty(P)
+  add_effects:
+  - clean(P)
+  del_effects:
+  - dirty(P)
+  observation:
+  - clean(P)
+  - dirty(P)
+
+- name: place_pot
+  type: task
+  parameters:
+  - R
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - pot(P)
+  - holding(R,P)
+  add_effects:
+  - handempty(R)
+  del_effects:
+  - holding(R,P)
+  observation:
+  - handempty(R)
+  - holding(R,P)
+
+
+- name: place_ingredient_in_pot
+  type: task
+  parameters:
+  - R
+  - I
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - pot(P)
+  - holding(R,I)
+  - clean(I)
+  - clean(P)
+  add_effects:
+  - in_pot(I,P)
+  - handempty(R)
+  del_effects:
+  - holding(R,I)
+  observation:
+  - in_pot(I,P)
+  - holding(R,I)
+  - handempty(R)
+
+
+- name: discard_ingredient
+  type: task
+  parameters:
+  - R
+  - I
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - ingredient(I)
+  - holding(R,I)
+  add_effects:
+  - handempty(R)
+  del_effects:
+  - holding(R,I)
+  observation:
+  - handempty(R)
+  - holding(R,I)
+
+
+- name: boil_tomato_soup
+  type: task
+  parameters:
+  - R
+  - T
+  - C
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - tomato(T)
+  - cheese(C)
+  - pot(P)
+  - in_pot(T,P)
+  - in_pot(C,P)
+  add_effects:
+  - cooked_tomato_soup(P)
+  del_effects:
+  - in_pot(T,P)
+  - in_pot(C,P)
+  observation:
+  - cooked_tomato_soup(P)
+
+- name: boil_onion_soup
+  type: task
+  parameters:
+  - R
+  - O
+  - C
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - onion(O)
+  - cheese(C)
+  - pot(P)
+  - in_pot(O,P)
+  - in_pot(C,P)
+  add_effects:
+  - cooked_onion_soup(P)
+  del_effects:
+  - in_pot(O,P)
+  - in_pot(C,P)
+  observation:
+  - cooked_onion_soup(P)
+
+- name: boil_tomato_oniton_soup
+  type: task
+  parameters:
+  - R
+  - T
+  - O
+  - C
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - tomato(T)
+  - onion(O)
+  - cheese(C)
+  - pot(P)
+  - in_pot(T,P)
+  - in_pot(O,P)
+  - in_pot(C,P)
+  add_effects:
+  - cooked_tomato_oniton_soup(P)
+  del_effects:
+  - in_pot(T,P)
+  - in_pot(O,P)
+  - in_pot(C,P)
+  observation:
+  - cooked_tomato_oniton_soup(P)
+
+
+- name: pick_dish
+  type: task
+  parameters:
+  - R
+  - D
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - dish(D)
+  - handempty(R)
+  add_effects:
+  - holding(R,D)
+  del_effects:
+  - handempty(R)
+  observation:
+  - holding(R,D)
+  - handempty(R)
+
+- name: inspect_dish
+  type: observe
+  parameters:
+  - R
+  - D
+  cost: 0.5
+  preconditions:
+  - robot(R)
+  - dish(D)
+  - holding(R,D)
+  add_effects: []
+  del_effects: []
+  observation:
+  - clean(D)
+  - dirty(D)
+
+- name: wash_dish
+  type: task
+  parameters:
+  - R
+  - D
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - dish(D)
+  - holding(R,D)
+  - dirty(D)
+  add_effects:
+  - clean(D)
+  del_effects:
+  - dirty(D)
+  observation:
+  - clean(D)
+  - dirty(D)
+
+- name: place_dish
+  type: task
+  parameters:
+  - R
+  - D
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - dish(D)
+  - holding(R,D)
+  add_effects:
+  - handempty(R)
+  del_effects:
+  - holding(R,D)
+  observation:
+  - handempty(R)
+  - holding(R,D)
+
+
+
+- name: serve_tomato_soup
+  type: task
+  parameters:
+  - R
+  - D
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - handempty(R)
+  - dish(D)
+  - pot(P)
+  - cooked_tomato_soup(P)
+  - clean(D)
+  add_effects:
+  - served_tomato_soup(D)
+  del_effects:
+  - cooked_tomato_soup(P)
+  observation:
+  - served_tomato_soup(D)
+
+- name: serve_onion_soup
+  type: task
+  parameters:
+  - R
+  - D
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - handempty(R)
+  - dish(D)
+  - pot(P)
+  - cooked_onion_soup(P)
+  - clean(D)
+  add_effects:
+  - served_onion_soup(D)
+  del_effects:
+  - cooked_onion_soup(P)
+  observation:
+  - served_onion_soup(D)
+
+- name: serve_tomato_oniton_soup
+  type: task
+  parameters:
+  - R
+  - D
+  - P
+  cost: 1.0
+  preconditions:
+  - robot(R)
+  - handempty(R)
+  - dish(D)
+  - pot(P)
+  - cooked_tomato_oniton_soup(P)
+  - clean(D)
+  add_effects:
+  - served_tomato_oniton_soup(D)
+  del_effects:
+  - cooked_tomato_oniton_soup(P)
+  observation:
+  - served_tomato_oniton_soup(D)

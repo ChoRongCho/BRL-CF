@@ -164,10 +164,10 @@ def process_mc_raw(mc_raw: str, add_mc: str = "an option not listed here") -> Tu
         mc_processed_all.append("do nothing")
 
     prefix_all = ["A) ", "B) ", "C) ", "D) "]
+    random.shuffle(mc_processed_all)
     if add_mc is not None:
         mc_processed_all.append(add_mc)
         prefix_all.append("E) ")
-    random.shuffle(mc_processed_all)
 
     mc_prompt = "\n".join(prefix + mc for prefix, mc in zip(prefix_all, mc_processed_all))
     add_mc_prefix = prefix_all[mc_processed_all.index(add_mc)][0]

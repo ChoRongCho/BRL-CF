@@ -1,0 +1,62 @@
+domain: rover
+meta_data:
+  description: Initial state facts for simplified single-rover soil sampling scene
+  purpose: Runtime facts for possible world generation
+
+type:
+  rover(R):
+  - robot
+  lander(L):
+  - mothership
+  waypoint(W):
+  - waypoint0
+  - waypoint1
+  - waypoint2
+  - waypoint3
+  objective(O):
+  - crater
+
+facts:
+# 모든 scene에 공통 - 항상 waypoint0에 rover와 mothership가 존재
+- rover(robot)
+- lander(mothership)
+- at_lander(mothership, waypoint0)
+- in(robot, waypoint0)
+- waypoint(waypoint0)
+- waypoint(waypoint1)
+- waypoint(waypoint2)
+- waypoint(waypoint3)
+- objective(crater)
+
+# scene 마다 다름
+- visible(waypoint0, waypoint1)
+- visible(waypoint1, waypoint0)
+- can_traverse(waypoint0, waypoint1)
+- can_traverse(waypoint1, waypoint0)
+
+
+true_init:
+- visible(waypoint0, waypoint1)
+- visible(waypoint1, waypoint0)
+- visible(waypoint1, waypoint2)
+- visible(waypoint2, waypoint1)
+- visible(waypoint1, waypoint3)
+- visible(waypoint3, waypoint1)
+- visible(waypoint2, waypoint3)
+- visible(waypoint3, waypoint2)
+- visible_from(crater, waypoint2)
+- visible_from(crater, waypoint3)
+- at_lander(mothership, waypoint0)
+- at_soil_sample(waypoint2)
+- in(robot, waypoint0)
+- can_traverse(waypoint0, waypoint1)
+- can_traverse(waypoint1, waypoint0)
+- can_traverse(waypoint1, waypoint2)
+- can_traverse(waypoint2, waypoint1)
+- can_traverse(waypoint1, waypoint3)
+- can_traverse(waypoint3, waypoint1)
+
+
+goal:
+- communicated_soil_data(waypoint2)
+- communicated_image_data(crater)

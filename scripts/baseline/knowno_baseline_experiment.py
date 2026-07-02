@@ -29,7 +29,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--scene", default="01", help="Scene number such as 01, 1, 02, ..., 05.")
     parser.add_argument("--settings", default=str(BASELINE_DIR / "llm_setting.json"))
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--qhat", type=float, default=None)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=None)
     parser.add_argument("--max-steps", type=int, default=None)
@@ -45,6 +45,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--place-failure-prob", type=float, default=None)
     parser.add_argument("--discard-failure-prob", type=float, default=None)
     parser.add_argument("--run-calibration", action="store_true")
+    parser.add_argument("--auto-answer", action="store_true", help="Automatically answer KnowNo help queries from scene ground truth.")
     parser.add_argument("--num-calibration", type=int, default=None)
     parser.add_argument("--num-test", type=int, default=None)
     parser.add_argument("--target-success", type=float, default=None)
@@ -163,6 +164,8 @@ def model_slug(settings_path: str) -> str:
     except (OSError, json.JSONDecodeError):
         return "unknown"
     model = str(settings.get("model", "")).lower()
+    if "palm-2l" in model or "palm2l" in model:
+        return "palm2l"
     if "gpt-3.5" in model or "gpt-35" in model:
         return "gpt35turbo"
     if "gpt-4" in model:
@@ -170,8 +173,18 @@ def model_slug(settings_path: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", model) or "unknown"
 
 
-def default_log_file(domain: str, scene: str, settings_path: str) -> Path:
-    log_dir = LOGS_DIR / domain / f"scene_{scene}_step50" / f"when_knowno_{model_slug(settings_path)}"
+def _param_slug(value: float | str | None) -> str:
+    if value is None:
+        return "default"
+    text = str(value).strip()
+    if not text:
+        return "default"
+    return re.sub(r"[^0-9A-Za-z]+", "-", text).strip("-")
+
+
+def default_log_file(domain: str, scene: str, settings_path: str, temperature=None, qhat=None) -> Path:
+    param_dir = f"temperature_{_param_slug(temperature)}_qhat_{_param_slug(qhat)}"
+    log_dir = LOGS_DIR / domain / f"scene_{scene}" / f"when_knowno_{model_slug(settings_path)}" / param_dir
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return log_dir / f"knowno_{domain}_{timestamp}.txt"
@@ -197,7 +210,11 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     append_optional(cmd, "--temperature", args.score_temperature)
     append_optional(cmd, "--max-steps", args.max_steps)
     append_optional(cmd, "--seed", args.seed)
-    append_optional(cmd, "--log-file", args.log_file or default_log_file(domain, scene, args.settings))
+    append_optional(
+        cmd,
+        "--log-file",
+        args.log_file or default_log_file(domain, scene, args.settings, args.score_temperature, args.qhat),
+    )
     append_optional(cmd, "--detect-success-prob", args.detect_success_prob)
     append_optional(cmd, "--detect-label-error-prob", args.detect_label_error_prob)
 
@@ -211,6 +228,8 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
 
     if args.verbose:
         cmd.append("--verbose")
+    if args.auto_answer:
+        cmd.append("--auto-answer")
     if args.run_calibration:
         cmd.append("--run-calibration")
     append_optional(cmd, "--num-calibration", args.num_calibration)

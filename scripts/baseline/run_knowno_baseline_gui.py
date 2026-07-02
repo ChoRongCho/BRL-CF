@@ -43,6 +43,31 @@ DEFAULTS = {
     },
 }
 
+QHAT_OPTIONS = {
+    ("tomato", "gpt-3.5-turbo"): {
+        "95%": "0.9243",
+        "85%": "0.9082",
+        "75%": "0.8938",
+    },
+    ("tomato", "gpt-4o"): {
+        "95%": "0.8404",
+        "85%": "0.7779",
+        "75%": "0.7322",
+    },
+    ("wastesorting", "gpt-3.5-turbo"): {
+        "95%": "0.9028",
+        "85%": "0.8851",
+        "75%": "0.8512",
+    },
+    ("wastesorting", "gpt-4o"): {
+        "95%": "0.8704",
+        "85%": "0.7369",
+        "75%": "0.7084",
+    },
+}
+
+QHAT_SELECTOR_VALUES = ["95%", "85%", "75%", "Manual"]
+
 
 class KnownoGui(tk.Tk):
     def __init__(self) -> None:
@@ -65,11 +90,12 @@ class KnownoGui(tk.Tk):
             "domain": tk.StringVar(value="tomato"),
             "scene": tk.StringVar(value="01"),
             "llm_model": tk.StringVar(value="gpt-4o"),
-            "prompt_version": tk.StringVar(value="v1"),
+            "prompt_version": tk.StringVar(value="v2"),
             "max_steps": tk.StringVar(value="50"),
             "seed": tk.StringVar(value=""),
             "seed_random": tk.BooleanVar(value=True),
-            "score_temperature": tk.StringVar(value="3.0"),
+            "score_temperature": tk.StringVar(value="5.0"),
+            "qhat_choice": tk.StringVar(value="95%"),
             "qhat": tk.StringVar(value=DEFAULTS["tomato"]["qhat"]),
             "detect_success_prob": tk.StringVar(value=DEFAULTS["tomato"]["detect_success_prob"]),
             "detect_label_error_prob": tk.StringVar(value=DEFAULTS["tomato"]["detect_label_error_prob"]),
@@ -86,6 +112,7 @@ class KnownoGui(tk.Tk):
 
         self._build_ui()
         self._apply_domain_defaults()
+        self._apply_qhat_choice()
         self.after(100, self._drain_output_queue)
 
     def _configure_fonts(self) -> None:
@@ -140,11 +167,12 @@ class KnownoGui(tk.Tk):
 
         row = self._combo_row(parent, row, "Domain", "domain", ["tomato", "wastesorting"])
         row = self._combo_row(parent, row, "Scene", "scene", ["01", "02", "03", "04", "05"])
-        row = self._combo_row(parent, row, "LLM", "llm_model", ["gpt-4o", "gpt-3.5-turbo"])
+        row = self._combo_row(parent, row, "LLM", "llm_model", ["gpt-4o", "gpt-3.5-turbo", "PaLM-2L"])
         row = self._combo_row(parent, row, "Prompt", "prompt_version", ["v1", "v2"])
         row = self._entry_row(parent, row, "Max steps", "max_steps")
         row = self._seed_row(parent, row)
         row = self._entry_row(parent, row, "Temperature", "score_temperature")
+        row = self._combo_row(parent, row, "qhat choice", "qhat_choice", QHAT_SELECTOR_VALUES)
         row = self._entry_row(parent, row, "qhat", "qhat")
 
         ttk.Separator(parent).grid(row=row, column=0, columnspan=3, sticky="ew", pady=10)
@@ -196,7 +224,9 @@ class KnownoGui(tk.Tk):
         truth_scrollbar.grid(row=1, column=1, sticky="ns")
         self._update_ground_truth()
 
-        self.vars["domain"].trace_add("write", lambda *_: self._apply_domain_defaults())
+        self.vars["domain"].trace_add("write", lambda *_: self._on_domain_or_model_changed())
+        self.vars["llm_model"].trace_add("write", lambda *_: self._on_domain_or_model_changed())
+        self.vars["qhat_choice"].trace_add("write", lambda *_: self._apply_qhat_choice())
         self.vars["scene"].trace_add("write", lambda *_: self._update_ground_truth())
         self.vars["seed_random"].trace_add("write", lambda *_: self._apply_seed_mode())
         self._apply_seed_mode()
@@ -228,6 +258,7 @@ class KnownoGui(tk.Tk):
             )
         self.manual_input = tk.StringVar(value="")
         manual = ttk.Entry(input_frame, textvariable=self.manual_input)
+        self.manual_input_widget = manual
         manual.grid(row=0, column=6, sticky="ew", padx=(10, 4))
         manual.bind("<Return>", lambda _event: self._send_manual_input())
         ttk.Button(input_frame, text="Send", command=self._send_manual_input).grid(row=0, column=7)
@@ -280,6 +311,8 @@ class KnownoGui(tk.Tk):
         domain = self.vars["domain"].get()
         defaults = DEFAULTS[domain]
         for key, value in defaults.items():
+            if key == "qhat" and self.vars["qhat_choice"].get() != "Manual":
+                continue
             self.vars[key].set(value)
         tomato_state = "normal" if domain == "tomato" else "disabled"
         for key in [
@@ -294,6 +327,25 @@ class KnownoGui(tk.Tk):
             # Domain-specific command construction ignores tomato-only values for waste.
             _ = tomato_state
         self._update_ground_truth()
+
+    def _qhat_values_for_current_selection(self) -> dict[str, str]:
+        domain = self.vars["domain"].get()
+        model = self.vars["llm_model"].get()
+        return QHAT_OPTIONS.get((domain, model), {})
+
+    def _apply_qhat_choice(self) -> None:
+        choice = self.vars["qhat_choice"].get()
+        if choice == "Manual":
+            return
+        values = self._qhat_values_for_current_selection()
+        qhat = values.get(choice)
+        if qhat is not None:
+            self.vars["qhat"].set(qhat)
+
+    def _on_domain_or_model_changed(self) -> None:
+        self._apply_domain_defaults()
+        if self.vars["qhat_choice"].get() != "Manual":
+            self._apply_qhat_choice()
 
     def _update_ground_truth(self) -> None:
         if not hasattr(self, "truth_text"):
@@ -369,6 +421,8 @@ class KnownoGui(tk.Tk):
     @staticmethod
     def _model_slug_for(model_name: str) -> str:
         model = model_name.lower()
+        if "palm-2l" in model or "palm2l" in model:
+            return "palm2l"
         if "gpt-3.5" in model or "gpt-35" in model:
             return "gpt35turbo"
         if "gpt-4" in model:
@@ -378,14 +432,29 @@ class KnownoGui(tk.Tk):
     def _model_slug(self) -> str:
         return self._model_slug_for(self.vars["llm_model"].get())
 
+    @staticmethod
+    def _param_slug(value: str) -> str:
+        text = str(value).strip()
+        if not text:
+            return "default"
+        return re.sub(r"[^0-9A-Za-z]+", "-", text).strip("-")
+
+    def _parameter_slug(self) -> str:
+        temperature = self._param_slug(self.vars["score_temperature"].get())
+        qhat = self._param_slug(self.vars["qhat"].get())
+        return f"temperature_{temperature}_qhat_{qhat}"
+
     def _base_settings(self) -> dict:
-        for path in (SETTINGS_PATH, ROOT_DUMMY_SETTINGS_PATH):
+        merged: dict = {}
+        for path in (ROOT_DUMMY_SETTINGS_PATH, SETTINGS_PATH):
             try:
                 if path.exists():
-                    return json.loads(path.read_text(encoding="utf-8"))
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        merged.update(payload)
             except (OSError, json.JSONDecodeError):
                 continue
-        return {}
+        return merged
 
     def _write_runtime_settings(self) -> Path:
         settings = self._base_settings()
@@ -425,8 +494,9 @@ class KnownoGui(tk.Tk):
             / "experiments_logs"
             / "system_log"
             / domain
-            / f"scene_{scene}_step50"
+            / f"scene_{scene}"
             / f"when_knowno_{self._model_slug()}"
+            / self._parameter_slug()
         )
         initialdir.mkdir(parents=True, exist_ok=True)
         path = filedialog.asksaveasfilename(
@@ -567,14 +637,19 @@ class KnownoGui(tk.Tk):
 
     def _send_manual_input(self) -> None:
         text = self.manual_input.get().strip()
+        if not self._has_active_run():
+            self.manual_input.set("")
+            self._start_run()
+            return
         if not text:
             return
         self.manual_input.set("")
         self._send_stdin(text + "\n")
 
     def _send_stdin(self, text: str) -> None:
-        if self.process is None or self.process.poll() is not None or self.process.stdin is None:
-            messagebox.showinfo("No active run", "Start a run before sending input.")
+        if not self._has_active_run() or self.process is None or self.process.stdin is None:
+            if self.process is not None and self.process.poll() is not None:
+                self.process = None
             return
         try:
             self.process.stdin.write(text)
@@ -582,6 +657,9 @@ class KnownoGui(tk.Tk):
             self._append_events(f">>> {text}")
         except OSError as exc:
             messagebox.showerror("Input failed", str(exc))
+
+    def _has_active_run(self) -> bool:
+        return self.process is not None and self.process.poll() is None
 
     def _drain_output_queue(self) -> None:
         while True:
@@ -646,7 +724,22 @@ class KnownoGui(tk.Tk):
             self._append_events(line + "\n")
             return
 
-        if line.startswith("====== Summary ======") or line.startswith("Success:") or line.startswith("Stop reason:"):
+        if line.startswith((
+            "====== Summary ======",
+            "Success:",
+            "Stop reason:",
+            "Planning length:",
+            "Planning iterations:",
+            "Question count:",
+            "Query rate:",
+            "Average candidate count:",
+            "Average candidate count when asked:",
+            "Average prediction set size:",
+            "Average prediction set size when asked:",
+            "Autonomous action count:",
+            "Fallback in prediction count:",
+            "Action failure count:",
+        )):
             self._append_events(line + "\n")
             return
 

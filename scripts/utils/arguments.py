@@ -48,7 +48,13 @@ def parse_args(domain: str):
     # Ablation study
     parser.add_argument("--f_strategy", type=int, default=1, help="1: no, 2: all, 3: ours, 4:random")
     parser.add_argument("--q_strategy", type=int, default=1, help="1: ours 2: LLM")
-    parser.add_argument("--answer_type", type=str, default="auto", help="auto: auto answer, human: you answer")
+    parser.add_argument(
+        "--answer_type",
+        type=str,
+        default="human-proxy",
+        choices=["oracle", "human-proxy", "random", "human", "auto"],
+        help="Feedback answer mode. oracle: answer from true_init, human-proxy: domain proxy, random: random answer, human: terminal input, auto: alias for human-proxy",
+    )
     parser.add_argument("--random_query_prob", type=float, default=0.3, help="Query trigger probability for f_strategy=4 in when_main.py")
     
     
