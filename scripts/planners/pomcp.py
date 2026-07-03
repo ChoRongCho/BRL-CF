@@ -222,8 +222,8 @@ class POMCPPlanner:
 
         if use_ucb:
             parent_visits = max(1, self.tree.get_visit(history))
-            best = None
             best_score = float("-inf")
+            best_candidates = []
 
             for action, node_id in candidates:
                 child_visits = self.tree.get_visit(node_id)
@@ -236,9 +236,11 @@ class POMCPPlanner:
 
                 if score > best_score:
                     best_score = score
-                    best = (action, node_id)
+                    best_candidates = [(action, node_id)]
+                elif score == best_score:
+                    best_candidates.append((action, node_id))
 
-            return best
+            return random.choice(best_candidates)
         
         print("[POMCP] applicable values:")
         for action, node_id in candidates:
@@ -247,7 +249,13 @@ class POMCPPlanner:
         print()
             
 
-        return max(candidates, key=lambda item: self.tree.get_value(item[1]))
+        max_value = max(self.tree.get_value(node_id) for _, node_id in candidates)
+        best_candidates = [
+            (action, node_id)
+            for action, node_id in candidates
+            if self.tree.get_value(node_id) == max_value
+        ]
+        return random.choice(best_candidates)
 
 
     def prune_search_tree(self, action: Action, obs: State):

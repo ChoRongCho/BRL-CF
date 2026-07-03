@@ -103,6 +103,18 @@ class TransitionModel:
                 from models.wastesorting.trans import TransitionWastesorting
                 self.trans_model = TransitionWastesorting(type_map=self.type_map, true_state=state)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
+            elif self.domain == "kitchen":
+                from models.kitchen.trans import TransitionKitchen
+                self.trans_model = TransitionKitchen(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
+            elif self.domain == "rover":
+                from models.rover.trans import TransitionRover
+                self.trans_model = TransitionRover(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
+            elif self.domain == "watering":
+                from models.watering.trans import TransitionWatering
+                self.trans_model = TransitionWatering(type_map=self.type_map, true_state=state)
+                self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             else:
                 raise ValueError("Domain is wrong")
         

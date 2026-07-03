@@ -24,6 +24,17 @@ class RewardModel:
         elif self.domain == "wastesorting":
             from models.wastesorting.rw import RewardWastesorting
             self.reward_model = RewardWastesorting(self.goal)
+        elif self.domain == "kitchen":
+            from models.kitchen.rw import RewardKitchen
+            self.reward_model = RewardKitchen(self.goal)
+        elif self.domain == "rover":
+            from models.rover.rw import RewardRover
+            self.reward_model = RewardRover(self.goal)
+        elif self.domain == "watering":
+            from models.watering.rw import RewardWatering
+            self.reward_model = RewardWatering(self.goal)
+        else:
+            raise ValueError(f"Unknown domain: {self.domain}")
     
     def get_reward(self, state: State, action: Action, next_state: State):
         

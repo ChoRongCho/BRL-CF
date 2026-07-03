@@ -74,11 +74,23 @@ class ObservationModel:
 
         elif self.domain == "blocksworld":
             from models.blocksworld.obs import ObservationBlocksworld
-            return ObservationBlocksworld(type_map=self.type_map, noise=self.noise)
+            return ObservationBlocksworld(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
 
         elif self.domain == "wastesorting":
             from models.wastesorting.obs import ObservationWastesorting
             return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+
+        elif self.domain == "kitchen":
+            from models.kitchen.obs import ObservationKitchen
+            return ObservationKitchen(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+
+        elif self.domain == "rover":
+            from models.rover.obs import ObservationRover
+            return ObservationRover(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+
+        elif self.domain == "watering":
+            from models.watering.obs import ObservationWatering
+            return ObservationWatering(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
 
         else:
             raise ValueError(f"Unknown domain: {self.domain}")
