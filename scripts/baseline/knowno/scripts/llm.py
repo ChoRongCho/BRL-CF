@@ -60,7 +60,7 @@ class timeout:
 
 def load_llm_settings(path: Optional[str | Path] = None) -> Dict[str, Any]:
     setting_path = Path(path) if path else Path(__file__).resolve().parents[1] / "llm_setting.json"
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = Path(__file__).resolve().parents[4]
     merged: Dict[str, Any] = {}
     for candidate in (project_root / "llm_setting_dummy.json", setting_path):
         if not candidate.exists():

@@ -12,7 +12,7 @@
 - Waste sorting planner: `scripts/knowno_multistep_wastesorting.py`
 - Waste sorting wrapper: `scripts/knowno_multistep_waste.py`
 
-`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/scripts/` 아래에 보관한다.
+`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/knowno/scripts/` 아래에 보관한다.
 
 ## Important Scene Note
 
@@ -39,7 +39,7 @@ cd /home/changmin/PyProject/00_BRL-CF
 pip install numpy openai
 ```
 
-LLM 설정은 `scripts/baseline/llm_setting.json` 또는 환경 변수로 지정한다.
+LLM 설정은 `scripts/baseline/knowno/llm_setting.json` 또는 환경 변수로 지정한다.
 
 ```json
 {
@@ -69,8 +69,8 @@ bash run/run_knowno_baseline.sh
 Python runner를 직접 실행할 수도 있다.
 
 ```bash
-python3 scripts/baseline/knowno_baseline_experiment.py --domain tomato --scene 01
-python3 scripts/baseline/knowno_baseline_experiment.py --domain wastesorting --scene 03
+python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain tomato --scene 01
+python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain wastesorting --scene 03
 ```
 
 ## Tomato Experiments
@@ -78,7 +78,7 @@ python3 scripts/baseline/knowno_baseline_experiment.py --domain wastesorting --s
 기본 실행:
 
 ```bash
-python3 scripts/baseline/knowno_baseline_experiment.py --domain tomato --scene 01
+python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain tomato --scene 01
 ```
 
 주요 인자:
@@ -99,7 +99,7 @@ python3 scripts/baseline/knowno_baseline_experiment.py --domain tomato --scene 0
 `scripts/domain/tomato/scene_01.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -107,7 +107,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_02.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:unripe,tomato3:rotten,tomato4:ripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -115,7 +115,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_03.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:rotten" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -123,7 +123,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_04.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --labels "tomato1:rotten,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -131,7 +131,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_05.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --labels "tomato1:rotten,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -139,7 +139,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 Example with deterministic seed and verbose logging:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --seed 1 \
   --verbose \
   --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
@@ -151,13 +151,13 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 기본 실행:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py
 ```
 
 `knowno_multistep_waste.py`는 wrapper이므로 아래 명령과 동일한 planner를 실행한다.
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_waste.py
+python3 scripts/baseline/knowno/scripts/knowno_multistep_waste.py
 ```
 
 주요 인자:
@@ -176,42 +176,42 @@ python3 scripts/baseline/scripts/knowno_multistep_waste.py
 `scripts/domain/wastesorting/scene_01.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:general,waste3:plastic,waste4:can"
 ```
 
 `scripts/domain/wastesorting/scene_02.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --labels "waste1:can,waste2:general,waste3:paper,waste4:can"
 ```
 
 `scripts/domain/wastesorting/scene_03.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --labels "waste1:plastic,waste2:plastic,waste3:paper,waste4:general"
 ```
 
 `scripts/domain/wastesorting/scene_04.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:paper,waste3:can,waste4:general"
 ```
 
 `scripts/domain/wastesorting/scene_05.yaml`:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:paper,waste3:can,waste4:can"
 ```
 
 Example with deterministic seed and verbose logging:
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --seed 1 \
   --verbose \
   --labels "waste1:paper,waste2:general,waste3:plastic,waste4:can"
@@ -222,7 +222,7 @@ python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
 두 multi-step planner 모두 calibration 옵션을 제공한다.
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --run-calibration \
   --num-calibration 20 \
   --num-test 10 \
@@ -230,7 +230,7 @@ python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
 ```
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --run-calibration \
   --num-calibration 20 \
   --num-test 10 \
@@ -240,12 +240,12 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 Calibration dataset template을 만들려면 다음 옵션을 사용한다.
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
   --write-calibration-template /tmp/waste_knowno_calibration.txt
 ```
 
 ```bash
-python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
   --write-calibration-template /tmp/tomato_knowno_calibration.txt
 ```
 
@@ -267,9 +267,9 @@ qhat = quantile(scores, q_level, method="higher")
 이 저장소에서는 계산용 CLI를 제공한다.
 
 ```bash
-python3 scripts/baseline/compute_qhat.py \
+python3 scripts/baseline/knowno/compute_qhat.py \
   --domain tomato \
-  --calibration-file scripts/baseline/data/tomato-mc-gen-prompt.txt \
+  --calibration-file scripts/baseline/knowno/data/tomato-mc-gen-prompt.txt \
   --num-calibration 20 \
   --target-success 0.8 \
   --score-with-llm \
@@ -280,7 +280,7 @@ python3 scripts/baseline/compute_qhat.py \
 이미 LLM scoring 결과를 저장한 JSON이 있으면 API 호출 없이 계산할 수 있다.
 
 ```bash
-python3 scripts/baseline/compute_qhat.py \
+python3 scripts/baseline/knowno/compute_qhat.py \
   --domain tomato \
   --scored-json experiments_logs/system_log/tomato/qhat_records.json \
   --target-success 0.8

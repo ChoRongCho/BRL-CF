@@ -41,7 +41,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BASELINE_DIR="${PROJECT_ROOT}/scripts/baseline"
+BASELINE_DIR="${PROJECT_ROOT}/scripts/baseline/knowno"
 
 if [[ -z "${SEED}" ]]; then
   SEED="$(( ( $(date +%s%N) + RANDOM ) % 4294967295 ))"

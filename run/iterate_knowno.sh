@@ -16,7 +16,7 @@ temperature="${TEMPERATURE:-5.0}"
 max_steps="${MAX_STEPS:-50}"
 seed="${SEED:-random}"
 auto_answer="${AUTO_ANSWER:-true}"
-settings_template="scripts/baseline/llm_setting.json"
+settings_template="scripts/baseline/knowno/llm_setting.json"
 log_root="experiments_logs/system_log"
 seed_log_root="${log_root}/knowno_seed_logs"
 seed_log="${seed_log_root}/iterate_knowno_$(date +%Y%m%d_%H%M%S).csv"
@@ -32,7 +32,7 @@ discard_failure_prob="${DISCARD_FAILURE_PROB:-0.01}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BASELINE_DIR="${PROJECT_ROOT}/scripts/baseline"
+BASELINE_DIR="${PROJECT_ROOT}/scripts/baseline/knowno"
 
 total=$((${#domains[@]} * ${#scenes[@]} * ${#models[@]} * ${#qhat_targets[@]} * iterations))
 current=0

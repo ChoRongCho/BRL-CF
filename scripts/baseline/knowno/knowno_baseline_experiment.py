@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
-BASELINE_DIR = SCRIPTS_DIR / "baseline"
+BASELINE_DIR = Path(__file__).resolve().parent
 BASELINE_SCRIPT_DIR = BASELINE_DIR / "scripts"
 DOMAIN_DIR = SCRIPTS_DIR / "domain"
 LOGS_DIR = PROJECT_ROOT / "experiments_logs" / "system_log"

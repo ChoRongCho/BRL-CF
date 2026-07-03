@@ -28,8 +28,8 @@ DEFAULT_WASTE_NUM_CALIBRATION="${DEFAULT_NUM_CALIBRATION}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-CALIBRATION_SCRIPT="${PROJECT_ROOT}/scripts/baseline/compute_qhat.py"
-SUMMARY_SCRIPT="${PROJECT_ROOT}/scripts/baseline/summarize_knowno_calibration.py"
+CALIBRATION_SCRIPT="${PROJECT_ROOT}/scripts/baseline/knowno/compute_qhat.py"
+SUMMARY_SCRIPT="${PROJECT_ROOT}/scripts/baseline/knowno/summarize_knowno_calibration.py"
 
 DOMAINS="${DOMAINS:-tomato wastesorting}"
 MODELS="${MODELS:-gpt-4o gpt-3.5-turbo}"
@@ -45,7 +45,7 @@ if [[ -z "${TEMPERATURES:-}" ]]; then
     TEMPERATURES="1 3 5"
   fi
 fi
-SETTINGS="${SETTINGS:-${PROJECT_ROOT}/scripts/baseline/llm_setting.json}"
+SETTINGS="${SETTINGS:-${PROJECT_ROOT}/scripts/baseline/knowno/llm_setting.json}"
 API_KEY="${API_KEY:-}"
 WRITE_SUMMARY="${WRITE_SUMMARY:-true}"
 SUMMARY_OUTPUT="${SUMMARY_OUTPUT:-${PROJECT_ROOT}/experiments_logs/calibration_log/summary.md}"

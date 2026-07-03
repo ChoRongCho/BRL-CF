@@ -12,7 +12,7 @@ import numpy as np
 
 
 BASELINE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASELINE_DIR.parents[1]
+PROJECT_ROOT = BASELINE_DIR.parents[2]
 if str(BASELINE_DIR) not in sys.path:
     sys.path.insert(0, str(BASELINE_DIR))
 

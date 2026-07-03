@@ -24,7 +24,9 @@ The repository also includes a KnowNo-style LLM baseline and evaluation scripts 
       wastesorting/
     planners/                     # POMCP and search-tree implementation
     utils/                        # Argument parsing, ASP bridge, logging helpers
-    baseline/                     # KnowNo baseline code, prompts, LLM settings
+    baseline/                     # Baseline implementations
+      knowno/                     # KnowNo baseline code, prompts, LLM settings
+      active_search/              # Active Search baseline placeholder
   experiments/
     system_eval/                  # System experiment analysis pipeline
     user_eval/                    # User-study analysis pipeline
@@ -124,15 +126,16 @@ Q(h, a) + c * sqrt(log(N(h)) / N(h, a))
 
 ### `scripts/baseline`
 
-Contains the KnowNo-style LLM baseline:
+Contains baseline implementations:
 
-- `knowno_baseline_experiment.py`: unified baseline entrypoint.
-- `run_knowno_baseline_gui.py`: GUI wrapper for baseline runs.
-- `scripts/knowno_multistep_tomato.py`: tomato baseline runner.
-- `scripts/knowno_multistep_waste.py`: waste baseline runner.
-- `scripts/structured_prompts.py`: v1 prompt definitions.
-- `scripts/structured_prompts_v2.py`: v2 prompt definitions.
-- `llm_setting.json`: model/API configuration.
+- `knowno/knowno_baseline_experiment.py`: unified KnowNo baseline entrypoint.
+- `knowno/run_knowno_baseline_gui.py`: GUI wrapper for KnowNo baseline runs.
+- `knowno/scripts/knowno_multistep_tomato.py`: tomato KnowNo runner.
+- `knowno/scripts/knowno_multistep_waste.py`: waste KnowNo runner.
+- `knowno/scripts/structured_prompts.py`: v1 prompt definitions.
+- `knowno/scripts/structured_prompts_v2.py`: v2 prompt definitions.
+- `knowno/llm_setting.json`: model/API configuration.
+- `active_search/README.md`: placeholder for the Active Search baseline.
 
 KnowNo logs are separated by model family:
 
@@ -214,7 +217,7 @@ Runs threshold sweeps over configured thresholds and scenes, then runs the curre
 
 ### `run/run_knowno_baseline.sh`
 
-Runs one KnowNo baseline episode through `scripts/baseline/knowno_baseline_experiment.py`.
+Runs one KnowNo baseline episode through `scripts/baseline/knowno/knowno_baseline_experiment.py`.
 
 Default values can be overridden by environment variables:
 
@@ -230,7 +233,7 @@ temperature = 3.0
 max_steps = 50
 ```
 
-The output directory is selected from the model in `scripts/baseline/llm_setting.json`.
+The output directory is selected from the model in `scripts/baseline/knowno/llm_setting.json`.
 
 ### `run/run_knowno_baseline_gui.sh`
 
@@ -359,7 +362,7 @@ sudo apt-get install python3-tk
 KnowNo baseline execution requires a valid OpenAI-compatible API setting in:
 
 ```text
-scripts/baseline/llm_setting.json
+scripts/baseline/knowno/llm_setting.json
 ```
 
 ## Quick Commands

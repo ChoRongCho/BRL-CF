@@ -32,7 +32,7 @@ from wastesorting_utils import (
 def parse_args():
     parser = argparse.ArgumentParser(description="Run multi-step KnowNo planning for waste sorting.")
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--settings", default=str(Path(__file__).with_name("llm_setting.json")))
+    parser.add_argument("--settings", default=str(Path(__file__).resolve().parents[1] / "llm_setting.json"))
     parser.add_argument("--instruction", default="Discard all waste.")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--scene-objects", default="waste1, waste2, waste3, waste4")

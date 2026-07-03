@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_LOG_ROOT = PROJECT_ROOT / "experiments_logs" / "calibration_log"
 
 
@@ -147,8 +147,8 @@ def dataset_summary_table(runs: list[tuple[Path, dict]]) -> str:
 def dataset_source_note() -> str:
     return (
         "The calibration records are loaded by "
-        "`scripts/baseline/compute_qhat.py` from the domain-specific files in "
-        "`scripts/baseline/data/`."
+        "`scripts/baseline/knowno/compute_qhat.py` from the domain-specific files in "
+        "`scripts/baseline/knowno/data/`."
     )
 
 

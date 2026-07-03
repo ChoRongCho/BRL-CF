@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 
 BASELINE_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BASELINE_DIR.parents[1]
+REPO_ROOT = BASELINE_DIR.parents[2]
 DATA_DIR = BASELINE_DIR / "data"
 SYSTEM_LOG_ROOT = REPO_ROOT / "experiments_logs" / "system_log"
 
