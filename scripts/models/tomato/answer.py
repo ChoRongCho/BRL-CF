@@ -7,13 +7,10 @@ def answer_question(mode: str, target_fact: str, action_name: str | None, true_i
     target_fact = str(target_fact).replace(" ", "")
     action = "" if action_name is None else str(action_name)
 
-    if mode == "oracle":
-        return target_fact in true_init_facts
-
     if mode == "random":
         return bool(np.random.random() < 0.5)
 
-    if mode in {"human-proxy", "auto"}:
+    if mode in {"oracle", "human-proxy", "auto"}:
         return _answer_human_proxy(target_fact, action, true_init_facts)
 
     raise ValueError(f"Unsupported tomato answer mode: {mode}")

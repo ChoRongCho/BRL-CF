@@ -26,14 +26,14 @@ def parse_args(domain: str):
     # POMCP settings
     parser.add_argument("--gamma", type=float, default=0.95, help="Discount factor for future rewards (0 < gamma ≤ 1)")
     parser.add_argument("--c", type=float, default=1.0, help="Exploration constant for UCB in tree search.")
-    parser.add_argument("--max_depth", type=int, default=20, help="Maximum simulation depth for each rollout in POMCP.")
+    parser.add_argument("--max_depth", type=int, default=25, help="Maximum simulation depth for each rollout in POMCP.")
     parser.add_argument("--n_simulations", type=int, default=100, help="Number of Monte Carlo simulations per planning step.")
     parser.add_argument("--max_node_particles", type=int, default=None, help="Maximum number of particles cached at each POMCP tree node. Defaults to max_belief_particles.")
     parser.add_argument("--epsilon", type=float, default=0.005, help="")
     
     # Experiments settings
     parser.add_argument("--seed", type=int, default=None, help="Random seed. If omitted, a random seed is generated.")
-    parser.add_argument("--max_step", type=int, default=20, help="Maximum steps per episode")
+    parser.add_argument("--max_step", type=int, default=25, help="Maximum steps per episode")
     parser.add_argument("--max_particles", type=int, default=250, help="Legacy alias for the maximum number of belief particles to keep after update")
     parser.add_argument("--max_belief_particles", type=int, default=8000, help="Maximum number of transition-outcome particles sampled for each belief update")
     parser.add_argument("--threshold", type=float, default=0.8, help="")
@@ -51,9 +51,9 @@ def parse_args(domain: str):
     parser.add_argument(
         "--answer_type",
         type=str,
-        default="human-proxy",
+        default="oracle",
         choices=["oracle", "human-proxy", "random", "human", "auto"],
-        help="Feedback answer mode. oracle: answer from true_init, human-proxy: domain proxy, random: random answer, human: terminal input, auto: alias for human-proxy",
+        help="Feedback answer mode. oracle: domain oracle answer, human-proxy: domain proxy, random: random answer, human: terminal input, auto: alias for oracle",
     )
     parser.add_argument("--random_query_prob", type=float, default=0.3, help="Query trigger probability for f_strategy=4 in when_main.py")
     

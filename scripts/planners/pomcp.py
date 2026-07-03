@@ -11,6 +11,7 @@ from models.observation import ObservationModel, Observation
 from models.reward import RewardModel
 from planners.tree import POMDPTree
 from environments.env import Environment
+from planners.simulator import Simulator
 import time
 
 DEBUG = False
@@ -45,6 +46,10 @@ class POMCPPlanner:
         self.transition_model: TransitionModel = self.belief_manager.transition_model
         self.observation_model: ObservationModel = self.belief_manager.observation_model
         self.reward_model: RewardModel = self.env.reward_model
+        self.simulator = Simulator(
+            transition_model=self.transition_model,
+            reward_model=self.reward_model,
+        )
 
         self.initialize(self.env.state)
 
@@ -181,9 +186,10 @@ class POMCPPlanner:
             return 0.0
 
         # 6. Sample transition, observation, and immediate reward.
-        next_state = self.transition_model.sample_next_state(state, action)
-        observation = self.observation_model.sample(next_state, action)
-        reward = self.reward_model.get_reward(state, action, next_state)
+        simulation = self.simulator.sample(state, action)
+        next_state = simulation.next_state
+        observation = simulation.observation
+        reward = simulation.reward
 
         # 7. Move to the matching observation child and recurse.
         obs_node = self.tree.get_observation_node(action_node, observation)
@@ -208,9 +214,9 @@ class POMCPPlanner:
             return 0.0
         action = random.choice(applicable_actions)
         
-        # Rollout
-        sample_state = self.transition_model.sample_next_state(state, action)
-        reward = self.reward_model.get_reward(state, action, sample_state)
+        simulation = self.simulator.sample(state, action)
+        sample_state = simulation.next_state
+        reward = simulation.reward
         
         return reward + self.gamma * self.rollout(sample_state, depth + 1)
 

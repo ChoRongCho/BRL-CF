@@ -28,19 +28,17 @@ class NextStateOutcome:
 class TransitionModel:
     def __init__(self, domain: str, 
                  actions: List[Action], 
-                 obj_type: Dict[str, List[str]], 
-                 true_state: State):
+                 obj_type: Dict[str, List[str]]):
         """
         """
         self.domain = domain
         self.actions = actions
         self.obj_type = obj_type
-        self.true_state = true_state
 
         self.type_map = self._build_type_map()
         self.trans_model = None
         self.transition_table: Dict[str, List[TransitionOutcome]] = {}
-        self.load_transition(state=self.true_state)
+        self.load_transition()
 
     
     # ==========================================================================
@@ -80,7 +78,7 @@ class TransitionModel:
         return next_state
     # ==========================================================================
 
-    def load_transition(self, state: State):
+    def load_transition(self):
         """
         Docstring for load_transition
         
@@ -93,27 +91,27 @@ class TransitionModel:
 
             if self.domain == "tomato":
                 from models.tomato.trans import TransitionTomato
-                self.trans_model = TransitionTomato(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionTomato(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "blocksworld":
                 from models.blocksworld.trans import TransitionBlocksworld
-                self.trans_model = TransitionBlocksworld(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionBlocksworld(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "wastesorting":
                 from models.wastesorting.trans import TransitionWastesorting
-                self.trans_model = TransitionWastesorting(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionWastesorting(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "kitchen":
                 from models.kitchen.trans import TransitionKitchen
-                self.trans_model = TransitionKitchen(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionKitchen(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "rover":
                 from models.rover.trans import TransitionRover
-                self.trans_model = TransitionRover(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionRover(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "watering":
                 from models.watering.trans import TransitionWatering
-                self.trans_model = TransitionWatering(type_map=self.type_map, true_state=state)
+                self.trans_model = TransitionWatering(type_map=self.type_map)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             else:
                 raise ValueError("Domain is wrong")

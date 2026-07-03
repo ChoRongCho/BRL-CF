@@ -15,11 +15,13 @@ class ObservationRover:
         type_map: Dict[str, List[str]],
         noise: float = 0.15,
         true_state: State | None = None,
+        world=None,
         observation_source: str = "true_init",
     ):
         self.type_map = type_map
         self.noise = noise
-        self.true_state = true_state
+        self.world = world
+        self.true_state = world.true_state if world is not None else true_state
         self.observation_source = observation_source
         self.use_true_init_observation = observation_source == "true_init"
 

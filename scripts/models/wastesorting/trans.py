@@ -25,9 +25,8 @@ class TransitionWastesorting:
         "place_plastic_bin",
     }
 
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         # # original
         # self.detect_observed_success_rate = 0.995
@@ -84,9 +83,6 @@ class TransitionWastesorting:
             probability=probability
         )
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
     def _extract_holding_facts(self, action: Action) -> List[str]:
         return [f.replace(" ", "") for f in action.observation if f.replace(" ", "").startswith("holding(")]
 
@@ -97,19 +93,6 @@ class TransitionWastesorting:
         expanded_obs = _dedup_facts(expanded_obs)
         return [f for f in expanded_obs if f.startswith("located(")]
 
-    def _extract_true_facts_from_observation(self, action: Action) -> List[str]:
-        expanded_obs = []
-        for obs in action.observation:
-            expanded_obs.extend(self._expand_free_variables_in_fact(obs))
-        expanded_obs = _dedup_facts(expanded_obs)
-        
-        true_facts = []
-        for fact in expanded_obs:
-            if self._true_has_fact(fact):
-                true_facts.append(fact)
-        return true_facts
-    
-    
     def _detect_facts_from_action(self, action: Action) -> List[str]:
         detected_facts = []
         sources = (action.add_effects, action.observation)
@@ -127,6 +110,7 @@ class TransitionWastesorting:
         self,
         action: Action,
         blocked_wastes: set[str] | None = None,
+        state: State | None = None,
     ) -> List[Dict[str, str]]:
         blocked_wastes = blocked_wastes or set()
         wastes = []
@@ -142,6 +126,7 @@ class TransitionWastesorting:
             {
                 "waste": waste,
                 "detected_fact": f"detected({waste})",
+                "known_label": self._category_label_for_state(state, waste) if state is not None else None,
             }
             for waste in wastes
         ]
@@ -203,6 +188,7 @@ class TransitionWastesorting:
         return self._build_detect_outcomes(
             action,
             blocked_wastes=unavailable_wastes,
+            state=state,
         )
     
     
@@ -230,19 +216,30 @@ class TransitionWastesorting:
         self,
         waste: str,
         category_predicates: List[str],
+        known_label: str | None = None,
     ) -> List[Tuple[List[str], List[str], float]]:
         category_del_facts = [f"{pred}({waste})" for pred in category_predicates]
         labels = [f"{pred}({waste})" for pred in category_predicates]
-        true_label = self._category_label_for_state(self.true_state, waste)
-        if true_label not in labels:
-            true_label = labels[0]
+        if known_label not in labels:
+            known_label = None
 
-        wrong_labels = [label for label in labels if label != true_label]
+        if known_label is None:
+            label_prob = 1.0 / len(labels)
+            return [
+                (
+                    [f"detected({waste})", label],
+                    category_del_facts,
+                    label_prob,
+                )
+                for label in labels
+            ]
+
+        wrong_labels = [label for label in labels if label != known_label]
         wrong_prob = (1.0 - self.detect_classification_success_rate) / len(wrong_labels)
 
         choices = [
             (
-                [f"detected({waste})", true_label],
+                [f"detected({waste})", known_label],
                 category_del_facts,
                 self.detect_classification_success_rate,
             )
@@ -261,8 +258,9 @@ class TransitionWastesorting:
         self,
         action: Action,
         blocked_wastes: set[str] | None = None,
+        state: State | None = None,
     ) -> List[TransitionOutcome]:
-        waste_entries = self._build_detect_waste_entries(action, blocked_wastes)
+        waste_entries = self._build_detect_waste_entries(action, blocked_wastes, state)
         if not waste_entries:
             return [self._make_outcome(add_facts=[], del_facts=[], probability=1.0)]
 
@@ -270,7 +268,11 @@ class TransitionWastesorting:
         p_miss = 1.0 - p_detect
         category_predicates = self._category_predicates_from_observation(action)
         per_waste_choices = [
-            self._build_detect_label_choices(entry["waste"], category_predicates)
+            self._build_detect_label_choices(
+                entry["waste"],
+                category_predicates,
+                known_label=entry.get("known_label"),
+            )
             for entry in waste_entries
         ]
 

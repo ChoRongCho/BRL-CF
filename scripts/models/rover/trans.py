@@ -10,9 +10,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionRover:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         self.navigate_success_rate = 0.95
         self.detect_road_success_rate = 0.90
@@ -69,14 +68,11 @@ class TransitionRover:
         _, args = _parse_fact(action.name.replace(" ", ""))
         return args
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
-    def _true_observation_facts(self, action: Action) -> List[str]:
+    def _observation_facts(self, action: Action) -> List[str]:
         expanded_obs = []
         for obs in action.observation:
             expanded_obs.extend(self._expand_free_variables_in_fact(obs))
-        return [fact for fact in _dedup_facts(expanded_obs) if self._true_has_fact(fact)]
+        return _dedup_facts(expanded_obs)
 
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
         action_name = action.name.split("(", 1)[0]
@@ -132,16 +128,16 @@ class TransitionRover:
                 else self.detect_road_success_rate
             )
 
-        true_facts = self._true_observation_facts(action)
+        observed_facts = self._observation_facts(action)
         if state is not None:
-            true_facts = [fact for fact in true_facts if not state.has_fact(fact)]
+            observed_facts = [fact for fact in observed_facts if not state.has_fact(fact)]
 
-        if not true_facts:
+        if not observed_facts:
             return [self._make_outcome([], [], 1.0)]
 
         return [
             self._make_outcome(
-                add_facts=true_facts,
+                add_facts=observed_facts,
                 del_facts=[],
                 probability=success_rate,
             ),

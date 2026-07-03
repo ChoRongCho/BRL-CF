@@ -31,7 +31,7 @@ class FeedbackManger:
         self.q_strategy = self.args.q_strategy
         self.answer_type = self.args.answer_type
         if self.answer_type == "auto":
-            self.answer_type = "human-proxy"
+            self.answer_type = "oracle"
 
         if self.answer_type in {"oracle", "human-proxy", "random"}:
             self.is_human_answer = False

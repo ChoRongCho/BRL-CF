@@ -10,9 +10,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionKitchen:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         self.open_fridge_success_rate = 0.90
         self.inspect_success_rate = 0.90
@@ -70,9 +69,6 @@ class TransitionKitchen:
         _, args = _parse_fact(action.name.replace(" ", ""))
         return args
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
     @staticmethod
     def _is_holding_object(state: State, obj: str) -> bool:
         for fact in state.facts:
@@ -86,13 +82,6 @@ class TransitionKitchen:
         if state.has_fact(f"clean({obj})"):
             return f"clean({obj})"
         if state.has_fact(f"dirty({obj})"):
-            return f"dirty({obj})"
-        return None
-
-    def _true_cleanliness_fact(self, obj: str) -> str | None:
-        if self._true_has_fact(f"clean({obj})"):
-            return f"clean({obj})"
-        if self._true_has_fact(f"dirty({obj})"):
             return f"dirty({obj})"
         return None
 
@@ -155,7 +144,8 @@ class TransitionKitchen:
             if state.has_fact(target_fact):
                 return [self._make_outcome([], [], 1.0)]
 
-        if not self._true_has_fact(target_fact):
+        known_fridge_facts = self._known_in_fridge_facts_for_ingredient(state, ingredient)
+        if known_fridge_facts and target_fact not in known_fridge_facts:
             return [self._make_outcome([], [], 1.0)]
 
         return [
@@ -178,23 +168,33 @@ class TransitionKitchen:
 
         obj = args[1]
         label = self._known_cleanliness_fact(state, obj) if state is not None else None
-        if label is None:
-            label = self._true_cleanliness_fact(obj)
 
-        if label is None:
-            return [self._make_outcome([], [], 1.0)]
-
-        if state is not None and state.has_fact(label):
+        if label is not None:
             return [self._make_outcome([], [], 1.0)]
 
         del_facts = [f"clean({obj})", f"dirty({obj})"]
+        reveal_prob = self.inspect_success_rate / 2.0
         return [
             self._make_outcome(
-                add_facts=[label],
+                add_facts=[f"clean({obj})"],
                 del_facts=del_facts,
-                probability=self.inspect_success_rate,
+                probability=reveal_prob,
+            ),
+            self._make_outcome(
+                add_facts=[f"dirty({obj})"],
+                del_facts=del_facts,
+                probability=reveal_prob,
             ),
             self._make_outcome([], [], 1.0 - self.inspect_success_rate),
+        ]
+
+    def _known_in_fridge_facts_for_ingredient(self, state: State | None, ingredient: str) -> List[str]:
+        if state is None:
+            return []
+        return [
+            fact
+            for fact in self._all_in_fridge_facts_for_ingredient(ingredient)
+            if state.has_fact(fact)
         ]
 
     def _all_in_fridge_facts_for_ingredient(self, ingredient: str, exclude: str | None = None) -> List[str]:

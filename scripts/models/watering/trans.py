@@ -10,9 +10,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionWatering:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         self.move_success_rate = 0.95
         self.find_success_rate = 0.90
@@ -69,11 +68,13 @@ class TransitionWatering:
         _, args = _parse_fact(action.name.replace(" ", ""))
         return args
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
     def _all_at_facts_for_object(self, obj: str) -> List[str]:
         return [f"at({obj},{room})" for room in self.type_map.get("R", [])]
+
+    def _known_at_facts_for_object(self, state: State | None, obj: str) -> List[str]:
+        if state is None:
+            return []
+        return [fact for fact in self._all_at_facts_for_object(obj) if state.has_fact(fact)]
 
     @staticmethod
     def _is_holding_object(state: State, obj: str) -> bool:
@@ -169,7 +170,8 @@ class TransitionWatering:
         if state is not None and state.has_fact(target_fact):
             return [self._make_outcome([], [], 1.0)]
 
-        if not self._true_has_fact(target_fact):
+        known_locations = self._known_at_facts_for_object(state, obj)
+        if known_locations and target_fact not in known_locations:
             return [self._make_outcome([], [], 1.0)]
 
         other_locations = [

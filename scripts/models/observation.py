@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Any, Dict, List
 import re
 import random
 
@@ -40,12 +40,14 @@ class ObservationModel:
         obj_type: Dict[str, List[str]],
         noise: float = 0.15,
         true_state: State | None = None,
+        world: Any | None = None,
     ):
         self.domain = domain
         self.noise = noise
         self.obj_type = obj_type
         self.actions = actions
-        self.true_state = true_state
+        self.world = world
+        self.true_state = world.true_state if world is not None else true_state
 
         self.type_map = self._build_type_map()
         self.domain_model = self._build_domain_model()
@@ -70,44 +72,56 @@ class ObservationModel:
     def _build_domain_model(self):
         if self.domain == "tomato":
             from models.tomato.obs import ObservationTomato
-            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         elif self.domain == "blocksworld":
             from models.blocksworld.obs import ObservationBlocksworld
-            return ObservationBlocksworld(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationBlocksworld(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         elif self.domain == "wastesorting":
             from models.wastesorting.obs import ObservationWastesorting
-            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         elif self.domain == "kitchen":
             from models.kitchen.obs import ObservationKitchen
-            return ObservationKitchen(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationKitchen(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         elif self.domain == "rover":
             from models.rover.obs import ObservationRover
-            return ObservationRover(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationRover(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         elif self.domain == "watering":
             from models.watering.obs import ObservationWatering
-            return ObservationWatering(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationWatering(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
         else:
             raise ValueError(f"Unknown domain: {self.domain}")
 
 
-    def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+    def get_observation_distribution(
+        self,
+        state: State,
+        action: Action,
+        use_true_state: bool = True,
+    ) -> List[ObservationOutcome]:
         """
         list_outcomes
         """
+        if not use_true_state and hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
+            return self.domain_model.get_observation_distribution_for_likelihood(state, action)
+
         return self.domain_model.get_observation_distribution(state, action)
 
 
 
-    def sample(self, state: State, action: Action) -> Observation:
+    def sample(self, state: State, action: Action, use_true_state: bool = True) -> Observation:
         """
         """
-        outcomes = self.get_observation_distribution(state, action)
+        outcomes = self.get_observation_distribution(
+            state,
+            action,
+            use_true_state=use_true_state,
+        )
 
         if not outcomes:
             return Observation(State())

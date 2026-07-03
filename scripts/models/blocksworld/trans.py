@@ -10,9 +10,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionBlocksworld:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         self.pickup_success_rate = 0.95
         self.putdown_success_rate = 0.95

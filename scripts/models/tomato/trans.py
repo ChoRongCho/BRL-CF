@@ -12,9 +12,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionTomato:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         # original test
         self.navigate_success_rate = 0.90
@@ -110,9 +109,6 @@ class TransitionTomato:
             probability=probability,
             fluent_effects=fluent_effects or {},
         )
-
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
 
     def _extract_holding_facts(self, action: Action) -> List[str]:
         return [f.replace(" ", "") for f in action.observation if f.replace(" ", "").startswith("holding(")]

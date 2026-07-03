@@ -13,6 +13,8 @@ from models.transition import TransitionModel
 from models.reward import RewardModel
 from models.belief import Belief
 from environments.check_done import check_done as evaluate_done
+from environments.world import create_symbolic_world
+
 
 class Environment:
     def __init__(self, args):
@@ -41,7 +43,12 @@ class Environment:
         init_config = self._load_config(self.initial_state_path) 
         self.state, self.gt_init_state, self.goal = get_state(init_config) # a list of facts
         self.exec_init_state = self.state.copy()
-        self.true_state = self.gt_init_state.copy()
+        self.world = create_symbolic_world(
+            self.domain_name,
+            observable_init_state=self.exec_init_state,
+            true_init_state=self.gt_init_state,
+        )
+        self.true_state = self.world.true_state
         self.obj_type = get_types(init_config)
         
         # generate possible worlds and clear runtime
@@ -62,7 +69,6 @@ class Environment:
             domain=self.domain_name,
             actions=self.actions,
             obj_type=self.obj_type,
-            true_state=self.true_state
         )
         
         # Observation Model
@@ -72,6 +78,7 @@ class Environment:
             obj_type=self.obj_type,
             noise=0.05,
             true_state=self.true_state,
+            world=self.world,
         )
         
         # Reward Model TODO
@@ -167,7 +174,7 @@ class Environment:
         self.done = False
         self.step_count = 0
         self.state = self.exec_init_state.copy()
-        self.true_state = self.gt_init_state.copy()
+        self.true_state = self.world.reset()
         self._sync_models_with_state()
 
         observation = copy.deepcopy(self.state)
@@ -190,71 +197,31 @@ class Environment:
         # get observation        
         if action is None:
             observation =  copy.deepcopy(self.state)
-        observation = self.observation_model.sample(self.state, action)
+        observation = self.observation_model.sample(
+            self.state,
+            action,
+            use_true_state=True,
+        )
         
         info = self._get_info()
         
-        # self.transition_model.load_transition(state=self.state)
-
         return observation, reward, self.done, info
 
 
     def _apply_action(self, action: Dict[str, Any]) -> None:        
         self.state = self.transition_model.sample_next_state(self.state, action)
-        self._update_true_state_from_execution(action)
+        self.true_state = self.world.update_after_execution(action, self.state)
         self._sync_models_with_state()
-
-    def _update_true_state_from_execution(self, action: Action) -> None:
-        action_name = action.name.split("(")[0]
-        if action_name not in {"navigate", "prepare_nav", "pick", "pick_n_scan", "place", "discard"}:
-            return
-
-        dynamic_prefixes = (
-            "located(",
-            "handempty(",
-            "holding(",
-            "holded(",
-            "loaded(",
-            "discarded(",
-            "navprepared(",
-        )
-
-        self.true_state.set_facts([
-            fact for fact in self.true_state.facts
-            if not fact.startswith(dynamic_prefixes)
-        ])
-        for fact in self.state.facts:
-            if fact.startswith(dynamic_prefixes):
-                self.true_state.add_fact(fact)
-
-        if action_name in {"pick", "pick_n_scan"}:
-            _, args = action.name.replace(" ", "").split("(", 1)
-            action_args = args.rstrip(")").split(",")
-            if len(action_args) >= 3:
-                _, tomato, stem = action_args[:3]
-                robot = action_args[0]
-                pick_succeeded = (
-                    self.true_state.has_fact(f"holding({robot},{tomato})")
-                    or self.true_state.has_fact(f"holded({tomato},{robot})")
-                )
-                if pick_succeeded:
-                    self.true_state.remove_fact(f"at({tomato},{stem})")
-
-        for obj, values in self.state.fluents.items():
-            for key, value in values.items():
-                if float(value) != -1.0:
-                    self.true_state.set_fluent(obj, key, value)
 
     def _sync_models_with_state(self) -> None:
         """
         Keep transition/observation models aligned with the maintained hidden true state.
         """
-        self.transition_model.true_state = self.true_state
-        self.transition_model.load_transition(state=self.true_state)
-
         self.observation_model.true_state = self.true_state
+        self.observation_model.world = self.world
         if hasattr(self.observation_model, "domain_model"):
             self.observation_model.domain_model.true_state = self.true_state
+            self.observation_model.domain_model.world = self.world
 
     def check_done(self, belief: Belief):
         return evaluate_done(self, belief)
