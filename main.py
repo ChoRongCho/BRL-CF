@@ -3,6 +3,7 @@ Docstring for main
 """
 
 from pathlib import Path
+import os
 import random
 import sys
 from time import time
@@ -251,6 +252,8 @@ def main():
     )
     log_data = {
         "meta": {
+            "method": os.getenv("FEEDBACK_METHOD", "ours"),
+            "feedback_source": args.answer_type,
             "domain": args.domain,
             "initial_state": args.initial_state,
             "threshold": args.threshold,

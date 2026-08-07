@@ -20,105 +20,61 @@ actions:
   - at(A,R1)
   - at(A,R2)
 
-- name: find_basket
-  type: observe
-  parameters:
-  - A
-  - C
-  - R
-  cost: 0.5
-  preconditions:
-  - agent(A)
-  - container(C)
-  - room(R)
-  - at(A,R)
-  add_effects: []
-  del_effects: []
-  observation:
-  - at(C,R)
-
 - name: find_plant
   type: observe
   parameters:
   - A
-  - P
   - R
   cost: 0.5
   preconditions:
   - agent(A)
-  - plant(P)
   - room(R)
   - at(A,R)
-  add_effects: []
+  add_effects:
+  - scanned(R)
   del_effects: []
   observation:
   - at(P,R)
-
-- name: pick_basket
-  type: task
-  parameters:
-  - A
-  - C
-  - R
-  cost: 1.0
-  preconditions:
-  - agent(A)
-  - container(C)
-  - room(R)
-  - free(A)
-  - at(C,R)
-  - at(A,R)
-  add_effects:
-  - holding(A,C)
-  del_effects:
-  - free(A)
-  - at(C,R)
-  observation:
-  - holding(A,C)
-  - free(A)
-  - at(C,R)
 
 - name: load_water
   type: task
   parameters:
   - A
-  - C
   - T
   cost: 1.0
   preconditions:
   - agent(A)
-  - container(C)
   - tap(T)
   - at(A,T)
-  - holding(A,C)
+  - water_empty(A)
   add_effects:
-  - water_loaded(C)
-  del_effects: []
+  - water_loaded(A)
+  del_effects:
+  - water_empty(A)
   observation:
-  - water_loaded(C)
-  - holding(A,C)
+  - water_loaded(A)
+  - water_empty(A)
 
 - name: pour_water
   type: task
   parameters:
   - A
-  - C
   - P
   - R
   cost: 1.0
   preconditions:
   - agent(A)
-  - container(C)
   - plant(P)
   - room(R)
   - at(A,R)
   - at(P,R)
-  - holding(A,C)
-  - water_loaded(C)
+  - water_loaded(A)
   add_effects:
   - watered(P)
+  - water_empty(A)
   del_effects:
-  - water_loaded(C)
+  - water_loaded(A)
   observation:
   - watered(P)
-  - water_loaded(C)
+  - water_loaded(A)
+  - water_empty(A)

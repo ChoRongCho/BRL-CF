@@ -6,9 +6,9 @@ from typing import List
 
 import numpy as np
 
-from scripts.env import load_mobile_dataset
-from scripts.llm import call_llm, configure_openai
-from scripts.prompt import (
+from envs.env import load_mobile_dataset
+from utils.llm import call_llm, configure_openai
+from utils.prompt import (
     DEMO_MC_SCORE_BACKGROUND,
     MOBILE_MC_SCORE_BACKGROUND,
     WASTESORTING_MC_GEN_PROMPT,
@@ -24,7 +24,7 @@ from scripts.prompt import (
     temperature_scaling,
     top_choice_logprobs,
 )
-from scripts.sim import run_tabletop_demo
+from envs.sim import run_tabletop_demo
 
 
 def _generate_mc_choices(mc_gen_prompt: str):

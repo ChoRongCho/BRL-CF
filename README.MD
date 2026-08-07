@@ -26,7 +26,7 @@ The repository also includes a KnowNo-style LLM baseline and evaluation scripts 
     utils/                        # Argument parsing, ASP bridge, logging helpers
     baseline/                     # Baseline implementations
       knowno/                     # KnowNo baseline code, prompts, LLM settings
-      active_search/              # Active Search baseline placeholder
+      attr_pomdp/                 # Adapted Attr-POMDP baseline
   experiments/
     system_eval/                  # System experiment analysis pipeline
     user_eval/                    # User-study analysis pipeline
@@ -135,7 +135,8 @@ Contains baseline implementations:
 - `knowno/scripts/structured_prompts.py`: v1 prompt definitions.
 - `knowno/scripts/structured_prompts_v2.py`: v2 prompt definitions.
 - `knowno/llm_setting.json`: model/API configuration.
-- `active_search/README.md`: placeholder for the Active Search baseline.
+- `attr_pomdp/main.py`: grounded-fact adaptation of Attr-POMDP.
+- `attr_pomdp/README.md`: implementation scope and placeholders.
 
 KnowNo logs are separated by model family:
 

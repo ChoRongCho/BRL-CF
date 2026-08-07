@@ -76,6 +76,46 @@ class TransitionModel:
                 next_state.set_fluent(obj, key, value)
 
         return next_state
+
+    @staticmethod
+    def _state_key(state: State):
+        facts_key = tuple(sorted(str(fact) for fact in state.facts))
+        fluents_key = tuple(
+            sorted(
+                (obj, key, float(value))
+                for obj, values in state.fluents.items()
+                for key, value in values.items()
+            )
+        )
+        return facts_key, fluents_key
+
+    def _merge_duplicate_next_states(
+        self,
+        action: Action,
+        result: List[NextStateOutcome],
+    ) -> List[NextStateOutcome]:
+        state_groups = {}
+        for outcome in result:
+            key = self._state_key(outcome.next_state)
+            state_groups.setdefault(key, []).append(outcome)
+
+        merged_result = []
+        for outcomes in state_groups.values():
+            if len(outcomes) == 1:
+                merged_result.append(outcomes[0])
+                continue
+
+            merged_result.append(
+                NextStateOutcome(
+                    next_state=outcomes[0].next_state,
+                    probability=sum(outcome.probability for outcome in outcomes),
+                )
+            )
+
+        if len(merged_result) == len(result):
+            return result
+
+        return merged_result
     # ==========================================================================
 
     def load_transition(self):
@@ -154,6 +194,6 @@ class TransitionModel:
                 )
             )
 
-        return result
+        return self._merge_duplicate_next_states(action, result)
     
     

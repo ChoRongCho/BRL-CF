@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import product
 from typing import Dict, List
 import re
 
@@ -14,10 +15,9 @@ class TransitionWatering:
         self.type_map = type_map
 
         self.move_success_rate = 0.95
-        self.find_success_rate = 0.90
-        self.pick_success_rate = 0.90
-        self.load_water_success_rate = 0.95
-        self.pour_water_success_rate = 0.90
+        self.find_success_rate = 0.99
+        self.load_water_success_rate = 0.98
+        self.pour_water_success_rate = 0.98
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
         pred, args = _parse_fact(fact)
@@ -76,19 +76,8 @@ class TransitionWatering:
             return []
         return [fact for fact in self._all_at_facts_for_object(obj) if state.has_fact(fact)]
 
-    @staticmethod
-    def _is_holding_object(state: State, obj: str) -> bool:
-        for fact in state.facts:
-            pred, args = _parse_fact(fact)
-            if pred == "holding" and len(args) >= 2 and args[1] == obj:
-                return True
-        return False
-
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
         action_name = action.name.split("(", 1)[0]
-
-        if action_name == "find_basket":
-            return self._build_find_basket_outcomes(action, state)
 
         if action_name == "find_plant":
             return self._build_find_plant_outcomes(action, state)
@@ -99,14 +88,8 @@ class TransitionWatering:
         if action_name == "move":
             return self._build_move_outcomes(action)
 
-        if action_name == "find_basket":
-            return self._build_find_basket_outcomes(action)
-
         if action_name == "find_plant":
             return self._build_find_plant_outcomes(action)
-
-        if action_name == "pick_basket":
-            return self._build_pick_outcomes(action)
 
         if action_name == "load_water":
             return self._build_load_water_outcomes(action)
@@ -129,34 +112,73 @@ class TransitionWatering:
             failure_add_facts=[],
         )
 
-    def _build_find_basket_outcomes(
-        self,
-        action: Action,
-        state: State | None = None,
-    ) -> List[TransitionOutcome]:
-        args = self._get_action_args(action)
-        if len(args) < 3:
-            return [self._make_outcome([], [], 1.0)]
-
-        _, container, room = args[:3]
-        target_fact = f"at({container},{room})"
-        if state is not None and self._is_holding_object(state, container):
-            return [self._make_outcome([], [], 1.0)]
-
-        return self._build_find_location_outcomes_for_state(container, target_fact, state)
-
     def _build_find_plant_outcomes(
         self,
         action: Action,
         state: State | None = None,
     ) -> List[TransitionOutcome]:
         args = self._get_action_args(action)
-        if len(args) < 3:
+        if len(args) < 2:
             return [self._make_outcome([], [], 1.0)]
 
-        _, plant, room = args[:3]
-        target_fact = f"at({plant},{room})"
-        return self._build_find_location_outcomes_for_state(plant, target_fact, state)
+        _, room = args[:2]
+        scanned_fact = f"scanned({room})"
+        outcomes = self._build_find_all_plants_outcomes_for_room(room, state)
+        return [
+            self._make_outcome(
+                add_facts=outcome.add_facts + [scanned_fact],
+                del_facts=outcome.del_facts,
+                probability=outcome.probability,
+            )
+            for outcome in outcomes
+        ]
+
+    def _build_find_all_plants_outcomes_for_room(
+        self,
+        room: str,
+        state: State | None,
+    ) -> List[TransitionOutcome]:
+        per_plant_outcomes = []
+
+        for plant in self.type_map.get("P", []):
+            target_fact = f"at({plant},{room})"
+            per_plant_outcomes.append(
+                self._build_find_location_outcomes_for_state(plant, target_fact, state)
+            )
+
+        return self._merge_independent_outcome_groups(per_plant_outcomes)
+
+    def _merge_independent_outcome_groups(
+        self,
+        outcome_groups: List[List[TransitionOutcome]],
+    ) -> List[TransitionOutcome]:
+        if not outcome_groups:
+            return [self._make_outcome([], [], 1.0)]
+
+        outcome_map = {}
+        for combo in product(*outcome_groups):
+            add_facts = []
+            del_facts = []
+            probability = 1.0
+
+            for outcome in combo:
+                add_facts.extend(outcome.add_facts)
+                del_facts.extend(outcome.del_facts)
+                probability *= outcome.probability
+
+            add_facts = _dedup_facts(add_facts)
+            del_facts = _dedup_facts(del_facts)
+            key = (tuple(sorted(add_facts)), tuple(sorted(del_facts)))
+            outcome_map[key] = outcome_map.get(key, 0.0) + probability
+
+        return [
+            self._make_outcome(
+                add_facts=list(add_key),
+                del_facts=list(del_key),
+                probability=probability,
+            )
+            for (add_key, del_key), probability in outcome_map.items()
+        ]
 
     def _build_find_location_outcomes(self, obj: str, target_fact: str) -> List[TransitionOutcome]:
         return self._build_find_location_outcomes_for_state(obj, target_fact, state=None)
@@ -193,30 +215,23 @@ class TransitionWatering:
             ),
         ]
 
-    def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:
+    def _build_load_water_outcomes(self, action: Action) -> List[TransitionOutcome]:
         args = self._get_action_args(action)
         failure_add_facts = []
         if len(args) >= 1:
-            failure_add_facts.append(f"free({args[0]})")
+            failure_add_facts.append(f"water_empty({args[0]})")
 
-        return self._build_task_outcomes(
-            action,
-            success_rate=self.pick_success_rate,
-            failure_add_facts=failure_add_facts,
-        )
-
-    def _build_load_water_outcomes(self, action: Action) -> List[TransitionOutcome]:
         return self._build_task_outcomes(
             action,
             success_rate=self.load_water_success_rate,
-            failure_add_facts=[],
+            failure_add_facts=failure_add_facts,
         )
 
     def _build_pour_water_outcomes(self, action: Action) -> List[TransitionOutcome]:
         args = self._get_action_args(action)
         failure_add_facts = []
-        if len(args) >= 2:
-            failure_add_facts.append(f"water_loaded({args[1]})")
+        if len(args) >= 1:
+            failure_add_facts.append(f"water_loaded({args[0]})")
 
         return self._build_task_outcomes(
             action,

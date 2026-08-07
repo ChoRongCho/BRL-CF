@@ -63,7 +63,34 @@ class SymbolicWorld:
 
 
 class TomatoWorld(SymbolicWorld):
-    pass
+    QUALITY_PREDICATES = {"ripe", "unripe", "rotten"}
+
+    @staticmethod
+    def _parse_fact(fact: str):
+        fact = normalize_fact(fact)
+        if "(" not in fact or not fact.endswith(")"):
+            return fact, ()
+
+        predicate, _, args = fact[:-1].partition("(")
+        return predicate, tuple(args.split(",")) if args else ()
+
+    def _true_quality_by_tomato(self) -> dict[str, str]:
+        qualities = {}
+        for fact in self.true_init_state.facts:
+            predicate, args = self._parse_fact(fact)
+            if predicate in self.QUALITY_PREDICATES and args:
+                qualities[args[0]] = normalize_fact(fact)
+        return qualities
+
+    def after_action(self, action: Action, executed_state: State) -> None:
+        # Observations may add a believed quality label to the executed
+        # symbolic state. The hidden true world must keep the real label.
+        true_quality = self._true_quality_by_tomato()
+
+        for tomato, quality_fact in true_quality.items():
+            for predicate in self.QUALITY_PREDICATES:
+                self.true_state.remove_fact(f"{predicate}({tomato})")
+            self.true_state.add_fact(quality_fact)
 
 
 class WasteSortingWorld(SymbolicWorld):

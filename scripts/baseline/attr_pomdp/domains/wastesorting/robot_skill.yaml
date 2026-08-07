@@ -1,0 +1,214 @@
+actions:
+  # --------------------------------------------------------------------------
+  # 기존 WasteSorting domain 행동
+  # --------------------------------------------------------------------------
+  - name: detect_waste
+    type: observe
+    parameters: [R]
+    cost: 0.5
+    preconditions:
+      - robot(R)
+      - handempty(R)
+    add_effects:
+      - detected(W)
+    del_effects: []
+    observation:
+      - detected(W)
+      - plastic(W)
+      - can(W)
+      - paper(W)
+      - general(W)
+
+  - name: pick
+    type: task
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - detected(W)
+      - handempty(R)
+    add_effects:
+      - holding(R, W)
+    del_effects:
+      - handempty(R)
+    observation:
+      - holding(R, W)
+      - handempty(R)
+
+  - name: place_gw_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+      - general_bin(B)
+      - detected(W)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+      - detected(W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+      - holding(R, W)
+      - detected(W)
+
+  - name: place_paper_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+      - paper_bin(B)
+      - detected(W)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+      - detected(W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+      - holding(R, W)
+      - detected(W)
+
+  - name: place_can_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+      - can_bin(B)
+      - detected(W)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+      - detected(W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+      - detected(W)
+      - holding(R, W)
+
+  - name: place_plastic_bin
+    type: task
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+      - holding(R, W)
+      - plastic_bin(B)
+      - detected(W)
+    add_effects:
+      - in_bin(W, B)
+      - handempty(R)
+    del_effects:
+      - holding(R, W)
+      - detected(W)
+    observation:
+      - in_bin(W, B)
+      - handempty(R)
+      - detected(W)
+      - holding(R, W)
+
+  # --------------------------------------------------------------------------
+  # ρ-POMDP용 사람 질문 행동
+  # 각 질문은 world state를 변경하지 않고 answer observation만 생성한다.
+  # --------------------------------------------------------------------------
+  - name: ask_waste_plastic
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - plastic(W)
+
+  - name: ask_waste_can
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - can(W)
+
+  - name: ask_waste_paper
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - paper(W)
+
+  - name: ask_waste_general
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - general(W)
+
+  - name: ask_waste_detected
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - detected(W)
+
+  - name: ask_holding_or_handempty
+    type: ask
+    parameters: [R, W]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - holding(R, W)
+      - handempty(R)
+
+  - name: ask_waste_in_bin
+    type: ask
+    parameters: [R, W, B]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - waste(W)
+    add_effects: []
+    del_effects: []
+    observation:
+      - in_bin(W, B)

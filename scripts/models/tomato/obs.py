@@ -2,36 +2,41 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
 from itertools import product
+from typing import Dict, List
+import random
 import re
 
-from utils.utils import _dedup_facts, _parse_fact, _format_fact
-from models.state import State
 from models.action import Action
 from models.observation import Observation, ObservationOutcome
+from models.state import State
+from utils.utils import _dedup_facts, _format_fact, _parse_fact
 
 
 Choice = Dict
 
 
+DETECT_FALSE_POSITIVE_RATE = 0.01
+# (low, high, mode): triangular confidence for correct detector observations.
+DETECT_CONFIDENCE_RANGE = (0.70, 0.99, 0.90)
+# (low, high, mode): triangular confidence for scan-style observations.
+SCAN_CONFIDENCE_RANGE = (0.85, 0.99, 0.95)
+# (low, high, mode): triangular confidence for pick/place gripper observations.
+GRIPPER_CONFIDENCE_RANGE = (0.85, 0.99, 0.95)
+# (low, high, mode): triangular confidence for navigation observations.
+NAVIGATION_CONFIDENCE_RANGE = (0.85, 0.99, 0.95)
+# (low, high): uniform confidence for false positives or wrong labels.
+UNCERTAIN_CONFIDENCE_RANGE = (0.60, 0.70)
+MIN_LIKELIHOOD = 1e-6
+MAX_LIKELIHOOD = 0.999999
+
+
 class ObservationTomato:
     """
-    Observation model for the tomato domain.
+    Tomato observation model with detector-style confidence for every action.
 
-    Two execution modes are supported:
-    - real_robot: observations are generated from the hypothesized runtime state.
-    - true_init: detect/scan observations use initial_state.yaml:true_init as GT.
-
-    The detect model is factorized by tomato. For each tomato, the local
-    observation space has three states:
-    - not observed
-    - observed and classified as ripe
-    - observed and classified as unripe
-
-    The full detect distribution is the Cartesian product of these local
-    distributions, followed by normalization.
+    The symbolic observation still contains facts only. The confidence of each
+    observed fact is carried separately in Observation.fact_confidences.
     """
 
     def __init__(
@@ -49,10 +54,11 @@ class ObservationTomato:
         self.observation_source = observation_source
         self.use_true_init_observation = observation_source == "true_init"
 
-        self.detect_observed_success_rate = 0.85
-        self.detect_classification_success_rate = 0.95
-        self.scan_success_rate = 0.85
-        self.navigate_success_rate = 0.95
+        self.detect_false_positive_rate = DETECT_FALSE_POSITIVE_RATE
+        self.correct_confidence_low, self.correct_confidence_high, self.correct_confidence_mode = (
+            DETECT_CONFIDENCE_RANGE
+        )
+        self.uncertain_confidence_low, self.uncertain_confidence_high = UNCERTAIN_CONFIDENCE_RANGE
 
         if self.use_true_init_observation and self.true_state is None:
             raise ValueError("observation_source=true_init requires initial_state.yaml true_init")
@@ -62,50 +68,36 @@ class ObservationTomato:
     # ------------------------------------------------------------------
 
     def build_candidates(self, action: Action) -> List[str]:
-        """Expand all symbolic observation facts in an action."""
         expanded = []
         for obs in action.observation:
             expanded.extend(self._expand_free_variables_in_fact(obs))
         return _dedup_facts(expanded)
 
     def build_fluent_candidates(self, action: Action) -> List[str]:
-        """Expand all symbolic observation fluent expressions in an action."""
         expanded = []
         for obs in action.observation_fluents:
             expanded.extend(self._expand_free_variables_in_fact(obs))
         return _dedup_facts(expanded)
 
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
-        """Dispatch to an action-specific observation model."""
-        action_name = action.name.split("(")[0]
+        action_name = self._action_name(action)
 
         if action_name == "detect":
             return self._build_detect_distribution(state, action)
-        
+
         if action_name == "pick_n_scan":
             return self._build_pick_n_scan_distribution(state, action)
-        
+
         if action_name == "scan":
             return self._build_scan_distribution(state, action)
-        
+
         if action_name == "navigate":
             return self._build_navigate_distribution(state, action)
 
-        if action_name == "place":
-            return self._build_certain_candidate_distribution(state, action)
-        
-        else:
-            return self._build_default_distribution(state, action)
+        return self._build_default_distribution(state, action)
 
     def get_observation_distribution_for_likelihood(self, state: State, action: Action) -> List[ObservationOutcome]:
-        """
-        Score observations against a candidate frontier state during belief update.
-
-        Sampling uses hidden true_state as the sensor reference. Likelihood must
-        use the candidate state; otherwise scan observations do not distinguish
-        ripe(T) and rotten(T) frontiers.
-        """
-        action_name = action.name.split("(")[0]
+        action_name = self._action_name(action)
 
         if action_name == "detect":
             return self._build_detect_distribution(state, action, use_true_state=False)
@@ -119,22 +111,88 @@ class ObservationTomato:
         return self.get_observation_distribution(state, action)
 
     def likelihood(self, observation: Observation, state: State, action: Action) -> float | None:
-        action_name = action.name.split("(")[0]
-        if action_name != "detect":
-            return None
-        return self._detect_likelihood(observation, state, action)
+        action_name = self._action_name(action)
+
+        if action_name == "detect":
+            return self._detect_likelihood(observation, state, action)
+
+        if action_name in {"scan", "pick_n_scan"}:
+            return self._scan_likelihood(observation, state, action)
+
+        return self._confidence_likelihood(observation, state, action)
+
+    # ------------------------------------------------------------------
+    # Confidence helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _action_name(action: Action) -> str:
+        return action.name.split("(", 1)[0]
+
+    def _detect_confidence(self) -> float:
+        low, high, mode = DETECT_CONFIDENCE_RANGE
+        return random.triangular(low, high, mode)
+
+    def _scan_confidence(self) -> float:
+        low, high, mode = SCAN_CONFIDENCE_RANGE
+        return random.triangular(low, high, mode)
+
+    def _gripper_confidence(self) -> float:
+        low, high, mode = GRIPPER_CONFIDENCE_RANGE
+        return random.triangular(low, high, mode)
+
+    def _navigation_confidence(self) -> float:
+        low, high, mode = NAVIGATION_CONFIDENCE_RANGE
+        return random.triangular(low, high, mode)
+
+    def _uncertain_confidence(self) -> float:
+        low, high = UNCERTAIN_CONFIDENCE_RANGE
+        return random.uniform(low, high)
+
+    @staticmethod
+    def _valid_likelihood(value: float) -> float:
+        return min(MAX_LIKELIHOOD, max(MIN_LIKELIHOOD, float(value)))
+
+    @staticmethod
+    def _normalize_fact(fact: str) -> str:
+        return str(fact).replace(" ", "")
+
+    def _confidence_map(self, facts: List[str], confidence: float) -> Dict[str, float]:
+        return {
+            self._normalize_fact(fact): round(float(confidence), 4)
+            for fact in facts
+        }
+
+    def _make_outcome(
+        self,
+        facts: List[str],
+        probability: float,
+        confidence: float | None = None,
+        fluents: Dict[str, Dict[str, float]] | None = None,
+        fact_confidences: Dict[str, float] | None = None,
+    ) -> ObservationOutcome:
+        normalized_facts = list(dict.fromkeys(self._normalize_fact(fact) for fact in facts))
+        confidences = {}
+        if confidence is not None:
+            confidences.update(self._confidence_map(normalized_facts, confidence))
+        if fact_confidences:
+            confidences.update({
+                self._normalize_fact(fact): round(float(value), 4)
+                for fact, value in fact_confidences.items()
+            })
+
+        return ObservationOutcome(
+            facts=normalized_facts,
+            probability=float(probability),
+            fluents=fluents or {},
+            fact_confidences=confidences,
+        )
 
     # ------------------------------------------------------------------
     # Generic fact expansion helpers
     # ------------------------------------------------------------------
-    def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
-        """
-        Expand facts with typed variables using the domain type map.
 
-        Example:
-            observed(T) with T=[tomato1,tomato2]
-            -> observed(tomato1), observed(tomato2)
-        """
+    def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
         pred, args = _parse_fact(fact)
 
         variable_positions = []
@@ -182,30 +240,25 @@ class ObservationTomato:
         _, args = _parse_fact(action.name.replace(" ", ""))
         return args
 
+    @staticmethod
+    def _scan_labels(tomato: str) -> List[str]:
+        return [f"ripe({tomato})", f"rotten({tomato})"]
+
+    @staticmethod
+    def _detect_labels(tomato: str) -> List[str]:
+        return [f"ripe({tomato})", f"unripe({tomato})"]
+
     # ------------------------------------------------------------------
     # State interpretation helpers
     # ------------------------------------------------------------------
 
     def _tomato_ground_truth_state(self, state: State) -> State:
-        """
-        Return the state that should define tomato GT for observations.
-
-        In true_init simulation mode, tomato position/ripeness comes from
-        initial_state.yaml:true_init. In real_robot mode, the runtime state is
-        treated as the observation reference.
-        """
         if self.use_true_init_observation:
             return self.true_state
         return state
 
     @staticmethod
     def _ripeness_label_for_state(state: State, tomato: str, *, detect_mode: bool = False) -> str | None:
-        """
-        Return the tomato ripeness label in a state.
-
-        Detection uses a camera-style coarse label: rotten tomatoes are seen as
-        visually ripe. Scan keeps rotten as a separate label.
-        """
         if state.has_fact(f"unripe({tomato})"):
             return f"unripe({tomato})"
         if state.has_fact(f"rotten({tomato})"):
@@ -216,9 +269,6 @@ class ObservationTomato:
 
     @staticmethod
     def _tomato_is_no_longer_at_stem(runtime_state: State, tomato: str) -> bool:
-        """
-        Detect should not rediscover tomatoes that have already moved out of a stem.
-        """
         for fact in runtime_state.facts:
             if fact == f"loaded({tomato})" or fact.startswith(f"loaded({tomato},"):
                 return True
@@ -238,14 +288,6 @@ class ObservationTomato:
         at_fact: str,
         observed_fact: str,
     ) -> bool:
-        """
-        Decide whether a tomato exists at the detect target.
-
-        In true_init mode, existence comes from GT at(T,S), but runtime facts can
-        remove the tomato from the stem after pick/place/discard. In real_robot
-        mode, an already hypothesized observed+at tomato is treated as the
-        reference.
-        """
         if self.use_true_init_observation:
             if not gt_state.has_fact(at_fact):
                 return False
@@ -256,21 +298,18 @@ class ObservationTomato:
     # ------------------------------------------------------------------
     # Default / navigate / scan observation models
     # ------------------------------------------------------------------
-    def _build_certain_candidate_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
-        candidates = self.build_candidates(action)
-        true_facts = [fact for fact in candidates if state.has_fact(fact)]
-        return [ObservationOutcome(facts=true_facts, probability=1.0)]
 
     def _build_default_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         candidates = self.build_candidates(action)
         true_facts = [fact for fact in candidates if state.has_fact(fact)]
 
         if not true_facts:
-            return [ObservationOutcome(facts=[], probability=1.0)]
+            return [self._make_outcome([], 1.0)]
 
+        confidence = self._gripper_confidence()
         return [
-            ObservationOutcome(facts=true_facts, probability=1.0 - self.noise),
-            ObservationOutcome(facts=[], probability=self.noise),
+            self._make_outcome(true_facts, confidence, confidence=confidence),
+            self._make_outcome([], 1.0 - confidence),
         ]
 
     def _build_navigate_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
@@ -278,18 +317,21 @@ class ObservationTomato:
         true_facts = [fact for fact in candidates if state.has_fact(fact)]
 
         if not true_facts:
-            return [ObservationOutcome(facts=[], probability=1.0)]
+            return [self._make_outcome([], 1.0)]
 
         wrong_facts = [fact for fact in candidates if fact not in true_facts]
         if not wrong_facts:
-            return [ObservationOutcome(facts=true_facts, probability=1.0)]
+            confidence = self._navigation_confidence()
+            return [self._make_outcome(true_facts, 1.0, confidence=confidence)]
 
-        outcomes = [ObservationOutcome(facts=true_facts, probability=self.navigate_success_rate)]
-        alternative_prob = (1.0 - self.navigate_success_rate) / (len(wrong_facts) + 1)
+        confidence = self._navigation_confidence()
+        outcomes = [self._make_outcome(true_facts, confidence, confidence=confidence)]
+        alternative_prob = (1.0 - confidence) / (len(wrong_facts) + 1)
 
         for fact in wrong_facts:
-            outcomes.append(ObservationOutcome(facts=[fact], probability=alternative_prob))
-        outcomes.append(ObservationOutcome(facts=[], probability=alternative_prob))
+            wrong_confidence = self._uncertain_confidence()
+            outcomes.append(self._make_outcome([fact], alternative_prob, confidence=wrong_confidence))
+        outcomes.append(self._make_outcome([], alternative_prob))
 
         return outcomes
 
@@ -299,33 +341,27 @@ class ObservationTomato:
         action: Action,
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
-        """
-        Scan observes the true ripe/unripe/rotten label for the held tomato.
-
-        The tomato is taken from the grounded action name instead of
-        action.observation. This lets pick_n_scan reuse the same scan model even
-        when robot_skill.yaml leaves its observation field empty.
-        """
         gt_state = self._tomato_ground_truth_state(state) if use_true_state else state
         args = self._get_action_args(action)
         if len(args) < 2:
-            return [ObservationOutcome(facts=[], probability=1.0)]
+            return [self._make_outcome([], 1.0)]
 
         tomato = args[1]
-        all_labels = [f"ripe({tomato})", f"rotten({tomato})"]
+        all_labels = self._scan_labels(tomato)
         true_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=False)
 
         if true_label not in all_labels:
             true_label = f"ripe({tomato})"
 
+        true_confidence = self._scan_confidence()
+        outcomes = [self._make_outcome([true_label], true_confidence, confidence=true_confidence)]
+
         wrong_labels = [label for label in all_labels if label != true_label]
-
-        correct_prob = self.scan_success_rate
-        wrong_prob = (1.0 - correct_prob) / len(wrong_labels)
-
-        outcomes = [ObservationOutcome(facts=[true_label], probability=correct_prob)]
-        for label in wrong_labels:
-            outcomes.append(ObservationOutcome(facts=[label], probability=wrong_prob))
+        if wrong_labels:
+            wrong_prob = (1.0 - true_confidence) / len(wrong_labels)
+            for label in wrong_labels:
+                wrong_confidence = self._uncertain_confidence()
+                outcomes.append(self._make_outcome([label], wrong_prob, confidence=wrong_confidence))
 
         return outcomes
 
@@ -335,12 +371,6 @@ class ObservationTomato:
         action: Action,
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
-        """
-        pick_n_scan observes exactly the scan part of the combined skill.
-
-        Pick is assumed deterministic in the transition model, so the only
-        uncertain observation is the tomato ripeness/classification result.
-        """
         return self._build_scan_distribution(state, action, use_true_state=use_true_state)
 
     # ------------------------------------------------------------------
@@ -348,7 +378,6 @@ class ObservationTomato:
     # ------------------------------------------------------------------
 
     def _build_detect_tomato_entries(self, action: Action) -> List[Dict[str, str]]:
-        """Create one detect entry per tomato for the action target stem."""
         args = self._get_action_args(action)
         if len(args) < 2:
             return []
@@ -365,9 +394,6 @@ class ObservationTomato:
         return entries
 
     def _get_observed_fluents(self, tomato: str, action: Action) -> Dict[str, Dict[str, float]]:
-        """
-        Attach true fluents to a detected tomato when observation_fluents exists.
-        """
         if self.true_state is None or tomato not in self.true_state.fluents:
             return {}
 
@@ -381,18 +407,87 @@ class ObservationTomato:
             return {}
         return {tomato: fluent_values}
 
-    @staticmethod
     def _detect_choice(
+        self,
         facts: List[str],
         probability: float,
         fluents: Dict[str, Dict[str, float]] | None = None,
+        fact_confidences: Dict[str, float] | None = None,
     ) -> Choice:
-        """Small constructor for one local detect choice."""
         return {
-            "facts": list(dict.fromkeys(fact.replace(" ", "") for fact in facts)),
+            "facts": list(dict.fromkeys(self._normalize_fact(fact) for fact in facts)),
             "fluents": fluents or {},
-            "probability": probability,
+            "probability": float(probability),
+            "fact_confidences": fact_confidences or {},
         }
+
+    @staticmethod
+    def _observed_label_facts(tomato: str) -> tuple[List[str], List[str]]:
+        observed_fact = f"observed({tomato})"
+        return (
+            [observed_fact, f"ripe({tomato})"],
+            [observed_fact, f"unripe({tomato})"],
+        )
+
+    def _label_confidences(
+        self,
+        observed_fact: str,
+        label_fact: str,
+        confidence: float,
+    ) -> Dict[str, float]:
+        confidence = round(float(confidence), 4)
+        return {
+            self._normalize_fact(observed_fact): confidence,
+            self._normalize_fact(label_fact): confidence,
+        }
+
+    def _build_false_positive_detect_choices(
+        self,
+        observed_fact: str,
+        observed_ripe: List[str],
+        observed_unripe: List[str],
+        fluents: Dict[str, Dict[str, float]],
+        tomato: str,
+    ) -> List[Choice]:
+        false_positive_prob = self.detect_false_positive_rate / 2.0
+        ripe_confidence = random.uniform(
+            self.uncertain_confidence_low,
+            self.uncertain_confidence_high,
+        )
+        unripe_confidence = random.uniform(
+            self.uncertain_confidence_low,
+            self.uncertain_confidence_high,
+        )
+
+        return [
+            self._detect_choice([], 1.0 - self.detect_false_positive_rate),
+            self._detect_choice(
+                observed_ripe,
+                false_positive_prob,
+                fluents,
+                self._label_confidences(observed_fact, f"ripe({tomato})", ripe_confidence),
+            ),
+            self._detect_choice(
+                observed_unripe,
+                false_positive_prob,
+                fluents,
+                self._label_confidences(observed_fact, f"unripe({tomato})", unripe_confidence),
+            ),
+        ]
+
+    def _true_and_wrong_detect_facts(
+        self,
+        gt_state: State,
+        tomato: str,
+        observed_ripe: List[str],
+        observed_unripe: List[str],
+    ) -> tuple[str, List[str], str, List[str]]:
+        true_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=True)
+        if true_label == f"unripe({tomato})":
+            return true_label, observed_unripe, f"ripe({tomato})", observed_ripe
+
+        true_label = f"ripe({tomato})"
+        return true_label, observed_ripe, f"unripe({tomato})", observed_unripe
 
     def _build_detect_tomato_choices(
         self,
@@ -401,29 +496,11 @@ class ObservationTomato:
         action: Action,
         entry: Dict[str, str],
     ) -> List[Choice]:
-        """
-        Build the local 3-state observation distribution for one tomato.
-
-        Local states:
-        - not observed
-        - observed & ripe
-        - observed & unripe
-
-        The probabilities are unnormalized local likelihoods. They are multiplied
-        across tomatoes and normalized after Cartesian composition.
-        """
-        p_detect = self.detect_observed_success_rate
-        p_miss = 1.0 - p_detect
-        p_correct_class = self.detect_classification_success_rate
-        p_wrong_class = 1.0 - p_correct_class
-
         tomato = entry["tomato"]
         observed_fact = entry["observed_fact"]
         at_fact = entry["at_fact"]
         fluents = self._get_observed_fluents(tomato, action)
-
-        observed_ripe = [observed_fact, f"ripe({tomato})"]
-        observed_unripe = [observed_fact, f"unripe({tomato})"]
+        observed_ripe, observed_unripe = self._observed_label_facts(tomato)
 
         exists_at_target = self._has_detectable_tomato_at(
             runtime_state,
@@ -434,49 +511,54 @@ class ObservationTomato:
         )
 
         if not exists_at_target:
-            # GT says no tomato is available at this stem. The most likely local
-            # observation is no detection; false positives are given miss mass.
-            return [
-                self._detect_choice([], p_detect),
-                self._detect_choice(observed_ripe, p_miss, fluents),
-                self._detect_choice(observed_unripe, p_miss, fluents),
-            ]
+            return self._build_false_positive_detect_choices(
+                observed_fact,
+                observed_ripe,
+                observed_unripe,
+                fluents,
+                tomato,
+            )
 
-        true_detect_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=True)
-        if true_detect_label == f"unripe({tomato})":
-            ripe_prob = p_detect * p_wrong_class
-            unripe_prob = p_detect * p_correct_class
-        else:
-            # Camera detect cannot distinguish rotten from visually ripe.
-            # Unknown labels are conservatively treated as ripe-like.
-            ripe_prob = p_detect * p_correct_class
-            unripe_prob = p_detect * p_wrong_class
+        true_label, true_facts, wrong_label, wrong_facts = self._true_and_wrong_detect_facts(
+            gt_state,
+            tomato,
+            observed_ripe,
+            observed_unripe,
+        )
+
+        true_confidence = self._detect_confidence()
+        wrong_confidence = self._uncertain_confidence()
 
         return [
-            self._detect_choice([], p_miss),
-            self._detect_choice(observed_ripe, ripe_prob, fluents),
-            self._detect_choice(observed_unripe, unripe_prob, fluents),
+            self._detect_choice(
+                true_facts,
+                true_confidence,
+                fluents,
+                self._label_confidences(observed_fact, true_label, true_confidence),
+            ),
+            self._detect_choice(
+                wrong_facts,
+                1.0 - true_confidence,
+                fluents,
+                self._label_confidences(observed_fact, wrong_label, wrong_confidence),
+            ),
         ]
 
     @staticmethod
     def _merge_detect_choices(per_tomato_choices: List[List[Choice]]) -> List[ObservationOutcome]:
-        """
-        Cartesian-compose local tomato choices into global outcomes.
-
-        Equivalent outcomes are merged, then probabilities are normalized so the
-        returned distribution sums to 1.
-        """
         outcome_map = {}
 
         for combo in product(*per_tomato_choices):
             facts = []
             fluents = {}
+            fact_confidences = {}
             probability = 1.0
 
             for choice in combo:
                 facts.extend(choice["facts"])
                 for obj, values in choice["fluents"].items():
                     fluents.setdefault(obj, {}).update(values)
+                fact_confidences.update(choice.get("fact_confidences", {}))
                 probability *= choice["probability"]
 
             facts = _dedup_facts(facts)
@@ -487,7 +569,13 @@ class ObservationTomato:
                     for key, value in values.items()
                 )
             )
-            map_key = (tuple(sorted(facts)), fluent_key)
+            confidence_key = tuple(
+                sorted(
+                    (fact, round(float(confidence), 4))
+                    for fact, confidence in fact_confidences.items()
+                )
+            )
+            map_key = (tuple(sorted(facts)), fluent_key, confidence_key)
             outcome_map[map_key] = outcome_map.get(map_key, 0.0) + probability
 
         total = sum(outcome_map.values())
@@ -495,7 +583,7 @@ class ObservationTomato:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         outcomes = []
-        for (facts_key, fluent_key), probability in outcome_map.items():
+        for (facts_key, fluent_key, confidence_key), probability in outcome_map.items():
             fluents = {}
             for obj, key, value in fluent_key:
                 fluents.setdefault(obj, {})[key] = value
@@ -505,6 +593,10 @@ class ObservationTomato:
                     facts=list(facts_key),
                     fluents=fluents,
                     probability=probability / total,
+                    fact_confidences={
+                        fact: float(confidence)
+                        for fact, confidence in confidence_key
+                    },
                 )
             )
 
@@ -516,9 +608,6 @@ class ObservationTomato:
         action: Action,
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
-        """
-        Build P(o | state, detect) as a product of independent tomato factors.
-        """
         gt_state = self._tomato_ground_truth_state(state) if use_true_state else state
         tomato_entries = self._build_detect_tomato_entries(action)
         if not tomato_entries:
@@ -528,55 +617,106 @@ class ObservationTomato:
             self._build_detect_tomato_choices(state, gt_state, action, entry)
             for entry in tomato_entries
         ]
-
         return self._merge_detect_choices(per_tomato_choices)
 
+    # ------------------------------------------------------------------
+    # Likelihood
+    # ------------------------------------------------------------------
+
+    def _scan_likelihood(self, observation: Observation, state: State, action: Action) -> float:
+        args = self._get_action_args(action)
+        if len(args) < 2:
+            return 1.0 if not observation.state.facts else self.noise
+
+        tomato = args[1]
+        labels = set(self._scan_labels(tomato))
+        observed_labels = labels & set(observation.state.facts)
+        if not observed_labels:
+            return self.noise
+
+        observed_label = next(iter(observed_labels))
+        confidence = self._valid_likelihood(
+            observation.confidence(observed_label, default=self.correct_confidence_mode)
+        )
+
+        true_label = self._ripeness_label_for_state(state, tomato, detect_mode=False)
+        if true_label not in labels:
+            true_label = f"ripe({tomato})"
+
+        return confidence if observed_label == true_label else 1.0 - confidence
+
+    @staticmethod
+    def _observed_detect_label(obs_set: set[str], tomato: str) -> str | None:
+        for label in (f"ripe({tomato})", f"unripe({tomato})"):
+            if label in obs_set:
+                return label
+        return None
+
+    def _candidate_detect_label(self, state: State, entry: Dict[str, str]) -> str | None:
+        tomato = entry["tomato"]
+        ripe_fact, unripe_fact = self._detect_labels(tomato)
+        if not self._has_detectable_tomato_at(
+            state,
+            state,
+            tomato,
+            entry["at_fact"],
+            entry["observed_fact"],
+        ):
+            return None
+
+        candidate_label = self._ripeness_label_for_state(state, tomato, detect_mode=True)
+        if candidate_label not in {ripe_fact, unripe_fact}:
+            return ripe_fact
+        return candidate_label
+
     def _detect_likelihood(self, observation: Observation, state: State, action: Action) -> float:
-        """
-        Compute P(observation | state, detect) without materializing the full
-        Cartesian observation distribution. This is equivalent to
-        _build_detect_distribution(...), but avoids 3^N outcomes per frontier.
-        """
-        gt_state = state
         tomato_entries = self._build_detect_tomato_entries(action)
         if not tomato_entries:
             return 1.0 if not observation.state.facts and not observation.state.fluents else self.noise
 
         obs_set = set(observation.state.facts)
-        obs_fluents = observation.state.fluents
         probability = 1.0
-        normalizer = 1.0
 
         for entry in tomato_entries:
-            choices = self._build_detect_tomato_choices(state, gt_state, action, entry)
-            normalizer *= sum(choice["probability"] for choice in choices)
-
             tomato = entry["tomato"]
-            tomato_obs = {
-                entry["observed_fact"],
-                f"ripe({tomato})",
-                f"unripe({tomato})",
-            }
-            local_obs = obs_set & tomato_obs
-            matching_prob = 0.0
-            for choice in choices:
-                choice_facts = set(choice["facts"])
-                if choice_facts == local_obs:
-                    matching_prob += choice["probability"]
+            local_label = self._observed_detect_label(obs_set, tomato)
+            candidate_label = self._candidate_detect_label(state, entry)
 
-            if matching_prob <= 0.0:
-                return self.noise
-            probability *= matching_prob
+            if local_label is None:
+                if candidate_label is not None:
+                    probability *= max(1e-6, 1.0 - self.correct_confidence_mode)
+                else:
+                    probability *= max(1e-6, 1.0 - self.detect_false_positive_rate)
+                continue
 
-        if obs_fluents:
-            expected_fluents = {}
-            for entry in tomato_entries:
-                if entry["observed_fact"] in obs_set:
-                    for obj, values in self._get_observed_fluents(entry["tomato"], action).items():
-                        expected_fluents.setdefault(obj, {}).update(values)
-            if expected_fluents != obs_fluents:
-                return self.noise
+            confidence = self._valid_likelihood(
+                observation.confidence(local_label, default=self.correct_confidence_mode)
+            )
 
-        if normalizer <= 0.0:
-            return self.noise
-        return probability / normalizer
+            if candidate_label == local_label:
+                probability *= confidence
+            else:
+                probability *= 1.0 - confidence
+
+        return max(0.0, float(probability))
+
+    def _confidence_likelihood(self, observation: Observation, state: State, action: Action) -> float:
+        candidates = set(self.build_candidates(action))
+        observed_facts = set(observation.state.facts)
+        if not observed_facts:
+            true_candidates = [fact for fact in candidates if state.has_fact(fact)]
+            if not true_candidates:
+                return 1.0
+            return max(1e-6, 1.0 - self.correct_confidence_mode)
+
+        probability = 1.0
+        for fact in observed_facts:
+            confidence = self._valid_likelihood(
+                observation.confidence(fact, default=self.correct_confidence_mode)
+            )
+            if state.has_fact(fact):
+                probability *= confidence
+            else:
+                probability *= 1.0 - confidence
+
+        return max(0.0, float(probability))

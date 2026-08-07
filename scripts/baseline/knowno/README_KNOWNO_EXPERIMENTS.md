@@ -6,24 +6,24 @@
 
 도메인별 multi-step planner는 다음 파일을 사용한다.
 
-- Unified runner: `knowno_baseline_experiment.py`
+- Unified runner: `runners/knowno_baseline_experiment.py`
 - Shell runner: `run/run_knowno_baseline.sh`
-- Tomato harvesting planner: `scripts/knowno_multistep_tomato.py`
-- Waste sorting planner: `scripts/knowno_multistep_wastesorting.py`
-- Waste sorting wrapper: `scripts/knowno_multistep_waste.py`
+- Tomato harvesting planner: `runners/knowno_multistep_tomato.py`
+- Waste sorting planner: `runners/knowno_multistep_wastesorting.py`
+- Waste sorting wrapper: `runners/knowno_multistep_waste.py`
 
-`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/knowno/scripts/` 아래에 보관한다.
+`knowno.py`는 single-step/demo entrypoint에 가깝다. 도메인별 multi-step 실험은 `runners/knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`로 실행한다. 개별 planner 파일은 `scripts/baseline/knowno/runners/` 아래에 보관한다. 도메인별 semantics, action parser, logger는 `scripts/baseline/knowno/domains/<domain>/` 아래에 둔다.
 
 ## Important Scene Note
 
-`knowno_baseline_experiment.py`는 `scripts/domain/tomato/scene_0N.yaml` 또는 `scripts/domain/wastesorting/scene_0N.yaml`을 읽고, `true_init`을 기존 planner 인자로 변환한다.
+`runners/knowno_baseline_experiment.py`는 `scripts/domain/tomato/scene_0N.yaml` 또는 `scripts/domain/wastesorting/scene_0N.yaml`을 읽고, `true_init`을 기존 planner 인자로 변환한다.
 
 기존 planner는 초기 hidden state를 command-line 인자로 받는다.
 
 - Tomato: `--labels`, `--locations`
 - Waste sorting: `--labels`
 
-따라서 직접 planner를 실행할 때만 아래 표의 값을 인자로 넣으면 된다. 권장 실행 방식은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`이다.
+따라서 직접 planner를 실행할 때만 아래 표의 값을 인자로 넣으면 된다. 권장 실행 방식은 `runners/knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`이다.
 
 ## Setup
 
@@ -69,8 +69,8 @@ bash run/run_knowno_baseline.sh
 Python runner를 직접 실행할 수도 있다.
 
 ```bash
-python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain tomato --scene 01
-python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain wastesorting --scene 03
+python3 scripts/baseline/knowno/runners/knowno_baseline_experiment.py --domain tomato --scene 01
+python3 scripts/baseline/knowno/runners/knowno_baseline_experiment.py --domain wastesorting --scene 03
 ```
 
 ## Tomato Experiments
@@ -78,7 +78,7 @@ python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain wastesort
 기본 실행:
 
 ```bash
-python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain tomato --scene 01
+python3 scripts/baseline/knowno/runners/knowno_baseline_experiment.py --domain tomato --scene 01
 ```
 
 주요 인자:
@@ -99,7 +99,7 @@ python3 scripts/baseline/knowno/knowno_baseline_experiment.py --domain tomato --
 `scripts/domain/tomato/scene_01.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -107,7 +107,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_02.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:unripe,tomato3:rotten,tomato4:ripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -115,7 +115,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_03.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --labels "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:rotten" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -123,7 +123,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_04.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --labels "tomato1:rotten,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -131,7 +131,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 `scripts/domain/tomato/scene_05.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --labels "tomato1:rotten,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
@@ -139,7 +139,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 Example with deterministic seed and verbose logging:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --seed 1 \
   --verbose \
   --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
@@ -151,13 +151,13 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 기본 실행:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py
 ```
 
 `knowno_multistep_waste.py`는 wrapper이므로 아래 명령과 동일한 planner를 실행한다.
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_waste.py
+python3 scripts/baseline/knowno/runners/knowno_multistep_waste.py
 ```
 
 주요 인자:
@@ -176,42 +176,42 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_waste.py
 `scripts/domain/wastesorting/scene_01.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:general,waste3:plastic,waste4:can"
 ```
 
 `scripts/domain/wastesorting/scene_02.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --labels "waste1:can,waste2:general,waste3:paper,waste4:can"
 ```
 
 `scripts/domain/wastesorting/scene_03.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --labels "waste1:plastic,waste2:plastic,waste3:paper,waste4:general"
 ```
 
 `scripts/domain/wastesorting/scene_04.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:paper,waste3:can,waste4:general"
 ```
 
 `scripts/domain/wastesorting/scene_05.yaml`:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --labels "waste1:paper,waste2:paper,waste3:can,waste4:can"
 ```
 
 Example with deterministic seed and verbose logging:
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --seed 1 \
   --verbose \
   --labels "waste1:paper,waste2:general,waste3:plastic,waste4:can"
@@ -222,7 +222,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
 두 multi-step planner 모두 calibration 옵션을 제공한다.
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --run-calibration \
   --num-calibration 20 \
   --num-test 10 \
@@ -230,7 +230,7 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
 ```
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --run-calibration \
   --num-calibration 20 \
   --num-test 10 \
@@ -240,12 +240,12 @@ python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
 Calibration dataset template을 만들려면 다음 옵션을 사용한다.
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_wastesorting.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_wastesorting.py \
   --write-calibration-template /tmp/waste_knowno_calibration.txt
 ```
 
 ```bash
-python3 scripts/baseline/knowno/scripts/knowno_multistep_tomato.py \
+python3 scripts/baseline/knowno/runners/knowno_multistep_tomato.py \
   --write-calibration-template /tmp/tomato_knowno_calibration.txt
 ```
 
@@ -267,9 +267,9 @@ qhat = quantile(scores, q_level, method="higher")
 이 저장소에서는 계산용 CLI를 제공한다.
 
 ```bash
-python3 scripts/baseline/knowno/compute_qhat.py \
+python3 scripts/baseline/knowno/calibration/compute_qhat.py \
   --domain tomato \
-  --calibration-file scripts/baseline/knowno/data/tomato-mc-gen-prompt.txt \
+  --calibration-file scripts/baseline/knowno/domains/tomato/calibration_dataset/mc-gen-prompt.txt \
   --num-calibration 20 \
   --target-success 0.8 \
   --score-with-llm \
@@ -280,7 +280,7 @@ python3 scripts/baseline/knowno/compute_qhat.py \
 이미 LLM scoring 결과를 저장한 JSON이 있으면 API 호출 없이 계산할 수 있다.
 
 ```bash
-python3 scripts/baseline/knowno/compute_qhat.py \
+python3 scripts/baseline/knowno/calibration/compute_qhat.py \
   --domain tomato \
   --scored-json experiments_logs/system_log/tomato/qhat_records.json \
   --target-success 0.8
@@ -303,6 +303,6 @@ Prediction set이 singleton이면 baseline은 해당 option을 실행한다. Pre
 
 ## Current Limitation
 
-`knowno_baseline_experiment.py`는 scene YAML의 `true_init`만 읽는다. 기존 planner의 내부 실행 로직은 그대로 두고, scene 정보를 `--labels`, `--locations` 인자로 변환해 전달한다.
+`runners/knowno_baseline_experiment.py`는 scene YAML의 `true_init`만 읽는다. 기존 planner의 내부 실행 로직은 그대로 두고, scene 정보를 `--labels`, `--locations` 인자로 변환해 전달한다.
 
 즉, domain YAML의 `goal`, `facts`, action schema 전체를 baseline planner가 직접 사용하는 구조는 아직 아니다.

@@ -1,4 +1,41 @@
-# System Evaluation Pipeline
+# System Evaluation Pipelines
+
+The active E1-E4 pipelines are isolated by experiment:
+
+```text
+experiments/system_eval/
+  e1/{analysis.py,read.py,plot.py}
+  e2/{analysis.py,read.py,plot.py}
+  e3/{analysis.py,read.py,plot.py}
+  e4/{analysis.py,read.py,plot.py}
+  run_e1.sh
+  run_e2.sh
+  run_e3.sh
+  run_e4.sh
+```
+
+Run all three stages for one experiment:
+
+```bash
+./experiments/system_eval/run_e1.sh
+./experiments/system_eval/run_e2.sh
+./experiments/system_eval/run_e3.sh
+./experiments/system_eval/run_e4.sh
+```
+
+Each runner executes `analysis.py`, `read.py`, and `plot.py` sequentially.
+Outputs are grouped under the shared data and figure roots:
+
+```text
+data/eN/runs.csv
+data/eN/summary.csv
+figure/eN/YYYYMMDD_HHMMSS/*.png|*.pdf
+```
+
+Every metric is plotted three ways: `_all`, `_success_only`, and
+`_failure_only`. The summary CSV records the same split in its `outcome` column.
+
+The older unified pipeline documentation below is retained for compatibility.
 
 Run commands from the repository root:
 
@@ -8,7 +45,7 @@ cd /home/changmin/PyProject/00_BRL-CF
 
 The active pipeline has three stages:
 
-1. `analysis_*.py`: raw logs -> normalized run-level CSV.
+1. `analysis_experiment.py`: raw logs -> normalized run-level CSV.
 2. `read_csv_*.py`: normalized CSV -> final plotting CSV.
 3. `plot_figure.py --csv "file.csv"`: final plotting CSV -> figures.
 
@@ -32,23 +69,21 @@ The active domain names are `tomato` and `wastesorting`. System logs are stored 
 python3 experiments/system_eval/analysis_experiment.py
 ```
 
-Inputs:
+Default inputs:
 
 ```text
-experiments_logs/system_log/tomato/scene_XX_step50/*/*.txt
-experiments_logs/system_log/wastesorting/scene_XX_step50/*/*.txt
-experiments_logs/system_log/tomato/scene_XX_step50/when_knowno_gpt4/*.txt
-experiments_logs/system_log/tomato/scene_XX_step50/when_knowno_gpt35turbo/*.txt
-experiments_logs/system_log/wastesorting/scene_XX_step50/when_knowno_gpt4/*.txt
-experiments_logs/system_log/wastesorting/scene_XX_step50/when_knowno_gpt35turbo/*.txt
+experiments_logs/system_log/04_answer_mode/{domain}/scene_XX_step50/answer_*.txt
+experiments_logs/system_log/00_ours/{domain}/scene_XX_step50/ours_answer_*.txt
 ```
+
+`04_answer_mode/**/answer_oracle_*` is excluded from aggregation. The oracle baseline is always read from `00_ours`.
 
 Outputs:
 
 ```text
-experiments/system_eval/data/raw_runs/tomato/raw_runs.csv
-experiments/system_eval/data/raw_runs/wastesorting/raw_runs.csv
-experiments/system_eval/data/raw_runs/domain_compare/raw_runs.csv
+experiments/system_eval/data/raw_runs/00_ours/tomato.csv
+experiments/system_eval/data/raw_runs/00_ours/wastesorting.csv
+experiments/system_eval/data/raw_runs/00_ours/all_domains.csv
 ```
 
 ## Stage 2
@@ -60,13 +95,24 @@ python3 experiments/system_eval/read_csv_experiment.py
 Default output:
 
 ```text
-experiments/system_eval/data/policy_compare_total.csv
+experiments/system_eval/data/refined/04_answer_mode.csv
+```
+
+Refined table outputs follow the numbered experiment index:
+
+```text
+experiments/system_eval/data/refined/01_threshold.csv
+experiments/system_eval/data/refined/02_when.csv
+experiments/system_eval/data/refined/03_scale.csv
+experiments/system_eval/data/refined/04_answer_mode.csv
+experiments/system_eval/data/refined/05_active_search.csv
+experiments/system_eval/data/refined/06_knowno.csv
 ```
 
 Default input:
 
 ```text
-experiments/system_eval/data/raw_runs/domain_compare/raw_runs.csv
+experiments/system_eval/data/raw_runs/04_answer_mode/all_domains.csv
 ```
 
 CSV shape:
@@ -100,10 +146,10 @@ Draw one CSV:
 
 ```bash
 python3 experiments/system_eval/plot_figure.py \
-  --csv experiments/system_eval/data/policy_compare_total.csv
+  --csv experiments/system_eval/data/refined/04_answer_mode.csv
 ```
 
-Draw every CSV in `experiments/system_eval/data`:
+Draw every CSV in `experiments/system_eval/data/refined`:
 
 ```bash
 python3 experiments/system_eval/plot_figure.py --csv all
@@ -122,7 +168,29 @@ Each run creates a new timestamped folder and writes all generated png/pdf files
 ```bash
 python3 experiments/system_eval/analysis_experiment.py
 python3 experiments/system_eval/read_csv_experiment.py
-python3 experiments/system_eval/plot_figure.py --csv all
+python3 experiments/system_eval/plot_figure.py
+```
+
+Current defaults scan the numbered system-log experiment layout:
+
+```text
+experiments_logs/system_log/00_ours
+experiments_logs/system_log/01_threshold
+experiments_logs/system_log/02_when
+experiments_logs/system_log/03_scale
+experiments_logs/system_log/04_answer_mode
+experiments_logs/system_log/05_active_search
+experiments_logs/system_log/06_knowno
+```
+
+Missing numbered directories are skipped. `04_answer_mode/**/answer_oracle_*` is excluded; oracle reference rows come from `00_ours`.
+
+The default outputs are:
+
+```text
+experiments/system_eval/data/raw_runs/04_answer_mode/all_domains.csv
+experiments/system_eval/data/refined/04_answer_mode.csv
+experiments/system_eval/figure/answer_mode/00_YYYYMMDD_HHMMSS/
 ```
 
 ## Legacy Scripts

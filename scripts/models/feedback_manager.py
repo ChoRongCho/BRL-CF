@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import random
 import numpy as np
 import copy
 import yaml
@@ -14,6 +16,14 @@ from models.transition import TransitionModel, TransitionOutcome, NextStateOutco
 
 from collections import defaultdict
 
+FEEDBACK_METHOD = os.getenv("FEEDBACK_METHOD", "ours")
+VALID_FEEDBACK_METHODS = {
+    "ours",
+    "ours-random-when",
+    "ours-random-what",
+    "vlm",
+}
+
 class FeedbackManger:
     def __init__(self, args, conf_threshold):
         self.args = args
@@ -21,6 +31,7 @@ class FeedbackManger:
         self.conf_threshold = conf_threshold
         self.num_of_query = 0
         self.query_log = []
+        self.feedback_rng = random.Random(self.args.seed)
         self.use_llm = False
         # ablation study
         """
@@ -33,14 +44,14 @@ class FeedbackManger:
         if self.answer_type == "auto":
             self.answer_type = "oracle"
 
-        if self.answer_type in {"oracle", "human-proxy", "random"}:
+        if self.answer_type in {"oracle", "noisy-oracle", "human-proxy", "random"}:
             self.is_human_answer = False
         elif self.answer_type == "human":
             self.is_human_answer = True
         else:
             raise ValueError(
                 f"Wrong answer type: {self.args.answer_type} | "
-                "'oracle', 'human-proxy', 'random', or 'human'"
+                "'oracle', 'noisy-oracle', 'human-proxy', 'random', or 'human'"
             )
         self.answer_module = None if self.is_human_answer else self._load_answer_module()
         self._true_init_facts = None
@@ -120,7 +131,7 @@ class FeedbackManger:
         return p_true * h_true + p_false * h_false
 
 
-    def select_best_fact_to_ask(self, belief: Belief):
+    def select_hypothesis(self, belief: Belief):
         """
         frontier의 uncertainty를 가장 많이 줄여줄 fact를 고른다.
         """
@@ -182,30 +193,74 @@ class FeedbackManger:
         
         
         return belief
-    
-    
-    def get_new_observation(self, belief: Belief, step: int = None, action_name: str = None) -> Belief:
-        
-        
-        # ================ compute confidence and human ask ================
+
+
+    def get_new_observation(
+        self,
+        belief: Belief,
+        step: int = None,
+        action_name: str = None,
+    ) -> Belief:
+        """Apply the selected When/What feedback policy to an updated belief."""
         confidence = self.compute_confidence(belief.frontier_weights)
-        while confidence < self.conf_threshold:
+        method = FEEDBACK_METHOD
+
+        if method == "ours":
+            should_query = confidence < self.conf_threshold
+            use_random_hypothesis = False
+
+        elif method == "ours-random-when":
+            should_query = self.feedback_rng.random() < self.args.random_query_prob
+            use_random_hypothesis = False
+
+        elif method == "ours-random-what":
+            should_query = confidence < self.conf_threshold
+            use_random_hypothesis = True
+
+        elif method == "vlm":
+            should_query = confidence < self.conf_threshold
+            use_random_hypothesis = False
+
+        else:
+            raise ValueError(
+                f"Unknown FEEDBACK_METHOD={method!r}. "
+                f"Expected one of {sorted(VALID_FEEDBACK_METHODS)}."
+            )
+
+        print(
+            f"    [Feedback] method={method}, confidence={confidence:.4f}, "
+            f"threshold={self.conf_threshold:.4f}, trigger={should_query}"
+        )
+
+        questions_this_step = 0
+        while should_query and (
+            questions_this_step == 0 or confidence < self.conf_threshold
+        ):
             original_belief = copy.deepcopy(belief)
             print(f"    [Planner] Current confidence: {confidence}")
-            
-            # 더 이상 질문할 fact가 없으면 종료
-            target_fact = self.select_best_fact_to_ask(belief)
+
+            if use_random_hypothesis:
+                candidate_facts = self.get_changed_facts(
+                    belief.knowledge,
+                    belief.frontier,
+                )
+                target_fact = (
+                    self.feedback_rng.choice(candidate_facts)
+                    if candidate_facts
+                    else None
+                )
+            else:
+                target_fact = self.select_hypothesis(belief)
+
             if target_fact is None:
                 break
-            
-            # 질문
-            answer = self.query_human(target_fact, action_name)            
-            
-            
+
+            print(f"    [Query] Q: {target_fact} is True?")
+            answer = self.query_human(target_fact, action_name, belief, step=step)
             self.num_of_query += 1
+            questions_this_step += 1
             print(f"    [Query] A: {answer}")
-            
-            # 적용 후 다시 계산            
+
             belief = self.apply_fact_answer_to_belief(belief, target_fact, answer)
             updated_confidence = self.compute_confidence(belief.frontier_weights)
             self.query_log.append({
@@ -217,19 +272,22 @@ class FeedbackManger:
                 "confidence_after": updated_confidence,
             })
             confidence = updated_confidence
-            print(f"    [Planner] Redeuced {len(original_belief.frontier)} --> {len(belief.frontier)}")    
-            
-            
-        print(f"    [Planner] Updated confidence: {confidence}")    
-        # expand knowledge
+            print(
+                f"    [Planner] Reduced "
+                f"{len(original_belief.frontier)} --> {len(belief.frontier)}"
+            )
+
+        print(f"    [Planner] Updated confidence: {confidence}")
+
+
         if len(belief.frontier) > 0:
-            max_idx = np.argmax(belief.frontier_weights)
+            max_idx = int(np.argmax(belief.frontier_weights))
             max_frontier = belief.frontier[max_idx]
             prev_facts = set(belief.knowledge.facts)
-            final_facts = set(max_frontier.facts)
-            added_facts = [fact for fact in max_frontier.facts if fact not in prev_facts]
-            deleted_facts = [fact for fact in belief.knowledge.facts if fact not in final_facts]
             belief.knowledge = max_frontier
+            final_facts = set(belief.knowledge.facts)
+            added_facts = [fact for fact in belief.knowledge.facts if fact not in prev_facts]
+            deleted_facts = [fact for fact in prev_facts if fact not in final_facts]
             belief.reset_belief()
             print("    [Belief Diff]")
             print(f"      + add ({len(added_facts)}): {', '.join(added_facts) if added_facts else '-'}")
@@ -238,11 +296,27 @@ class FeedbackManger:
         return belief
     
     
-    def query_human(self, target_fact, action_name):
-        
+    def query_human(self, target_fact, action_name, belief=None, step=None):
         
         self.refining_query(target_fact, action_name)
-        
+        if FEEDBACK_METHOD == "vlm":
+            from models.vlm_feedback import (
+                answer_fact_question,
+                find_snapshot,
+            )
+
+            if step is None:
+                raise ValueError("VLM feedback requires the current step number.")
+            image = find_snapshot(
+                domain=self.domain_name,
+                initial_state=self.args.initial_state,
+                step=step,
+            )
+            return answer_fact_question(
+                target_fact=target_fact,
+                action_name=action_name,
+                image=image,
+            )
 
         if self.is_human_answer:
             """
@@ -256,11 +330,18 @@ class FeedbackManger:
                 print("    [Human] Invalid input. Please enter 't' or 'f'.")
                 
         else:
+            current_facts = set()
+            current_facts = {
+                str(fact).replace(" ", "")
+                for fact in belief.knowledge.facts
+            }
             return self.answer_module.answer_question(
                 self.answer_type,
                 target_fact,
                 action_name,
                 self._get_true_init_facts(),
+                current_facts,
+                noisy_oracle_error_rate=self.args.noisy_oracle_error_rate,
             )
 
     

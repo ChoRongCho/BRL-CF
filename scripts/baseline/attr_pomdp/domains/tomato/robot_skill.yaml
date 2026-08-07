@@ -1,0 +1,218 @@
+actions:
+  # --------------------------------------------------------------------------
+  # 기존 Tomato domain 행동
+  # --------------------------------------------------------------------------
+  - name: navigate
+    type: move
+    parameters: [R, L1, L2]
+    cost: 2.0
+    preconditions:
+      - robot(R)
+      - location(L1)
+      - location(L2)
+      - located(R, L1)
+      - handempty(R)
+    add_effects:
+      - located(R, L2)
+    del_effects:
+      - located(R, L1)
+    observation:
+      - located(R, L1)
+      - located(R, L2)
+      - located(R, L3)
+
+  - name: detect
+    type: observe
+    parameters: [R, S]
+    cost: 1.0
+    preconditions:
+      - handempty(R)
+      - robot(R)
+      - stem(S)
+      - located(R, S)
+    add_effects:
+      - observed(T)
+      - at(T, S)
+      - ripe(T)
+    del_effects: []
+    observation:
+      - observed(T)
+      - at(T, S)
+      - ripe(T)
+      - unripe(T)
+
+  - name: pick
+    type: task
+    parameters: [R, T, S]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - observed(T)
+      - stem(S)
+      - located(R, S)
+      - at(T, S)
+      - ripe(T)
+      - handempty(R)
+    add_effects:
+      - holding(R, T)
+      - holded(T, R)
+    del_effects:
+      - at(T, S)
+      - handempty(R)
+    observation:
+      - handempty(R)
+      - holding(R, T)
+      - holded(T, R)
+
+  - name: scan
+    type: observe
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - observed(T)
+      - holding(R, T)
+    add_effects:
+      - ripe(T)
+      - scanned(T)
+    del_effects: []
+    observation:
+      - ripe(T)
+      - rotten(T)
+
+  - name: place
+    type: task
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - observed(T)
+      - ripe(T)
+      - holding(R, T)
+      - holded(T, R)
+    add_effects:
+      - loaded(T, R)
+      - handempty(R)
+    del_effects:
+      - holding(R, T)
+      - holded(T, R)
+    observation:
+      - loaded(T, R)
+      - handempty(R)
+      - holding(R, T)
+
+  - name: discard
+    type: task
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - observed(T)
+      - holding(R, T)
+      - holded(T, R)
+    add_effects:
+      - discarded(T)
+      - handempty(R)
+    del_effects:
+      - holding(R, T)
+      - holded(T, R)
+    observation:
+      - discarded(T)
+      - handempty(R)
+      - holding(R, T)
+
+  # --------------------------------------------------------------------------
+  # ρ-POMDP용 사람 질문 행동
+  # 질문은 world state를 변경하지 않고 answer observation만 생성한다.
+  # --------------------------------------------------------------------------
+  - name: ask_tomato_ripe_or_unripe
+    type: ask
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - ripe(T)
+      - unripe(T)
+
+  - name: ask_tomato_ripe_or_rotten
+    type: ask
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - ripe(T)
+      - rotten(T)
+
+  - name: ask_tomato_location
+    type: ask
+    parameters: [R, T, S]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+      - stem(S)
+    add_effects: []
+    del_effects: []
+    observation:
+      - at(T, S)
+
+  - name: ask_robot_location
+    type: ask
+    parameters: [R, L]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - location(L)
+    add_effects: []
+    del_effects: []
+    observation:
+      - located(R, L)
+
+  - name: ask_holding_or_handempty
+    type: ask
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - holding(R, T)
+      - handempty(R)
+
+  - name: ask_tomato_loaded
+    type: ask
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - loaded(T, R)
+
+  - name: ask_tomato_discarded
+    type: ask
+    parameters: [R, T]
+    cost: 1.0
+    preconditions:
+      - robot(R)
+      - tomato(T)
+    add_effects: []
+    del_effects: []
+    observation:
+      - discarded(T)

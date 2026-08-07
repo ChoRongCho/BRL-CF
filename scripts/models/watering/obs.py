@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import product
 from typing import Dict, List
 import re
 
@@ -27,6 +28,8 @@ class ObservationWatering:
 
         self.move_observation_success_rate = 0.95
         self.find_observation_success_rate = 0.90
+        self.find_miss_rate = 0.10
+        self.find_false_positive_rate = 0.05
         self.pick_observation_success_rate = 0.95
         self.load_water_observation_success_rate = 0.95
         self.pour_water_observation_success_rate = 0.95
@@ -43,9 +46,6 @@ class ObservationWatering:
     def get_observation_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
         action_name = action.name.replace(" ", "").split("(", 1)[0]
 
-        if action_name == "find_basket":
-            return self._build_find_basket_distribution(state, action)
-
         if action_name == "find_plant":
             return self._build_find_plant_distribution(state, action)
 
@@ -54,13 +54,6 @@ class ObservationWatering:
                 state,
                 action,
                 self.move_observation_success_rate,
-            )
-
-        if action_name == "pick_basket":
-            return self._build_default_distribution(
-                state,
-                action,
-                self.pick_observation_success_rate,
             )
 
         if action_name == "load_water":
@@ -85,9 +78,6 @@ class ObservationWatering:
         action: Action,
     ) -> List[ObservationOutcome]:
         action_name = action.name.replace(" ", "").split("(", 1)[0]
-
-        if action_name == "find_basket":
-            return self._build_find_basket_distribution(state, action, use_true_state=False)
 
         if action_name == "find_plant":
             return self._build_find_plant_distribution(state, action, use_true_state=False)
@@ -139,14 +129,6 @@ class ObservationWatering:
             return self.true_state
         return state
 
-    @staticmethod
-    def _is_holding_object(state: State, obj: str) -> bool:
-        for fact in state.facts:
-            pred, args = _parse_fact(fact)
-            if pred == "holding" and len(args) >= 2 and args[1] == obj:
-                return True
-        return False
-
     def _build_default_distribution(
         self,
         state: State,
@@ -167,28 +149,6 @@ class ObservationWatering:
             ObservationOutcome(facts=[], probability=1.0 - success_rate),
         ]
 
-    def _build_find_basket_distribution(
-        self,
-        state: State,
-        action: Action,
-        use_true_state: bool = True,
-    ) -> List[ObservationOutcome]:
-        args = self._get_action_args(action)
-        if len(args) < 3:
-            return [ObservationOutcome(facts=[], probability=1.0)]
-
-        _, container, room = args[:3]
-        if self._is_holding_object(state, container):
-            return [ObservationOutcome(facts=[], probability=1.0)]
-
-        return self._build_find_location_distribution(
-            state,
-            action,
-            obj=container,
-            room=room,
-            use_true_state=use_true_state,
-        )
-
     def _build_find_plant_distribution(
         self,
         state: State,
@@ -196,17 +156,68 @@ class ObservationWatering:
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
         args = self._get_action_args(action)
-        if len(args) < 3:
+        if len(args) < 2:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
-        _, plant, room = args[:3]
-        return self._build_find_location_distribution(
+        _, room = args[:2]
+        return self._build_find_objects_in_room_distribution(
             state,
             action,
-            obj=plant,
             room=room,
+            objects=self.type_map.get("P", []),
             use_true_state=use_true_state,
         )
+
+    def _build_find_objects_in_room_distribution(
+        self,
+        state: State,
+        action: Action,
+        room: str,
+        objects: List[str],
+        use_true_state: bool,
+    ) -> List[ObservationOutcome]:
+        gt_state = self._observation_truth_state(state, use_true_state)
+        candidates = set(self.build_candidates(action))
+        per_object_choices = []
+
+        for obj in objects:
+            target_fact = f"at({obj},{room})"
+            if target_fact not in candidates:
+                continue
+
+            plant_is_actually_in_room = gt_state.has_fact(target_fact)
+            if plant_is_actually_in_room:
+                per_object_choices.append([
+                    ([target_fact], self.find_observation_success_rate),
+                    ([], self.find_miss_rate),
+                ])
+            else:
+                empty_observation_probability = 1.0 - self.find_false_positive_rate
+                per_object_choices.append([
+                    ([target_fact], self.find_false_positive_rate),
+                    ([], empty_observation_probability),
+                ])
+
+        if not per_object_choices:
+            return [ObservationOutcome(facts=[], probability=1.0)]
+
+        outcome_map = {}
+        for combo in product(*per_object_choices):
+            facts = []
+            probability = 1.0
+
+            for choice_facts, choice_probability in combo:
+                facts.extend(choice_facts)
+                probability *= choice_probability
+
+            facts = _dedup_facts(facts)
+            key = tuple(sorted(facts))
+            outcome_map[key] = outcome_map.get(key, 0.0) + probability
+
+        return [
+            ObservationOutcome(facts=list(facts), probability=probability)
+            for facts, probability in outcome_map.items()
+        ]
 
     def _build_find_location_distribution(
         self,

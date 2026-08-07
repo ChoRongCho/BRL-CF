@@ -74,22 +74,14 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
     lines.extend(["", "[Full Plan]"])
     if actions:
         for item in actions:
-            lines.append(
-                f"STEP {item['step']}: {item['action']} "
-                f"(search={_fmt_seconds(item.get('search_time', 0.0))}, "
-                f"execute={_fmt_seconds(item.get('execute_time', 0.0))}, "
-                f"update={_fmt_seconds(item.get('update_time', 0.0))}, "
-                f"interaction={_fmt_seconds(item.get('interaction_time', 0.0))}, "
-                f"pruning={_fmt_seconds(item.get('pruning_time', 0.0))}, "
-                f"step_total={_fmt_seconds(item.get('step_total_time', 0.0))}, "
-                f"tree_nodes={item.get('tree_node_count', '-')}, "
-                f"expanded_nodes={item.get('tree_nodes_expanded_this_step', '-')}, "
-                f"root_actions={item.get('root_action_count', '-')}, "
-                f"max_tree_depth={item.get('max_tree_depth', '-')}, "
-                f"belief_frontier={item.get('post_update_belief_frontier_size', '-')}, "
-                f"step_reward={item.get('step_reward', 0.0)}, "
-                f"cumulated_reward={item.get('cumulated_reward', 0.0)})"
-            )
+            lines.append(f"STEP {item['step']}: {item['action']}")
+    else:
+        lines.append("-")
+
+    lines.extend(["", "[Search Time By Step]"])
+    if actions:
+        for item in actions:
+            lines.append(f"STEP {item['step']}: {_fmt_seconds(item.get('search_time', 0.0))}")
     else:
         lines.append("-")
 

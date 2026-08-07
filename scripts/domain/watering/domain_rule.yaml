@@ -5,39 +5,32 @@ meta_data:
   purpose: belief state initialization / possible world enumeration
   assumptions:
   - The room graph and tap location are known in every scene.
-  - The basket location and plant locations are hidden initially.
-  - find_basket and find_plant reveal candidate object locations through observations.
+  - Plant locations are hidden initially.
+  - find_plant reveals candidate plant locations through observations.
+  - The robot always carries its water container.
   - There are no numeric water, distance, or battery effects.
 predicates:
 - predicate: agent(A)
   meaning: A is the watering robot.
 - predicate: plant(P)
   meaning: P is a plant that should be watered.
-- predicate: container(C)
-  meaning: C is a water container such as a basket.
 - predicate: tap(T)
   meaning: T is the room containing the tap.
 - predicate: room(R)
   meaning: R is a room or hallway location.
-- predicate: holding(A,C)
-  meaning: Agent A is holding container C.
-- predicate: free(A)
-  meaning: Agent A is not holding a container.
 - predicate: at(I,R)
   meaning: Item or agent I is located in room R.
 - predicate: connected(R1,R2)
   meaning: Room R1 is directly connected to room R2.
-- predicate: water_loaded(C)
-  meaning: Container C has water loaded from the tap.
+- predicate: water_empty(A)
+  meaning: Agent A's carried water container is empty.
+- predicate: water_loaded(A)
+  meaning: Agent A's carried water container is loaded with water.
 - predicate: watered(P)
   meaning: Plant P has been watered.
+- predicate: scanned(R)
+  meaning: Room R has been searched for plants.
 choice_rules:
-- choose: at(C,R)
-  over:
-  - room(R)
-  given:
-  - container(C)
-  cardinality: 1..1
 - choose: at(P,R)
   over:
   - room(R)
@@ -48,12 +41,11 @@ constraint: []
 show:
 - '#show agent/1'
 - '#show plant/1'
-- '#show container/1'
 - '#show tap/1'
 - '#show room/1'
-- '#show holding/2'
-- '#show free/1'
 - '#show at/2'
 - '#show connected/2'
+- '#show water_empty/1'
 - '#show water_loaded/1'
 - '#show watered/1'
+- '#show scanned/1'

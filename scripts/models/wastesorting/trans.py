@@ -34,8 +34,8 @@ class TransitionWastesorting:
         # self.pick_success_rate = 0.98
         # self.place_success_rate = 0.95
         
-        self.detect_observed_success_rate = 0.90
-        self.detect_classification_success_rate = 0.50
+        self.detect_observed_success_rate = 0.80
+        self.detect_classification_success_rate = 0.25
         self.pick_success_rate = 0.90
         self.place_success_rate = 0.90
         
@@ -106,31 +106,6 @@ class TransitionWastesorting:
                 break
         return _dedup_facts(detected_facts)
 
-    def _build_detect_waste_entries(
-        self,
-        action: Action,
-        blocked_wastes: set[str] | None = None,
-        state: State | None = None,
-    ) -> List[Dict[str, str]]:
-        blocked_wastes = blocked_wastes or set()
-        wastes = []
-        seen = set()
-        for fact in self._detect_facts_from_action(action):
-            _, args = _parse_fact(fact)
-            if not args or args[0] in seen or args[0] in blocked_wastes:
-                continue
-            wastes.append(args[0])
-            seen.add(args[0])
-
-        return [
-            {
-                "waste": waste,
-                "detected_fact": f"detected({waste})",
-                "known_label": self._category_label_for_state(state, waste) if state is not None else None,
-            }
-            for waste in wastes
-        ]
-
     @staticmethod
     def _category_label_for_state(state: State, waste: str) -> str | None:
         for pred in TransitionWastesorting.CATEGORY_PREDICATES:
@@ -138,19 +113,6 @@ class TransitionWastesorting:
             if state.has_fact(fact):
                 return fact
         return None
-
-    def _category_predicates_from_observation(self, action: Action) -> List[str]:
-        predicates = []
-        seen = set()
-        for fact in action.observation:
-            pred, args = _parse_fact(fact)
-            if pred not in self.CATEGORY_PREDICATES or not args:
-                continue
-            if pred in seen:
-                continue
-            predicates.append(pred)
-            seen.add(pred)
-        return predicates or list(self.CATEGORY_PREDICATES)
 
     @staticmethod
     def _waste_status_from_state(state: State) -> Tuple[set[str], set[str]]:
@@ -260,22 +222,65 @@ class TransitionWastesorting:
         blocked_wastes: set[str] | None = None,
         state: State | None = None,
     ) -> List[TransitionOutcome]:
-        waste_entries = self._build_detect_waste_entries(action, blocked_wastes, state)
-        if not waste_entries:
-            return [self._make_outcome(add_facts=[], del_facts=[], probability=1.0)]
+        
+        # 1. 관측 대상에서 차단된 폐기물과 중복을 제거하여 처리 순서대로 정리한다.
+        blocked_wastes = blocked_wastes or set()
+        wastes = []
+        seen_wastes = set()
+        for fact in self._detect_facts_from_action(action):
+            _, args = _parse_fact(fact)
+            if not args:
+                continue
+            waste = args[0]
+            if waste in blocked_wastes or waste in seen_wastes:
+                continue
+            seen_wastes.add(waste)
+            wastes.append(waste)
 
+        if not wastes:
+            return [self._make_outcome(add_facts=[], del_facts=[], probability=1.0)]
+        
+        # 2. 각 폐기물의 탐지 성공과 미탐지 결과에 배정할 확률을 계산한다.
         p_detect = self.detect_observed_success_rate
         p_miss = 1.0 - p_detect
-        category_predicates = self._category_predicates_from_observation(action)
-        per_waste_choices = [
-            self._build_detect_label_choices(
-                entry["waste"],
-                category_predicates,
-                known_label=entry.get("known_label"),
-            )
-            for entry in waste_entries
-        ]
 
+        # 3. action이 관측하는 분류 카테고리를 추출하고, 없으면 전체 카테고리를 사용한다.
+        category_predicates = []
+        seen_categories = set()
+        for fact in action.observation:
+            predicate, args = _parse_fact(fact)
+            if (
+                args
+                and predicate in self.CATEGORY_PREDICATES
+                and predicate not in seen_categories
+            ):
+                seen_categories.add(predicate)
+                category_predicates.append(predicate)
+                
+        if not category_predicates:
+            category_predicates = list(self.CATEGORY_PREDICATES)
+
+        # 4. 각 폐기물에 대해 미탐지와 정답·오분류 레이블을 독립적인 선택지로 생성한다.
+        per_waste_choices = []
+        for waste in wastes:
+            label_choices = self._build_detect_label_choices(
+                waste,
+                category_predicates,
+                known_label=(
+                    self._category_label_for_state(state, waste)
+                    if state is not None
+                    else None
+                ),
+            )
+            per_waste_choices.append(
+                [([], [], p_miss)]
+                + [
+                    (add_facts, del_facts, probability * p_detect)
+                    for add_facts, del_facts, probability in label_choices
+                ]
+            )
+
+        # 5. 폐기물별 분류 결과의 데카르트 곱을 만들고, 동일한 상태 변화의 확률을 합산한다.
         outcome_map = {}
         for combo in product(*per_waste_choices):
             add_facts = []
@@ -290,20 +295,20 @@ class TransitionWastesorting:
             add_facts = _dedup_facts(add_facts)
             del_facts = _dedup_facts(del_facts)
             key = (tuple(sorted(add_facts)), tuple(sorted(del_facts)))
-            outcome_map[key] = outcome_map.get(key, 0.0) + (prob * p_detect)
+            outcome_map[key] = outcome_map.get(key, 0.0) + prob
 
+        # 6. 동일한 상태 변화별로 합산된 확률을 최종 전이 결과로 변환한다.
         outcomes = [
-            self._make_outcome(add_facts=[], del_facts=[], probability=p_miss)
-        ]
-        outcomes.extend([
             self._make_outcome(
                 add_facts=list(add_key),
                 del_facts=list(del_key),
                 probability=prob,
             )
             for (add_key, del_key), prob in outcome_map.items()
-        ])
+        ]
+        
         return outcomes
+
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:
         prob = self.pick_success_rate

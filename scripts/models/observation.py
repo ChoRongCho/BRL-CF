@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
-import re
 import random
+import re
 
-from models.state import State
 from models.action import Action
+from models.state import State
 
 
 @dataclass(slots=True)
 class Observation:
     state: State
+    fact_confidences: Dict[str, float] = field(default_factory=dict)
 
     def is_empty(self) -> bool:
         return len(self.state.facts) == 0 and len(self.state.fluents) == 0
@@ -20,8 +21,13 @@ class Observation:
     def facts(self) -> State:
         return self.state
 
+    def confidence(self, fact: str, default: float = 1.0) -> float:
+        return float(self.fact_confidences.get(str(fact).replace(" ", ""), default))
+
     def __repr__(self) -> str:
-        return f"Observation({self.state})"
+        if not self.fact_confidences:
+            return f"Observation({self.state})"
+        return f"Observation({self.state}, confidences={self.fact_confidences})"
 
 
 @dataclass(slots=True)
@@ -29,7 +35,7 @@ class ObservationOutcome:
     facts: List[str]
     probability: float
     fluents: Dict[str, Dict[str, float]] = field(default_factory=dict)
-
+    fact_confidences: Dict[str, float] = field(default_factory=dict)
 
 
 class ObservationModel:
@@ -53,7 +59,6 @@ class ObservationModel:
         self.domain_model = self._build_domain_model()
         self.action_observation_space: Dict[str, List[str]] = {}
 
-        # build from actions
         for action in self.actions:
             self.action_observation_space[action.name] = self.domain_model.build_candidates(action)
 
@@ -74,29 +79,27 @@ class ObservationModel:
             from models.tomato.obs import ObservationTomato
             return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        elif self.domain == "blocksworld":
+        if self.domain == "blocksworld":
             from models.blocksworld.obs import ObservationBlocksworld
             return ObservationBlocksworld(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        elif self.domain == "wastesorting":
+        if self.domain == "wastesorting":
             from models.wastesorting.obs import ObservationWastesorting
             return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        elif self.domain == "kitchen":
+        if self.domain == "kitchen":
             from models.kitchen.obs import ObservationKitchen
             return ObservationKitchen(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        elif self.domain == "rover":
+        if self.domain == "rover":
             from models.rover.obs import ObservationRover
             return ObservationRover(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        elif self.domain == "watering":
+        if self.domain == "watering":
             from models.watering.obs import ObservationWatering
             return ObservationWatering(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
 
-        else:
-            raise ValueError(f"Unknown domain: {self.domain}")
-
+        raise ValueError(f"Unknown domain: {self.domain}")
 
     def get_observation_distribution(
         self,
@@ -104,19 +107,11 @@ class ObservationModel:
         action: Action,
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
-        """
-        list_outcomes
-        """
         if not use_true_state and hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
             return self.domain_model.get_observation_distribution_for_likelihood(state, action)
-
         return self.domain_model.get_observation_distribution(state, action)
 
-
-
     def sample(self, state: State, action: Action, use_true_state: bool = True) -> Observation:
-        """
-        """
         outcomes = self.get_observation_distribution(
             state,
             action,
@@ -139,15 +134,18 @@ class ObservationModel:
         obs_state = State()
         for fact in selected.facts:
             obs_state.add_fact(fact)
-            
+
         for obj, values in selected.fluents.items():
             for key, value in values.items():
                 obs_state.set_fluent(obj, key, value)
 
-        
-        
-        return Observation(obs_state)
-
+        return Observation(
+            state=obs_state,
+            fact_confidences={
+                str(fact).replace(" ", ""): float(confidence)
+                for fact, confidence in selected.fact_confidences.items()
+            },
+        )
 
     def likelihood(self, observation: Observation, state: State, action: Action) -> float:
         if hasattr(self.domain_model, "likelihood"):
@@ -159,7 +157,7 @@ class ObservationModel:
             outcomes = self.domain_model.get_observation_distribution_for_likelihood(state, action)
         else:
             outcomes = self.get_observation_distribution(state, action)
-        
+
         obs_set = set(observation.state.facts)
         obs_fluents = observation.state.fluents
 
@@ -167,4 +165,3 @@ class ObservationModel:
             if set(outcome.facts) == obs_set and outcome.fluents == obs_fluents:
                 return outcome.probability
         return self.noise
-    

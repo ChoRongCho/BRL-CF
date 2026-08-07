@@ -5,10 +5,14 @@
 ## 구성
 
 - `knowno.py`: baseline 실행 엔트리포인트입니다.
-- `scripts/prompt.py`: demo, mobile, tabletop, waste sorting용 few-shot prompt와 선택지 처리 유틸리티가 있습니다.
-- `scripts/llm.py`: OpenAI API 호출, 설정 로딩, retry/timeout 처리를 담당합니다.
-- `scripts/env.py`: mobile calibration/test 데이터 로딩 및 필요 시 다운로드를 담당합니다.
-- `scripts/sim.py`: tabletop 모드에서 사용하는 PyBullet 시뮬레이션 코드입니다.
+- `runners/`: 도메인별 multi-step runner와 GUI runner가 있습니다.
+- `domains/`: tomato, wastesorting 등 도메인별 semantics, action parser, logger를 둡니다.
+- `answers/`: KnowNo help query에 대한 자동 정답/검증 정책을 둡니다.
+- `calibration/`: qhat 계산과 calibration dataset 생성을 담당합니다.
+- `utils/prompt.py`: demo, mobile, tabletop용 few-shot prompt와 선택지 처리 유틸리티가 있습니다.
+- `utils/llm.py`: OpenAI API 호출, 설정 로딩, retry/timeout 처리를 담당합니다.
+- `envs/env.py`: mobile calibration/test 데이터 로딩 및 필요 시 다운로드를 담당합니다.
+- `envs/sim.py`: tabletop 모드에서 사용하는 PyBullet 시뮬레이션 코드입니다.
 - `data/`: mobile manipulation calibration/test에 쓰는 prompt 및 task 데이터입니다.
 - `outputs/`: tabletop 실행 결과 이미지/비디오가 저장되는 위치입니다.
 - `ur5e/`, `robotiq_2f_85/`, `bowl/`: tabletop PyBullet 시뮬레이션에 필요한 에셋입니다.
@@ -59,22 +63,22 @@ export OPENAI_API_KEY="your-api-key"
 기본 실행:
 
 ```bash
-python3 baseline/knowno.py
+python3 scripts/baseline/knowno/knowno.py
 ```
 
 모드 지정:
 
 ```bash
-python3 baseline/knowno.py --mode wastesorting
-python3 baseline/knowno.py --mode demo
-python3 baseline/knowno.py --mode mobile
-python3 baseline/knowno.py --mode tabletop
+python3 scripts/baseline/knowno/knowno.py --mode wastesorting
+python3 scripts/baseline/knowno/knowno.py --mode demo
+python3 scripts/baseline/knowno/knowno.py --mode mobile
+python3 scripts/baseline/knowno/knowno.py --mode tabletop
 ```
 
 주요 옵션:
 
 ```bash
-python3 baseline/knowno.py \
+python3 scripts/baseline/knowno/knowno.py \
   --mode wastesorting \
   --instruction "Discard all waste" \
   --scene-objects "news paper, empty coke can, toilet paper" \
@@ -102,7 +106,7 @@ python3 baseline/knowno.py \
 `mobile` 모드는 calibration 실행을 지원합니다.
 
 ```bash
-python3 baseline/knowno.py \
+python3 scripts/baseline/knowno/knowno.py \
   --mode mobile \
   --run-calibration \
   --num-calibration 200 \

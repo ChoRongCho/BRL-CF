@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
+import re
+import random
+
+from models.state import State
+from models.action import Action
+
+
+@dataclass(slots=True)
+class Observation:
+    state: State
+
+    def is_empty(self) -> bool:
+        return len(self.state.facts) == 0 and len(self.state.fluents) == 0
+
+    @property
+    def facts(self) -> State:
+        return self.state
+
+    def __repr__(self) -> str:
+        return f"Observation({self.state})"
+
+
+@dataclass(slots=True)
+class ObservationOutcome:
+    facts: List[str]
+    probability: float
+    fluents: Dict[str, Dict[str, float]] = field(default_factory=dict)
+
+
+
+class ObservationModel:
+    def __init__(
+        self,
+        domain: str,
+        actions: List[Action],
+        obj_type: Dict[str, List[str]],
+        noise: float = 0.15,
+        true_state: State | None = None,
+        world: Any | None = None,
+    ):
+        self.domain = domain
+        self.noise = noise
+        self.obj_type = obj_type
+        self.actions = actions
+        self.world = world
+        self.true_state = world.true_state if world is not None else true_state
+
+        self.type_map = self._build_type_map()
+        self.domain_model = self._build_domain_model()
+        self.action_observation_space: Dict[str, List[str]] = {}
+
+        # build from actions
+        for action in self.actions:
+            self.action_observation_space[action.name] = self.domain_model.build_candidates(action)
+
+    def _build_type_map(self) -> Dict[str, List[str]]:
+        type_map = {}
+        for type_declare, objects in self.obj_type.items():
+            m = re.match(r".*\(([A-Z])\)", type_declare)
+            if m:
+                type_symbol = m.group(1)
+                type_map.setdefault(type_symbol, [])
+                for obj in objects:
+                    if obj not in type_map[type_symbol]:
+                        type_map[type_symbol].append(obj)
+        return type_map
+
+    def _build_domain_model(self):
+        if self.domain == "tomato":
+            from models.tomato.obs import ObservationTomato
+            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        elif self.domain == "blocksworld":
+            from models.blocksworld.obs import ObservationBlocksworld
+            return ObservationBlocksworld(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        elif self.domain == "wastesorting":
+            from models.wastesorting.obs import ObservationWastesorting
+            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        elif self.domain == "kitchen":
+            from models.kitchen.obs import ObservationKitchen
+            return ObservationKitchen(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        elif self.domain == "rover":
+            from models.rover.obs import ObservationRover
+            return ObservationRover(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        elif self.domain == "watering":
+            from models.watering.obs import ObservationWatering
+            return ObservationWatering(type_map=self.type_map, noise=self.noise, true_state=self.true_state, world=self.world)
+
+        else:
+            raise ValueError(f"Unknown domain: {self.domain}")
+
+
+    def get_observation_distribution(
+        self,
+        state: State,
+        action: Action,
+        use_true_state: bool = True,
+    ) -> List[ObservationOutcome]:
+        """
+        list_outcomes
+        """
+        if not use_true_state and hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
+            return self.domain_model.get_observation_distribution_for_likelihood(state, action)
+
+        return self.domain_model.get_observation_distribution(state, action)
+
+
+
+    def sample(self, state: State, action: Action, use_true_state: bool = True) -> Observation:
+        """
+        """
+        outcomes = self.get_observation_distribution(
+            state,
+            action,
+            use_true_state=use_true_state,
+        )
+
+        if not outcomes:
+            return Observation(State())
+
+        r = random.random()
+        cum = 0.0
+        selected = outcomes[-1]
+
+        for outcome in outcomes:
+            cum += outcome.probability
+            if r <= cum:
+                selected = outcome
+                break
+
+        obs_state = State()
+        for fact in selected.facts:
+            obs_state.add_fact(fact)
+            
+        for obj, values in selected.fluents.items():
+            for key, value in values.items():
+                obs_state.set_fluent(obj, key, value)
+
+        
+        
+        return Observation(obs_state)
+
+
+    def likelihood(self, observation: Observation, state: State, action: Action) -> float:
+        if hasattr(self.domain_model, "likelihood"):
+            likelihood = self.domain_model.likelihood(observation, state, action)
+            if likelihood is not None:
+                return max(0.0, float(likelihood))
+
+        if hasattr(self.domain_model, "get_observation_distribution_for_likelihood"):
+            outcomes = self.domain_model.get_observation_distribution_for_likelihood(state, action)
+        else:
+            outcomes = self.get_observation_distribution(state, action)
+        
+        obs_set = set(observation.state.facts)
+        obs_fluents = observation.state.fluents
+
+        for outcome in outcomes:
+            if set(outcome.facts) == obs_set and outcome.fluents == obs_fluents:
+                return outcome.probability
+        return self.noise
+    

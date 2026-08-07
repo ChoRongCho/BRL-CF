@@ -258,7 +258,7 @@ class BeliefManager:
         return belief
     
     
-    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> tuple[Belief, Observation]:
+    def update_belief(self, belief: Belief, obs: Observation, action: Action) -> Belief:
         """
         """
         if belief is None:
@@ -270,40 +270,34 @@ class BeliefManager:
                 particles=[],
                 particle_weights=np.array([], dtype=float),
             )
-            return self.belief, Observation(State())
+            return self.belief
 
         prior_knowledge = belief.knowledge.copy()
-        
-        # 1-1. Transition expansion from knowledge base
-        # 우리는 어떤 액션을 수행하였을 때, 그것의 기대 효과를 알고 있음
+
+        # Generate a local frontier for this executed action from the current
+        # certain knowledge state.  Previous action frontiers are collapsed by
+        # feedback_manager after query/refinement and are not reused here.
         outcomes = self._get_transition_outcomes(belief.knowledge, action)
         outcomes = self._sample_transition_particles(outcomes)
-                        
+
         tran_row = []
         obs_row = []
         frontiers = []
-        
-        for outcome in outcomes:   
+
+        for outcome in outcomes:
             next_state, trans_prob = outcome.next_state, outcome.probability
             frontiers.append(next_state)
             tran_row.append(trans_prob)
-            
-            # 1-2. Observation            
+
             obs_likelihood = self._get_observation_likelihood(obs, next_state, action)
             obs_row.append(obs_likelihood)
-        
 
-            
         transition_matrix = np.array(tran_row)
         observation_matrix = np.array(obs_row)
-        
+
         if transition_matrix.size != observation_matrix.size:
             raise SystemError("The size of Transition and Observation is Different. Modify code!!!")
-        
-        
-        # 2. Update belief, posterior ∝ transition * observation
-        # print("[Belief manager] Obs Dist. :", observation_matrix)
-        
+
         unnormalized = transition_matrix * observation_matrix
         weights = self.feedback_manager.normalize(unnormalized)
         b_next = Belief(
@@ -320,13 +314,3 @@ class BeliefManager:
         b_next = self._merge_fluents_separately(b_next, prior_knowledge, obs)
         self.belief = b_next
         return b_next
-        
-        refined_observation = self._build_refined_observation(
-            prior_knowledge=prior_knowledge,
-            resolved_knowledge=b_next.knowledge,
-            obs=obs,
-        )
-        
-        self.belief = b_next
-        
-        return b_next, refined_observation

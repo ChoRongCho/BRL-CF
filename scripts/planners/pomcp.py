@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections import defaultdict
 import numpy as np
 from models.state import State
 from models.action import Action
@@ -25,6 +26,7 @@ class POMCPPlanner:
         self.gamma = args.gamma
         self.epsilon = args.epsilon
         self.c = args.c
+        self.profile_search = getattr(args, "profile_search", False)
         self.max_node_particles = getattr(args, "max_node_particles", None)
         if self.max_node_particles is None:
             self.max_node_particles = getattr(
@@ -53,6 +55,31 @@ class POMCPPlanner:
 
         self.initialize(self.env.state)
 
+    @staticmethod
+    def _new_search_profile():
+        return {
+            "time": defaultdict(float),
+            "count": defaultdict(int),
+        }
+
+    def _profile_add(self, profile, name: str, elapsed: float, count: int = 1) -> None:
+        if profile is None:
+            return
+        profile["time"][name] += elapsed
+        profile["count"][name] += count
+
+    def _profile_print(self, profile, total_elapsed: float) -> None:
+        if not self.profile_search or profile is None:
+            return
+
+        print("[POMCP][profile] search breakdown:")
+        print(f"        total_search_loop: {total_elapsed:.4f}s")
+        for name in sorted(profile["time"]):
+            elapsed = profile["time"][name]
+            count = profile["count"].get(name, 0)
+            avg = elapsed / count if count else 0.0
+            print(f"        {name}: total={elapsed:.4f}s, count={count}, avg={avg:.6f}s")
+
     def _should_stop(self, depth: int) -> bool:
         if depth != 0 and self.max_depth is not None and depth >= self.max_depth:
             return True
@@ -75,6 +102,30 @@ class POMCPPlanner:
     def initialize(self, init_state: State):
         self.belief = self.belief_manager.initialize_belief(init_state)
         self.tree.add_particle(self.tree.root_id, init_state, self.max_node_particles)
+
+    @staticmethod
+    def _normalize_weights(weights, n: int):
+        if weights is None or len(weights) != n:
+            return [1.0 / n] * n
+
+        weights = np.array(weights, dtype=float)
+        total = float(np.sum(weights))
+        if total <= 0.0:
+            return [1.0 / n] * n
+        return list(weights / total)
+
+    def _sample_root_state_from_belief(self, belief: Belief) -> State:
+        if belief is None or belief.is_empty():
+            return self.env.state.copy()
+
+        frontiers = belief.frontier
+        if not frontiers:
+            return belief.knowledge.copy()
+        if len(frontiers) == 1 and not frontiers[0].facts and not frontiers[0].fluents:
+            return belief.knowledge.copy()
+
+        weights = self._normalize_weights(belief.frontier_weights, len(frontiers))
+        return random.choices(frontiers, weights=weights, k=1)[0].copy()
 
     def _filter_existing_children(self, history: int, state: State):
         candidates = self.tree.get_action_children(history)
@@ -107,29 +158,30 @@ class POMCPPlanner:
 
     def search(self, belief: Belief):
         """
-        The planner reasons only over the current symbolic knowledge state.
-        The full belief frontier is maintained outside the tree for belief
-        update and entropy/information calculations.
+        The planner reasons over root particles sampled from the current belief.
+        The rest of the tree/search logic follows the backup POMCP structure.
         """
         history = self.tree.root_id
 
         knowledge = belief.knowledge.copy()
         root = self.tree.get_node(history)
         root.knowledge = knowledge.copy()
+        root.frontiers = [state.copy() for state in belief.frontier]
         
+        profile = self._new_search_profile() if self.profile_search else None
+
         # Repeat Simulations until timeout
         time1 = time.time()
         for _ in range(self.n_simulations):
-            
-            sampled_root_state = self.tree.sample_particle(history)
-            if sampled_root_state is None:
-                sampled_root_state = knowledge.copy()
+            sample_start = time.time()
+            sampled_root_state = self._sample_root_state_from_belief(belief)
+            self._profile_add(profile, "root_particle_sample", time.time() - sample_start)
                 
-            self.simulate(state=sampled_root_state, history=history, depth=0)
+            self.simulate(state=sampled_root_state, history=history, depth=0, profile=profile)
         
         time2 = time.time()
-        con = round((time2-time1)/self.n_simulations, 4)
-        print("[POMCP] Average simulation time: ", con)
+        con1 = round((time2-time1)/self.n_simulations, 4)
+        
         
         # DEBUG
         if DEBUG:
@@ -140,6 +192,9 @@ class POMCPPlanner:
         best_action = self._select_action(history, knowledge)
         time4 = time.time()
         con = round((time4-time3), 4)
+        print("[POMCP] Selected:", best_action.name if best_action else None)
+        print("[POMCP] Average simulation time: ", con1)
+        self._profile_print(profile, time2 - time1)
         print("[POMCP] Average select time: ", con)
         
         # print("Selected:", best_action.name if best_action else None)
@@ -147,7 +202,7 @@ class POMCPPlanner:
 
 
 
-    def simulate(self, state: State, history: int, depth: int):
+    def simulate(self, state: State, history: int, depth: int, profile=None):
         """
         Docstring for simulate
         """
@@ -160,65 +215,93 @@ class POMCPPlanner:
             return 0.0
 
         # 2. Filter actions by applicability in the current sampled state.
+        applicable_start = time.time()
         applicable = self.get_applicable_actions(state)
+        self._profile_add(profile, "simulate_applicable", time.time() - applicable_start)
         if not applicable:
             # 3. If nothing is applicable, treat this observation node as terminal.
+            terminal_start = time.time()
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, 0.0)
+            self._profile_add(profile, "simulate_terminal_update", time.time() - terminal_start)
             return 0.0
 
         # 4. On the first visit, expand all applicable actions and initialize by rollout.
         if self.tree.is_leaf_node(history):
+            expand_start = time.time()
             self._expand_applicable_actions(history, state)
-            time1 = time.time()
-            new_value = self.rollout(state, depth)
-            time2 = time.time()
+            self._profile_add(profile, "simulate_leaf_expand", time.time() - expand_start)
+            rollout_start = time.time()
+            new_value = self.rollout(state, depth, profile=profile)
+            self._profile_add(profile, "simulate_leaf_rollout_total", time.time() - rollout_start)
             # print("[ROLLOUT time]", round(time2-time1, 4))
+            leaf_update_start = time.time()
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, new_value)
+            self._profile_add(profile, "simulate_leaf_update", time.time() - leaf_update_start)
             return new_value
 
         # 5. Otherwise select the best existing action child with UCB.
+        select_start = time.time()
         action, action_node = self.search_best(history, state, use_ucb=True)
+        self._profile_add(profile, "simulate_ucb_select", time.time() - select_start)
         if action is None:
+            no_action_start = time.time()
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, 0.0)
+            self._profile_add(profile, "simulate_no_action_update", time.time() - no_action_start)
             return 0.0
 
         # 6. Sample transition, observation, and immediate reward.
+        sample_start = time.time()
         simulation = self.simulator.sample(state, action)
+        self._profile_add(profile, "simulate_model_sample", time.time() - sample_start)
         next_state = simulation.next_state
         observation = simulation.observation
         reward = simulation.reward
 
         # 7. Move to the matching observation child and recurse.
+        obs_start = time.time()
         obs_node = self.tree.get_observation_node(action_node, observation)
-        total_return = reward + self.gamma*self.simulate(next_state, obs_node, depth+1)
+        self._profile_add(profile, "simulate_obs_node", time.time() - obs_start)
+        recurse_start = time.time()
+        future_return = self.simulate(next_state, obs_node, depth+1, profile=profile)
+        self._profile_add(profile, "simulate_recursive_child", time.time() - recurse_start)
+        total_return = reward + self.gamma*future_return
 
         # 8. Backtrack
+        backtrack_start = time.time()
         self.tree.add_particle(history, state, self.max_node_particles)
         self.tree.increment_visit(history)
         self.tree.increment_visit(action_node)
         self.tree.update_action_value(action_node, total_return)
+        self._profile_add(profile, "simulate_backtrack", time.time() - backtrack_start)
         
         return total_return
     
 
-    def rollout(self, state: State, depth: int):
+    def rollout(self, state: State, depth: int, profile=None):
         
         if self._should_stop(depth):
             return 0.0
         
+        applicable_start = time.time()
         applicable_actions = self.get_applicable_actions(state)
+        self._profile_add(profile, "rollout_applicable", time.time() - applicable_start)
         if not applicable_actions:
             return 0.0
         action = random.choice(applicable_actions)
         
+        sample_start = time.time()
         simulation = self.simulator.sample(state, action)
+        self._profile_add(profile, "rollout_model_sample", time.time() - sample_start)
         sample_state = simulation.next_state
         reward = simulation.reward
         
-        return reward + self.gamma * self.rollout(sample_state, depth + 1)
+        recurse_start = time.time()
+        future_return = self.rollout(sample_state, depth + 1, profile=profile)
+        self._profile_add(profile, "rollout_recursive_child", time.time() - recurse_start)
+        return reward + self.gamma * future_return
 
     def search_best(self, history: int, state: State, use_ucb: bool = True):
         

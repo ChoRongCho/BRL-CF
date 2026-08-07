@@ -12,7 +12,7 @@ from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
 from models.reward import RewardModel
 from models.belief import Belief
-from environments.check_done import check_done as evaluate_done
+from environments.check_done import evaluate_done
 from environments.world import create_symbolic_world
 
 
@@ -224,6 +224,9 @@ class Environment:
             self.observation_model.domain_model.world = self.world
 
     def check_done(self, belief: Belief):
+        """
+        Check if the episode is done based on the current belief.
+        """
         return evaluate_done(self, belief)
 
 
