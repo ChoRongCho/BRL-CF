@@ -249,6 +249,8 @@ def main() -> None:
             belief=belief,
             step=step,
             action_name=action.name,
+            observation_facts=observation.state.facts,
+            oracle_state_facts=belief.knowledge.facts,
         )
         interaction_elapsed = time() - interaction_start
         total_interaction_time += interaction_elapsed

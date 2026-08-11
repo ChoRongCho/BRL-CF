@@ -25,9 +25,8 @@ class TransitionWastesorting:
         "place_plastic_bin",
     }
 
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         # # original
         # self.detect_observed_success_rate = 0.995
@@ -84,9 +83,6 @@ class TransitionWastesorting:
             probability=probability
         )
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
     def _extract_holding_facts(self, action: Action) -> List[str]:
         return [f.replace(" ", "") for f in action.observation if f.replace(" ", "").startswith("holding(")]
 
@@ -97,19 +93,6 @@ class TransitionWastesorting:
         expanded_obs = _dedup_facts(expanded_obs)
         return [f for f in expanded_obs if f.startswith("located(")]
 
-    def _extract_true_facts_from_observation(self, action: Action) -> List[str]:
-        expanded_obs = []
-        for obs in action.observation:
-            expanded_obs.extend(self._expand_free_variables_in_fact(obs))
-        expanded_obs = _dedup_facts(expanded_obs)
-        
-        true_facts = []
-        for fact in expanded_obs:
-            if self._true_has_fact(fact):
-                true_facts.append(fact)
-        return true_facts
-    
-    
     def _detect_facts_from_action(self, action: Action) -> List[str]:
         detected_facts = []
         sources = (action.add_effects, action.observation)
@@ -233,29 +216,16 @@ class TransitionWastesorting:
     ) -> List[Tuple[List[str], List[str], float]]:
         category_del_facts = [f"{pred}({waste})" for pred in category_predicates]
         labels = [f"{pred}({waste})" for pred in category_predicates]
-        true_label = self._category_label_for_state(self.true_state, waste)
-        if true_label not in labels:
-            true_label = labels[0]
+        probability = 1.0 / (len(labels) + 1)
 
-        wrong_labels = [label for label in labels if label != true_label]
-        wrong_prob = (1.0 - self.detect_classification_success_rate) / len(wrong_labels)
-
-        choices = [
-            (
-                [f"detected({waste})", true_label],
-                category_del_facts,
-                self.detect_classification_success_rate,
-            )
-        ]
-        choices.extend(
+        return [([], [], probability)] + [
             (
                 [f"detected({waste})", label],
                 category_del_facts,
-                wrong_prob,
+                probability,
             )
-            for label in wrong_labels
-        )
-        return choices
+            for label in labels
+        ]
 
     def _build_detect_outcomes(
         self,
@@ -266,8 +236,6 @@ class TransitionWastesorting:
         if not waste_entries:
             return [self._make_outcome(add_facts=[], del_facts=[], probability=1.0)]
 
-        p_detect = self.detect_observed_success_rate
-        p_miss = 1.0 - p_detect
         category_predicates = self._category_predicates_from_observation(action)
         per_waste_choices = [
             self._build_detect_label_choices(entry["waste"], category_predicates)
@@ -288,19 +256,16 @@ class TransitionWastesorting:
             add_facts = _dedup_facts(add_facts)
             del_facts = _dedup_facts(del_facts)
             key = (tuple(sorted(add_facts)), tuple(sorted(del_facts)))
-            outcome_map[key] = outcome_map.get(key, 0.0) + (prob * p_detect)
+            outcome_map[key] = outcome_map.get(key, 0.0) + prob
 
         outcomes = [
-            self._make_outcome(add_facts=[], del_facts=[], probability=p_miss)
-        ]
-        outcomes.extend([
             self._make_outcome(
                 add_facts=list(add_key),
                 del_facts=list(del_key),
                 probability=prob,
             )
             for (add_key, del_key), prob in outcome_map.items()
-        ])
+        ]
         return outcomes
 
     def _build_pick_outcomes(self, action: Action) -> List[TransitionOutcome]:

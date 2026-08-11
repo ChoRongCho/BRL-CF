@@ -116,13 +116,23 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
 
     lines.extend(["", "[Questions]"])
     if questions:
-        for idx, item in enumerate(questions, start=1):
+        questions_by_step = {}
+        for item in questions:
+            questions_by_step.setdefault(item.get("step"), []).append(item)
+
+        for step, step_questions in questions_by_step.items():
+            lines.append(f"Step={step}:")
             lines.append(
-                f"Q{idx}: step={item.get('step')}, action={item.get('action')}, "
-                f"question='{item.get('question')} is True?', answer={item.get('answer')}, "
-                f"confidence={item.get('confidence_before', 0.0):.4f}"
-                f"->{item.get('confidence_after', 0.0):.4f}"
+                f"- Observation: {step_questions[0].get('observation', [])}"
             )
+            for idx, item in enumerate(step_questions, start=1):
+                lines.append(
+                    f"- Q{idx}: action={item.get('action')}, "
+                    f"question='{item.get('question')} is True?', "
+                    f"answer={item.get('answer')}, "
+                    f"confidence={item.get('confidence_before', 0.0):.4f}"
+                    f"->{item.get('confidence_after', 0.0):.4f}"
+                )
     else:
         lines.append("-")
 

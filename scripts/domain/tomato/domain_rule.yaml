@@ -5,8 +5,8 @@ meta_data:
   semantics: "ASP-style world generation under partial observability"
   purpose: "belief state initialization / possible world enumeration"
   assumptions:
-    - "Each tomato has exactly one hidden or observed state"
-    - "A tomato state is one of the predefined symbolic states"
+    - "Each tomato has exactly one maturity and one condition state"
+    - "Maturity and condition are independent symbolic property axes"
     - "Observed tomato states are hard evidence"
     - "Unobserved tomatoes may be assigned any state consistent with constraints"
     - "The total set of tomatoes is fixed in advance"
@@ -47,13 +47,17 @@ predicates:
     arity: [T]
     meaning: "T is unripe"
 
+  - predicate: fresh(T)
+    arity: [T]
+    meaning: "T is fresh (not rotten)"
+
   - predicate: rotten(T)
     arity: [T]
     meaning: "T is rotten"
 
   # Tomato location
   - predicate: holded(T, R)
-    arity: [T]
+    arity: [T, R]
     meaning: "Tomato T is holded by robot R"
 
   - predicate: loaded(T, R)
@@ -122,14 +126,6 @@ choice_rules:
       - "observed(T)"
     cardinality: "1..1"
 
-  # Tomato must have one property state
-  - elements:
-      - atom: "ripe(T)"
-      - atom: "unripe(T)"
-      - atom: "rotten(T)"
-    given:
-      - "tomato(T)"
-    cardinality: "1..1"
 
   # Tomato must be in the stem if it not observed
   - elements:
@@ -164,11 +160,16 @@ constraint:
       - "not 1 { located(R, L) : location(L) } 1"
     meaning: "Each robot must have exactly one location"
 
-  # 창민 add
+  # Observed tomatoes keep one label on each independent property axis.
   - body:
       - "observed(T)"
-      - "not 1 { ripe(T); unripe(T); rotten(T) } 1"
+      - "not 1 { ripe(T); unripe(T) } 1"
     meaning: "If a tomato is observed, it must have exactly one ripeness label"
+
+  - body:
+      - "observed(T)"
+      - "not 1 { fresh(T); rotten(T) } 1"
+    meaning: "If a tomato is observed, it must have exactly one condition label"
 
 
 
@@ -180,6 +181,7 @@ show: # show all states
   - "#show observed/1"
   - "#show ripe/1"
   - "#show unripe/1"
+  - "#show fresh/1"
   - "#show rotten/1"
   - "#show holded/2"
   - "#show loaded/2"

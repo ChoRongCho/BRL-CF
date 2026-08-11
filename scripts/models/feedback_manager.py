@@ -10,6 +10,7 @@ from models.state import State
 from models.action import Action
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel, TransitionOutcome, NextStateOutcome
+from utils.utils import _parse_fact
 
 from collections import defaultdict
 
@@ -21,13 +22,7 @@ class FeedbackManger:
         self.num_of_query = 0
         self.query_log = []
         self.use_llm = False
-        # ablation study
-        """
-        f_strategy: int = "1: no, 2: all, 3: ours, 4:random"
-        q_strategy: int = "1: ours, 2: entropy"
-        """
-        self.f_strategy = self.args.f_strategy
-        self.q_strategy = self.args.q_strategy
+
         if self.args.answer_type == "auto":
             self.is_human_answer = False
         elif self.args.answer_type == "human":
@@ -175,8 +170,15 @@ class FeedbackManger:
         return belief
     
     
-    def get_new_observation(self, belief: Belief, step: int = None, action_name: str = None) -> Belief:
+    def get_new_observation(self, 
+                            belief: Belief, 
+                            step: int = None, 
+                            action_name: str = None,
+                            observation_facts=None,
+                            oracle_state_facts=None) -> Belief:
+        """
         
+        """
         
         # ================ compute confidence and human ask ================
         confidence = self.compute_confidence(belief.frontier_weights)
@@ -190,8 +192,12 @@ class FeedbackManger:
                 break
             
             # 질문
-            answer = self.query_human(target_fact, action_name)            
-            
+            answer = self.call_feedback(
+                target_fact,
+                action_name,
+                observation_facts=observation_facts,
+                oracle_state_facts=oracle_state_facts,
+            )
             
             self.num_of_query += 1
             print(f"    [Query] A: {answer}")
@@ -202,6 +208,7 @@ class FeedbackManger:
             self.query_log.append({
                 "step": step,
                 "action": action_name,
+                "observation": list(observation_facts or []),
                 "question": target_fact,
                 "answer": answer,
                 "confidence_before": confidence,
@@ -229,18 +236,25 @@ class FeedbackManger:
         return belief
     
     
-    def query_human(self, target_fact, action_name):
+    def call_feedback(
+        self,
+        target_fact,
+        action_name,
+        observation_facts=None,
+        oracle_state_facts=None,
+    ):
         
-        
-        self.refining_query(target_fact, action_name)
-        
-        
-        
-        
-        
+        question = self.refining_query(target_fact, action_name)
+               
         if self.is_human_answer:
-            """
-            """
+            if getattr(self.args, "use_interface", False):
+                interface_server = getattr(self.args, "interface_server", None)
+                if interface_server is None:
+                    raise RuntimeError(
+                        "The human interface was requested but its server is unavailable"
+                    )
+                return interface_server.ask(target_fact, question)
+
             while True:
                 answer = input("    [Human] Enter t/f: ").strip().lower()
                 if answer == "t":
@@ -250,64 +264,144 @@ class FeedbackManger:
                 print("    [Human] Invalid input. Please enter 't' or 'f'.")
                 
         else:
-            """
-            """
-            if self._true_init_facts is None:
-                yaml_file_path = self.args.initial_state
-                with open(yaml_file_path, "r", encoding="utf-8") as f:
-                    init_config = yaml.safe_load(f) or {}
-                self._true_init_facts = {
-                    str(fact).replace(" ", "")
-                    for fact in init_config.get("true_init", []) or []
-                }
+            return self.query_oracle(
+                target_fact,
+                action_name,
+                observation_facts=observation_facts,
+                oracle_state_facts=oracle_state_facts,
+            )
 
-            target_fact = str(target_fact).replace(" ", "")
-            action = "" if action_name is None else str(action_name)
+    def _get_oracle_facts(self):
+        """Return normalized facts declared in scene YAML."""
+        if self._true_init_facts is None:
+            yaml_file_path = self.args.initial_state
+            with open(yaml_file_path, "r", encoding="utf-8") as f:
+                init_config = yaml.safe_load(f) or {}
+            initial_facts = list(init_config.get("facts", []) or [])
+            initial_facts.extend(init_config.get("true_init", []) or [])
+            self._true_init_facts = {
+                str(fact).replace(" ", "") for fact in initial_facts
+            }
+        return self._true_init_facts
 
-            if self.domain_name == "tomato":
-                if action.startswith("pick") and target_fact.startswith("at("):
-                    # return bool(np.random.random() < 0.1)
+    def query_oracle(
+        self,
+        target_fact,
+        action_name=None,
+        observation_facts=None,
+        oracle_state_facts=None,
+    ):
+        """
+        Dispatch an Oracle query to the active domain implementation.
+
+        입력 예: target_fact="fresh(tomato1)", action_name="scan(brl_robot,tomato1)"
+        출력 예: 현재 선택된 Tomato scene의 true state 기준 True
+        """
+        target_fact = str(target_fact).replace(" ", "")
+        action = "" if action_name is None else str(action_name).replace(" ", "")
+        true_facts = self._get_oracle_facts()
+
+        if self.domain_name == "tomato":
+            target_predicate, target_args = _parse_fact(target_fact)
+            action_schema, action_args = (
+                _parse_fact(action) if action else ("", [])
+            )
+
+            if (
+                action_schema == "detect"
+                and target_predicate in {"observed", "ripe", "unripe"}
+                and len(target_args) == 1
+                and len(action_args) >= 2
+            ):
+                tomato = target_args[0]
+                stem = action_args[1]
+                if f"at({tomato},{stem})" not in true_facts:
                     return False
-                
-                if action.startswith("detect("):
-                    # detect(R,S)
-                    stem = action[action.rfind(",") + 1:-1].strip()
-                    if target_fact.startswith("ripe("):
-                        tomato = target_fact[len("ripe("):-1]
-                        q_fact = f"at({tomato},{stem})"
-                        if q_fact in self._true_init_facts:
-                            if f"rotten({tomato})" in self._true_init_facts:
-                                return True
-                            else:
-                                return target_fact in self._true_init_facts
-                        else:
-                            return False
-                        
-                    elif target_fact.startswith("unripe("):
-                        tomato = target_fact[len("unripe("):-1]
-                        q_fact = f"at({tomato},{stem})"
-                        if q_fact in self._true_init_facts:
-                            return target_fact in self._true_init_facts
-                        else:
-                            return False
-                        
-                    elif target_fact.startswith("at("):
-                        return target_fact in self._true_init_facts
-                    
-                if action.startswith("scan("):
-                    return target_fact in self._true_init_facts
-                    
-                if (action.startswith("place") or action.startswith("discard")) and target_fact.startswith("handempty("):
-                    # return bool(np.random.random() < 0.8)
-                    return True
-                
-                return bool(np.random.random() < 0.5)
-                
+                return (
+                    True
+                    if target_predicate == "observed"
+                    else target_fact in true_facts
+                )
 
-            if self.domain_name == "wastesorting":
-                return target_fact in self._true_init_facts
+            if (
+                action_schema == "scan"
+                and target_predicate in {"scanned", "fresh", "rotten"}
+                and len(target_args) == 1
+                and len(action_args) >= 2
+            ):
+                if target_args[0] != action_args[1]:
+                    return False
+                return (
+                    True
+                    if target_predicate == "scanned"
+                    else target_fact in true_facts
+                )
 
-            return bool(np.random.random() < 0.8)
+            action_success_rates = {
+                "navigate": 0.90,
+                "prepare_nav": 1.0,
+                "pick_n_scan": 1.0,
+                "pick": 0.95,
+                "place": 0.99,
+                "discard": 0.99,
+            }
+            if action_schema in action_success_rates:
+                return bool(
+                    np.random.random() < action_success_rates[action_schema]
+                )
+
+            return target_fact in true_facts
+
+        elif self.domain_name == "wastesorting":
+            target_predicate, target_args = _parse_fact(target_fact)
+            action_schema, _ = _parse_fact(action) if action else ("", [])
+            observation_set = {
+                str(fact).replace(" ", "")
+                for fact in (observation_facts or [])
+            }
+            current_state_set = {
+                str(fact).replace(" ", "")
+                for fact in (oracle_state_facts or [])
+            }
+
+            if action_schema == "detect_waste" and target_predicate == "detected":
+                return target_fact in observation_set
+
+            if (
+                action_schema == "detect_waste"
+                and target_predicate in {"can", "paper", "general", "plastic"}
+                and len(target_args) == 1
+            ):
+                target_waste = target_args[0]
+                for fact in true_facts:
+                    predicate, args = _parse_fact(fact)
+                    if predicate != "occ" or len(args) < 2 or args[1] != target_waste:
+                        continue
+
+                    front_waste = args[0]
+                    front_cleared = False
+                    for current_fact in current_state_set:
+                        current_predicate, current_args = _parse_fact(current_fact)
+                        if current_predicate == "in_bin" and current_args and current_args[0] == front_waste:
+                            front_cleared = True
+                            break
+                        if (
+                            current_predicate == "holding"
+                            and len(current_args) >= 2
+                            and current_args[1] == front_waste
+                        ):
+                            front_cleared = True
+                            break
+
+                    if not front_cleared:
+                        return False
+
+            return target_fact in true_facts
+
+        else:
+            raise ValueError(
+                f"Oracle answer is not implemented for domain: {self.domain_name}"
+            )
 
     
     # LLM-based refining vs Machine 
@@ -327,5 +421,6 @@ class FeedbackManger:
 
             print(f"    [Query] T: {target_fact}=True? | Q: {question}")
         else:
+            question = f"Is {target_fact} true?"
             print(f"    [Query] T: {target_fact}=True?")
-        return
+        return question

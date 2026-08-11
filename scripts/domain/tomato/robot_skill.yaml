@@ -2,19 +2,17 @@ actions:
   - name: navigate
     type: move
     parameters: [R, L1, L2]
-    cost: 2.0
+    cost: 8.0
     preconditions:
       - robot(R)
       - location(L1)
       - location(L2)
       - located(R, L1)
-      # - navprepared(R)
       - handempty(R)
     add_effects:
       - located(R, L2)
     del_effects:
       - located(R, L1)
-      # - navprepared(R)
     observation:
       - located(R, L1)
       - located(R, L2)
@@ -23,7 +21,7 @@ actions:
   - name: detect
     type: observe
     parameters: [R, S]
-    cost: 1.0
+    cost: 0.5
     preconditions:
       - handempty(R)
       - robot(R)
@@ -32,14 +30,12 @@ actions:
     add_effects:
       - observed(T)
       - at(T, S)
-      - ripe(T)
     del_effects: []
     observation:
       - observed(T)
       - at(T, S)
       - ripe(T)
       - unripe(T)
-
 
   - name: pick
     type: task
@@ -57,7 +53,6 @@ actions:
     add_effects:
       - holding(R, T)
       - holded(T, R)
-      # - scanned(T)
     del_effects:
       - at(T, S)
       - handempty(R)
@@ -65,7 +60,6 @@ actions:
       - handempty(R)
       - holding(R, T)
       - holded(T, R)
-
 
   - name: scan
     type: observe
@@ -77,14 +71,11 @@ actions:
       - observed(T)
       - holding(R, T)
     add_effects:
-      - ripe(T)
       - scanned(T)
     del_effects: []
     observation:
-      - ripe(T)
-      # - unripe(T)
+      - fresh(T)
       - rotten(T)
-
 
   - name: place
     type: task
@@ -93,8 +84,7 @@ actions:
     preconditions:
       - robot(R)
       - tomato(T)
-      - observed(T)
-      - ripe(T)
+      - fresh(T)
       - holding(R, T)
       - holded(T, R)
     add_effects:
@@ -116,7 +106,7 @@ actions:
     preconditions:
       - robot(R)
       - tomato(T)
-      - observed(T)
+      - rotten(T)
       - holding(R, T)
       - holded(T, R)
     add_effects:
@@ -129,5 +119,3 @@ actions:
       - discarded(T)
       - handempty(R)
       - holding(R, T)
-
-

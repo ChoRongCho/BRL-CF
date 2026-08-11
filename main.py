@@ -98,9 +98,25 @@ def print_step_timing(step_log):
 
 
 def main():
-    args = parse_args("tomato")
+    args = parse_args("wastesorting")   # tomato wastesorting
     random.seed(args.seed)
     np.random.seed(args.seed)
+
+    interface_server = None
+    if args.use_interface:
+        from interface_server import InterfaceServer
+
+        interface_server = InterfaceServer(
+            host=args.interface_host,
+            port=args.interface_port,
+            answer_timeout=args.interface_timeout,
+        )
+        interface_server.start()
+        args.interface_server = interface_server
+        print(
+            "[Interface] WebSocket server listening on "
+            f"ws://{args.interface_host}:{args.interface_port}"
+        )
     
     env = Environment(args)
     
@@ -155,6 +171,11 @@ def main():
                 "step_total_time": 0.0,
             }
             print(f"[Planner] Selected action: {action.name}")
+            if interface_server is not None:
+                interface_server.publish(
+                    "planner_step",
+                    {"step": i, "action": action.name},
+                )
         else:
             print("[Planner] PLAN FAILURE")
             plan_end_reason = "PLAN FAILURE"
@@ -186,6 +207,8 @@ def main():
             belief=belief,
             step=i,
             action_name=action.name,
+            observation_facts=observation.state.facts,
+            oracle_state_facts=belief.knowledge.facts,
         )
         interaction_elapsed = time() - interaction_start
         total_interaction_time += interaction_elapsed
@@ -338,6 +361,16 @@ def main():
         )
     print("=============Log File=============")
     print(log_path)
+    if interface_server is not None:
+        interface_server.publish(
+            "plan_finished",
+            {
+                "success": plan_success,
+                "reason": plan_end_reason,
+                "steps": len(step_logs),
+                "total_reward": cumulated_reward,
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -3,11 +3,12 @@ from __future__ import annotations
 from itertools import product
 from typing import Dict, List
 import re
+import random
 
 from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
 from models.action import Action
-from models.observation import ObservationOutcome
+from models.observation import Observation, ObservationOutcome
 
 
 Choice = Dict
@@ -41,10 +42,11 @@ class ObservationWastesorting:
         # self.pick_observation_success_rate = 0.98
         # self.place_observation_success_rate = 0.98
         
-        self.detect_observed_success_rate = 0.9
-        self.detect_classification_success_rate = 0.8
+        self.detect_observed_success_rate = 0.97
+        self.detect_classification_success_rate = 0.85
         self.pick_observation_success_rate = 0.95
         self.place_observation_success_rate = 0.95
+        self.false_positive_rate = 0.03
 
         if self.use_true_init_observation and self.true_state is None:
             raise ValueError("observation_source=true_init requires initial_state.yaml true_init")
@@ -73,6 +75,53 @@ class ObservationWastesorting:
         if action.name.replace(" ", "").split("(", 1)[0] == "detect_waste":
             return self._build_detect_distribution(state, action, use_true_state=False)
         return self.get_observation_distribution(state, action)
+
+    def likelihood(
+        self,
+        observation: Observation,
+        state: State,
+        action: Action,
+    ) -> float | None:
+        if action.name.replace(" ", "").split("(", 1)[0] != "detect_waste":
+            return None
+
+        obs_facts = set(observation.state.facts)
+        category_predicates = self._category_predicates_from_observation(action)
+        p_detect = self.detect_observed_success_rate
+        p_miss = 1.0 - p_detect
+        p_correct = self.detect_classification_success_rate
+        p_wrong = (1.0 - p_correct) / (len(category_predicates) - 1)
+        p_false_category = self.false_positive_rate / len(category_predicates)
+        p_no_false_positive = 1.0 - self.false_positive_rate
+        likelihood = 1.0
+
+        for waste in self._detectable_wastes_from_action(action):
+            observed_detected = f"detected({waste})" in obs_facts
+            observed_labels = [
+                f"{predicate}({waste})"
+                for predicate in category_predicates
+                if f"{predicate}({waste})" in obs_facts
+            ]
+            candidate_detected = state.has_fact(f"detected({waste})")
+            candidate_label = self._category_label_for_state(state, waste)
+
+            if not observed_detected and not observed_labels:
+                likelihood *= p_miss if candidate_detected else p_no_false_positive
+                continue
+
+            if not observed_detected or len(observed_labels) != 1:
+                return self.noise
+
+            if not candidate_detected:
+                likelihood *= p_false_category
+            elif candidate_label == observed_labels[0]:
+                likelihood *= p_detect * p_correct
+            elif candidate_label is not None:
+                likelihood *= p_detect * p_wrong
+            else:
+                likelihood *= p_detect / len(category_predicates)
+
+        return likelihood
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:
         pred, args = _parse_fact(fact)
@@ -167,7 +216,7 @@ class ObservationWastesorting:
         pairs = []
         for fact in gt_state.facts:
             pred, args = _parse_fact(fact)
-            if pred == "on" and len(args) >= 2:
+            if pred == "occ" and len(args) >= 2:
                 pairs.append((args[0], args[1]))
         return pairs
 
@@ -215,10 +264,15 @@ class ObservationWastesorting:
         ]
 
     @staticmethod
-    def _detect_choice(facts: List[str], probability: float) -> Choice:
+    def _detect_choice(
+        facts: List[str],
+        probability: float,
+        fluents: Dict[str, Dict[str, float]] | None = None,
+    ) -> Choice:
         return {
             "facts": list(dict.fromkeys(fact.replace(" ", "") for fact in facts)),
             "probability": probability,
+            "fluents": fluents or {},
         }
 
     def _build_detect_waste_label_choices(
@@ -226,7 +280,17 @@ class ObservationWastesorting:
         gt_state: State,
         waste: str,
         category_predicates: List[str],
+        sample_dynamic: bool = False,
     ) -> List[Choice]:
+        p_detect = (
+            random.uniform(0.94, 1.0)
+            if sample_dynamic
+            else self.detect_observed_success_rate
+        )
+        p_miss = 1.0 - p_detect
+        true_positive_confidence = (
+            random.uniform(0.85, 0.95) if sample_dynamic else None
+        )
         p_correct_class = self.detect_classification_success_rate
         labels = [f"{pred}({waste})" for pred in category_predicates]
 
@@ -238,8 +302,34 @@ class ObservationWastesorting:
         wrong_prob = (1.0 - p_correct_class) / len(wrong_labels)
 
         return (
-            [self._detect_choice([f"detected({waste})", true_label], p_correct_class)]
-            + [self._detect_choice([f"detected({waste})", label], wrong_prob) for label in wrong_labels]
+            [self._detect_choice([], p_miss)]
+            + [
+                self._detect_choice(
+                    [f"detected({waste})", true_label],
+                    p_detect * p_correct_class,
+                    (
+                        {waste: {"detection_confidence": true_positive_confidence}}
+                        if true_positive_confidence is not None
+                        else None
+                    ),
+                )
+            ]
+            + [
+                self._detect_choice(
+                    [f"detected({waste})", label],
+                    p_detect * wrong_prob,
+                    (
+                        {
+                            waste: {
+                                "detection_confidence": random.uniform(0.60, 0.70)
+                            }
+                        }
+                        if sample_dynamic
+                        else None
+                    ),
+                )
+                for label in wrong_labels
+            ]
         )
 
     @staticmethod
@@ -248,13 +338,23 @@ class ObservationWastesorting:
 
         for combo in product(*per_waste_choices):
             facts = []
+            fluents = {}
             probability = 1.0
             for choice in combo:
                 facts.extend(choice["facts"])
+                for obj, values in choice["fluents"].items():
+                    fluents.setdefault(obj, {}).update(values)
                 probability *= choice["probability"]
 
             facts = _dedup_facts(facts)
-            key = tuple(sorted(facts))
+            fluent_key = tuple(
+                sorted(
+                    (obj, key, float(value))
+                    for obj, values in fluents.items()
+                    for key, value in values.items()
+                )
+            )
+            key = (tuple(sorted(facts)), fluent_key)
             outcome_map[key] = outcome_map.get(key, 0.0) + probability
 
         total = sum(outcome_map.values())
@@ -262,8 +362,19 @@ class ObservationWastesorting:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         return [
-            ObservationOutcome(facts=list(facts_key), probability=probability / total)
-            for facts_key, probability in outcome_map.items()
+            ObservationOutcome(
+                facts=list(facts_key),
+                fluents={
+                    obj: {
+                        key: value
+                        for fluent_obj, key, value in fluent_key
+                        if fluent_obj == obj
+                    }
+                    for obj in {item[0] for item in fluent_key}
+                },
+                probability=probability / total,
+            )
+            for (facts_key, fluent_key), probability in outcome_map.items()
         ]
 
     def _build_detect_distribution(
@@ -284,19 +395,12 @@ class ObservationWastesorting:
 
         category_predicates = self._category_predicates_from_observation(action)
         per_waste_choices = [
-            self._build_detect_waste_label_choices(gt_state, waste, category_predicates)
+            self._build_detect_waste_label_choices(
+                gt_state,
+                waste,
+                category_predicates,
+                sample_dynamic=use_true_state,
+            )
             for waste in detectable_wastes
         ]
-        detected_outcomes = self._merge_detect_choices(per_waste_choices)
-        p_detect = self.detect_observed_success_rate
-
-        return (
-            [ObservationOutcome(facts=[], probability=1.0 - p_detect)]
-            + [
-                ObservationOutcome(
-                    facts=outcome.facts,
-                    probability=outcome.probability * p_detect,
-                )
-                for outcome in detected_outcomes
-            ]
-        )
+        return self._merge_detect_choices(per_waste_choices)

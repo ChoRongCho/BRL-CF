@@ -12,9 +12,8 @@ from models.transition import TransitionOutcome
 
 
 class TransitionTomato:
-    def __init__(self, type_map: Dict[str, List[str]], true_state: State):
+    def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
-        self.true_state = true_state
 
         # original test
         self.navigate_success_rate = 0.90
@@ -111,9 +110,6 @@ class TransitionTomato:
             fluent_effects=fluent_effects or {},
         )
 
-    def _true_has_fact(self, fact: str) -> bool:
-        return self.true_state.has_fact(fact.replace(" ", ""))
-
     def _extract_holding_facts(self, action: Action) -> List[str]:
         return [f.replace(" ", "") for f in action.observation if f.replace(" ", "").startswith("holding(")]
 
@@ -143,9 +139,8 @@ class TransitionTomato:
             return []
 
         target_location = args[1]
-        tomatoes = self.type_map.get("T", [])
         entries = []
-        for tomato in tomatoes:
+        for tomato in self.type_map.get("T", []):
             entries.append({
                 "tomato": tomato,
                 "location": target_location,
@@ -327,7 +322,6 @@ class TransitionTomato:
             quality_del_facts = [
                 f"ripe({tomato})",
                 f"unripe({tomato})",
-                f"rotten({tomato})",
             ]
 
             # 가능한 label들
@@ -418,19 +412,18 @@ class TransitionTomato:
     def _build_scan_outcomes(self, action: Action) -> List[TransitionOutcome]:
         """
         scan은 항상 성공하며 scanned(T)를 반환한다.
-        quality label은 ripe/rotten만 동일 확률로 구분한다.
+        quality label은 fresh/rotten만 동일 확률로 구분한다.
         """
         _, args = _parse_fact(action.name)
         tomato = args[1]
         quality_facts = [
-            f"ripe({tomato})",
-            f"unripe({tomato})",
+            f"fresh({tomato})",
             f"rotten({tomato})",
         ]
         scanned_fact = f"scanned({tomato})"
 
         labels = [
-            f"ripe({tomato})",
+            f"fresh({tomato})",
             f"rotten({tomato})",
         ]
 

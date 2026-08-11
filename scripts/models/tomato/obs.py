@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 from itertools import product
 import re
+import random
 
 from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
@@ -51,6 +52,7 @@ class ObservationTomato:
         self.detect_classification_success_rate = 0.95
         self.scan_success_rate = 0.85
         self.navigate_success_rate = 0.95
+        self.false_positive_rate = 0.03
 
         if self.use_true_init_observation and self.true_state is None:
             raise ValueError("observation_source=true_init requires initial_state.yaml true_init")
@@ -213,6 +215,14 @@ class ObservationTomato:
         return None
 
     @staticmethod
+    def _freshness_label_for_state(state: State, tomato: str) -> str | None:
+        if state.has_fact(f"rotten({tomato})"):
+            return f"rotten({tomato})"
+        if state.has_fact(f"fresh({tomato})"):
+            return f"fresh({tomato})"
+        return None
+
+    @staticmethod
     def _tomato_is_no_longer_at_stem(runtime_state: State, tomato: str) -> bool:
         """
         Detect should not rediscover tomatoes that have already moved out of a stem.
@@ -298,7 +308,7 @@ class ObservationTomato:
         use_true_state: bool = True,
     ) -> List[ObservationOutcome]:
         """
-        Scan observes the true ripe/unripe/rotten label for the held tomato.
+        Scan observes the true fresh/rotten label for the held tomato.
 
         The tomato is taken from the grounded action name instead of
         action.observation. This lets pick_n_scan reuse the same scan model even
@@ -310,11 +320,11 @@ class ObservationTomato:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         tomato = args[1]
-        all_labels = [f"ripe({tomato})", f"rotten({tomato})"]
-        true_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=False)
+        all_labels = [f"fresh({tomato})", f"rotten({tomato})"]
+        true_label = self._freshness_label_for_state(gt_state, tomato)
 
         if true_label not in all_labels:
-            true_label = f"ripe({tomato})"
+            true_label = f"fresh({tomato})"
 
         wrong_labels = [label for label in all_labels if label != true_label]
 
@@ -362,18 +372,23 @@ class ObservationTomato:
             })
         return entries
 
-    def _get_observed_fluents(self, tomato: str, action: Action) -> Dict[str, Dict[str, float]]:
+    def _get_observed_fluents(
+        self,
+        source_state: State,
+        tomato: str,
+        action: Action,
+    ) -> Dict[str, Dict[str, float]]:
         """
         Attach true fluents to a detected tomato when observation_fluents exists.
         """
-        if self.true_state is None or tomato not in self.true_state.fluents:
+        if tomato not in source_state.fluents:
             return {}
 
         fluent_values = {}
         for candidate in self.build_fluent_candidates(action):
             obj, key = self._parse_fluent_candidate(candidate)
-            if obj == tomato and key in self.true_state.fluents[tomato]:
-                fluent_values[key] = self.true_state.fluents[tomato][key]
+            if obj == tomato and key in source_state.fluents[tomato]:
+                fluent_values[key] = source_state.fluents[tomato][key]
 
         if not fluent_values:
             return {}
@@ -398,14 +413,15 @@ class ObservationTomato:
         gt_state: State,
         action: Action,
         entry: Dict[str, str],
+        sample_dynamic: bool = False,
     ) -> List[Choice]:
         """
         Build the local 3-state observation distribution for one tomato.
 
         Local states:
         - not observed
-        - observed & ripe
-        - observed & unripe
+        - observed & at target stem & ripe
+        - observed & at target stem & unripe
 
         The probabilities are unnormalized local likelihoods. They are multiplied
         across tomatoes and normalized after Cartesian composition.
@@ -418,10 +434,6 @@ class ObservationTomato:
         tomato = entry["tomato"]
         observed_fact = entry["observed_fact"]
         at_fact = entry["at_fact"]
-        fluents = self._get_observed_fluents(tomato, action)
-
-        observed_ripe = [observed_fact, f"ripe({tomato})"]
-        observed_unripe = [observed_fact, f"unripe({tomato})"]
 
         exists_at_target = self._has_detectable_tomato_at(
             runtime_state,
@@ -431,13 +443,45 @@ class ObservationTomato:
             observed_fact,
         )
 
+        if exists_at_target:
+            p_detect = (
+                random.uniform(0.85, 0.95)
+                if sample_dynamic
+                else 0.90
+            )
+            detection_confidence = (
+                random.uniform(0.85, 0.95) if sample_dynamic else None
+            )
+        else:
+            p_detect = self.false_positive_rate
+            detection_confidence = (
+                random.uniform(0.60, 0.70) if sample_dynamic else None
+            )
+        p_miss = 1.0 - p_detect
+
+        fluents = self._get_observed_fluents(gt_state, tomato, action)
+        if detection_confidence is not None:
+            fluents.setdefault(tomato, {})[
+                "detection_confidence"
+            ] = detection_confidence
+
+        observed_ripe = [observed_fact, at_fact, f"ripe({tomato})"]
+        observed_unripe = [observed_fact, at_fact, f"unripe({tomato})"]
+
         if not exists_at_target:
-            # GT says no tomato is available at this stem. The most likely local
-            # observation is no detection; false positives are given miss mass.
+            true_detect_label = self._ripeness_label_for_state(
+                gt_state, tomato, detect_mode=True
+            )
+            if true_detect_label == f"unripe({tomato})":
+                ripe_prob = p_detect * (1.0 - p_correct_class)
+                unripe_prob = p_detect * p_correct_class
+            else:
+                ripe_prob = p_detect * p_correct_class
+                unripe_prob = p_detect * (1.0 - p_correct_class)
             return [
-                self._detect_choice([], p_detect),
-                self._detect_choice(observed_ripe, p_miss, fluents),
-                self._detect_choice(observed_unripe, p_miss, fluents),
+                self._detect_choice([], p_miss),
+                self._detect_choice(observed_ripe, ripe_prob, fluents),
+                self._detect_choice(observed_unripe, unripe_prob, fluents),
             ]
 
         true_detect_label = self._ripeness_label_for_state(gt_state, tomato, detect_mode=True)
@@ -523,7 +567,13 @@ class ObservationTomato:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         per_tomato_choices = [
-            self._build_detect_tomato_choices(state, gt_state, action, entry)
+            self._build_detect_tomato_choices(
+                state,
+                gt_state,
+                action,
+                entry,
+                sample_dynamic=use_true_state,
+            )
             for entry in tomato_entries
         ]
 
@@ -541,7 +591,15 @@ class ObservationTomato:
             return 1.0 if not observation.state.facts and not observation.state.fluents else self.noise
 
         obs_set = set(observation.state.facts)
-        obs_fluents = observation.state.fluents
+        obs_fluents = {
+            obj: {
+                key: value
+                for key, value in values.items()
+                if key != "detection_confidence"
+            }
+            for obj, values in observation.state.fluents.items()
+        }
+        obs_fluents = {obj: values for obj, values in obs_fluents.items() if values}
         probability = 1.0
         normalizer = 1.0
 
@@ -552,6 +610,7 @@ class ObservationTomato:
             tomato = entry["tomato"]
             tomato_obs = {
                 entry["observed_fact"],
+                entry["at_fact"],
                 f"ripe({tomato})",
                 f"unripe({tomato})",
             }
@@ -570,7 +629,9 @@ class ObservationTomato:
             expected_fluents = {}
             for entry in tomato_entries:
                 if entry["observed_fact"] in obs_set:
-                    for obj, values in self._get_observed_fluents(entry["tomato"], action).items():
+                    for obj, values in self._get_observed_fluents(
+                        state, entry["tomato"], action
+                    ).items():
                         expected_fluents.setdefault(obj, {}).update(values)
             if expected_fluents != obs_fluents:
                 return self.noise

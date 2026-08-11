@@ -48,7 +48,14 @@ def _should_trigger_query(
     raise ValueError(f"Unknown f_strategy={strategy}; expected 1(no), 2(all), 3(ours), or 4(random)")
 
 
-def _ask_one_question(belief_manager: BeliefManager, belief, step: int, action_name: str, confidence: float):
+def _ask_one_question(
+    belief_manager: BeliefManager,
+    belief,
+    step: int,
+    action_name: str,
+    confidence: float,
+    observation_facts,
+):
     target_fact = belief_manager.feedback_manager.select_best_fact_to_ask(belief)
     if target_fact is None:
         return belief, confidence, False
@@ -63,6 +70,7 @@ def _ask_one_question(belief_manager: BeliefManager, belief, step: int, action_n
     belief_manager.feedback_manager.query_log.append({
         "step": step,
         "action": action_name,
+        "observation": list(observation_facts or []),
         "question": target_fact,
         "answer": answer,
         "confidence_before": confidence,
@@ -78,6 +86,7 @@ def _run_feedback_policy(
     belief,
     step: int,
     action_name: str,
+    observation_facts,
     random_query_rng: random.Random,
 ):
     """
@@ -115,6 +124,7 @@ def _run_feedback_policy(
                 step=step,
                 action_name=action_name,
                 confidence=confidence,
+                observation_facts=observation_facts,
             )
             if not asked:
                 break
@@ -227,6 +237,7 @@ def main():
             belief=belief,
             step=i,
             action_name=action.name,
+            observation_facts=observation.state.facts,
             random_query_rng=random_query_rng,
         )
         interaction_elapsed = time() - interaction_start

@@ -256,7 +256,19 @@ class Environment:
             self.observation_model.domain_model.true_state = self.true_state
 
     def check_done(self, belief: Belief):
-        """Goal 달성 또는 max_step 초과 시 episode 종료"""
+        """
+        Return the terminal result for the current episode.
+
+        Tomato failure conditions are evaluated from true_state because they
+        describe physical execution outcomes, not the robot's current belief:
+        - an unripe tomato was picked,
+        - a rotten tomato was loaded,
+        - a fresh tomato was discarded.
+
+        The Tomato goal mixes physical facts with epistemic facts. Physical
+        facts are checked in true_state, while observed/scanned facts are
+        checked in belief.knowledge.
+        """
         def parse_fact(raw_fact):
             fact = raw_fact.replace(" ", "")
             if not fact.endswith(")"):
@@ -269,54 +281,53 @@ class Environment:
             return predicate, tuple(args.split(","))
 
         if self.domain_name == "tomato":
-            true_at_tomatoes = set()
-            true_moved_tomatoes = set()
-            unripe_tomatoes = set()
-            ripe_tomatoes = set()
-            rotten_tomatoes = set()
-            held_tomatoes = set()
-            discarded_tomatoes = set()
-            loaded_tomatoes = set()
+            """
+            true_init:
+                - "ripe(tomato1)"
+                - "rotten(tomato2)"
+                - "ripe(tomato3)"
+                - "unripe(tomato4)"
+                - "at(tomato1, stem_01)"
+                - "at(tomato2, stem_01)"
+                - "at(tomato3, stem_02)"
+                - "at(tomato4, stem_02)"
+            """
+            true_unripe = set()
+            true_rotten = set()
+            true_fresh = set()
+            picked = set()
+            loaded = set()
+            discarded = set()
 
             for raw_fact in self.true_state.facts:
                 predicate, args = parse_fact(raw_fact)
                 if not args:
                     continue
 
-                if predicate == "at":
-                    true_at_tomatoes.add(args[0])
-                elif predicate in {"holding", "holded", "loaded", "discarded"}:
-                    tomato = args[1] if predicate == "holding" and len(args) >= 2 else args[0]
-                    true_moved_tomatoes.add(tomato)
-
-            for raw_fact in belief.knowledge.facts:
-                predicate, args = parse_fact(raw_fact)
-                if not args:
-                    continue
-
-                tomato = args[0]
                 if predicate == "unripe":
-                    unripe_tomatoes.add(tomato)
-                elif predicate == "ripe":
-                    ripe_tomatoes.add(tomato)
+                    true_unripe.add(args[0])
                 elif predicate == "rotten":
-                    rotten_tomatoes.add(tomato)
+                    true_rotten.add(args[0])
+                elif predicate == "fresh":
+                    true_fresh.add(args[0])
                 elif predicate == "holding" and len(args) >= 2:
-                    held_tomatoes.add(args[1])
+                    picked.add(args[1])
+                elif predicate == "holded":
+                    picked.add(args[0])
                 elif predicate == "discarded":
-                    discarded_tomatoes.add(tomato)
+                    discarded.add(args[0])
+                    picked.add(args[0])
                 elif predicate == "loaded":
-                    loaded_tomatoes.add(tomato)
+                    loaded.add(args[0])
+                    picked.add(args[0])
 
-            if (
-                held_tomatoes & unripe_tomatoes
-                or discarded_tomatoes & ripe_tomatoes
-                or loaded_tomatoes & rotten_tomatoes
-            ):
+            if picked & true_unripe:
+                return "PLAN FAILURE"
+            if loaded & true_rotten:
+                return "PLAN FAILURE"
+            if discarded & true_fresh:
                 return "PLAN FAILURE"
 
-            if true_at_tomatoes & true_moved_tomatoes:
-                return "PLAN FAILURE"
 
         elif self.domain_name == "wastesorting":
             goal_bin_by_waste = {}
@@ -340,8 +351,20 @@ class Environment:
                 if goal_bin and bin_name != goal_bin:
                     return "PLAN FAILURE"
 
-        if self.goal and all(belief.knowledge.has_fact(f) for f in self.goal.facts):
-            return "GOAL DONE"
+        if self.goal:
+            if self.domain_name == "tomato":
+                epistemic_predicates = {"observed", "scanned"}
+
+                def tomato_goal_satisfied(goal_fact):
+                    predicate, _ = parse_fact(goal_fact)
+                    if predicate in epistemic_predicates:
+                        return belief.knowledge.has_fact(goal_fact)
+                    return self.true_state.has_fact(goal_fact)
+
+                if all(tomato_goal_satisfied(fact) for fact in self.goal.facts):
+                    return "GOAL DONE"
+            elif all(belief.knowledge.has_fact(f) for f in self.goal.facts):
+                return "GOAL DONE"
 
         if self.step_count >= self.max_step:
             return "MAX STEP"

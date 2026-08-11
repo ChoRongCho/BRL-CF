@@ -15,7 +15,7 @@ def parse_args(domain: str):
     parser = argparse.ArgumentParser(description="POMDP Runner")
 
     default_domain_rule = SCRIPTS_ROOT / "domain" / domain / "domain_rule.yaml"
-    default_initial_state = SCRIPTS_ROOT / "domain" / domain / "scene_01.yaml"
+    default_initial_state = SCRIPTS_ROOT / "domain" / domain / "scene_02.yaml"
     default_robot_skill = SCRIPTS_ROOT / "domain" / domain / "robot_skill.yaml"
 
     parser.add_argument("--domain", type=str, default=domain, help="Domain name")
@@ -49,6 +49,14 @@ def parse_args(domain: str):
     parser.add_argument("--f_strategy", type=int, default=1, help="1: no, 2: all, 3: ours, 4:random")
     parser.add_argument("--q_strategy", type=int, default=1, help="1: ours 2: LLM")
     parser.add_argument("--answer_type", type=str, default="auto", help="auto: auto answer, human: you answer")
+    parser.add_argument(
+        "--use-interface",
+        action="store_true",
+        help="Use the ROS-free WebSocket frontend for human feedback",
+    )
+    parser.add_argument("--interface-host", type=str, default="0.0.0.0")
+    parser.add_argument("--interface-port", type=int, default=9765)
+    parser.add_argument("--interface-timeout", type=float, default=300.0)
     parser.add_argument("--random_query_prob", type=float, default=0.3, help="Query trigger probability for f_strategy=4 in when_main.py")
     
     
@@ -68,5 +76,8 @@ def parse_args(domain: str):
     args.log_dir = Path(args.log_dir)
     if args.seed is None:
         args.seed = random.randrange(0, 2**32 - 1)
+
+    if args.use_interface and args.answer_type != "human":
+        parser.error("--use-interface requires --answer_type human")
     
     return args

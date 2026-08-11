@@ -135,10 +135,29 @@ class ObservationModel:
             outcomes = self.get_observation_distribution(state, action)
         
         obs_set = set(observation.state.facts)
-        obs_fluents = observation.state.fluents
+        obs_fluents = {
+            obj: {
+                key: value
+                for key, value in values.items()
+                if key != "detection_confidence"
+            }
+            for obj, values in observation.state.fluents.items()
+        }
+        obs_fluents = {obj: values for obj, values in obs_fluents.items() if values}
 
         for outcome in outcomes:
-            if set(outcome.facts) == obs_set and outcome.fluents == obs_fluents:
+            outcome_fluents = {
+                obj: {
+                    key: value
+                    for key, value in values.items()
+                    if key != "detection_confidence"
+                }
+                for obj, values in outcome.fluents.items()
+            }
+            outcome_fluents = {
+                obj: values for obj, values in outcome_fluents.items() if values
+            }
+            if set(outcome.facts) == obs_set and outcome_fluents == obs_fluents:
                 return outcome.probability
         return self.noise
     
