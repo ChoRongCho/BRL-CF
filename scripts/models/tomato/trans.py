@@ -12,6 +12,14 @@ from models.transition import TransitionOutcome
 
 
 class TransitionTomato:
+    REWARD_STATE_OBJECT = "__reward_state__"
+    ACTION_STREAK_PREFIXES = {
+        "detect": "detect_streak_",
+        "scan": "scan_streak_",
+        "navigate": "navigate_streak",
+    }
+    ACTION_STREAK_LIMIT = 3
+
     def __init__(self, type_map: Dict[str, List[str]]):
         self.type_map = type_map
 
@@ -132,6 +140,23 @@ class TransitionTomato:
         _, args = _parse_fact(action.name.replace(" ", ""))
         return args
 
+    def _action_streak_fluent(self, action_type: str, action: Action):
+        args = self._get_action_args(action)
+        if action_type == "detect" and len(args) >= 2:
+            return f"detect_streak_{args[1]}"
+        if action_type == "scan" and len(args) >= 2:
+            return f"scan_streak_{args[1]}"
+        if action_type == "navigate":
+            return "navigate_streak"
+        return None
+
+    def _all_action_streak_fluents(self) -> List[str]:
+        return (
+            ["navigate_streak"]
+            + [f"detect_streak_{stem}" for stem in self.type_map.get("S", [])]
+            + [f"scan_streak_{tomato}" for tomato in self.type_map.get("T", [])]
+        )
+
     def _build_detect_tomato_entries(self, action: Action) -> List[Dict[str, str]]:
         """Build detect candidates for all tomatoes at the action target stem."""
         args = self._get_action_args(action)
@@ -151,60 +176,94 @@ class TransitionTomato:
 
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
         current_facts = set(state.facts)
-        
-        if not action.name.startswith("detect("):
-            return outcomes
-        
-        unavailable_tomatoes = set()
-        for fact in current_facts:
-            pred, args = _parse_fact(fact)
-            if not args:
-                continue
+        action_type = action.name.replace(" ", "").split("(", 1)[0]
 
-            tomato = args[0]
-            if pred in {"loaded", "discarded", "holded"}:
-                unavailable_tomatoes.add(tomato)
-            elif pred == "holding" and len(args) >= 2:
-                unavailable_tomatoes.add(args[1])
-        
-        if not unavailable_tomatoes:
-            return outcomes
-        
-        merged = {}
+        if action_type == "detect":
+            action_args = self._get_action_args(action)
+            if len(action_args) >= 2:
+                target_location = action_args[1]
+                unavailable_tomatoes = set()
+                for fact in current_facts:
+                    pred, args = _parse_fact(fact)
+                    if not args:
+                        continue
 
+                    tomato = args[0]
+                    if pred in {"loaded", "discarded", "holded"}:
+                        unavailable_tomatoes.add(tomato)
+                    elif pred == "holding" and len(args) >= 2:
+                        unavailable_tomatoes.add(args[1])
+                    elif pred == "at" and len(args) >= 2 and args[1] != target_location:
+                        unavailable_tomatoes.add(tomato)
+
+                if unavailable_tomatoes:
+                    merged = {}
+                    for outcome in outcomes:
+                        filtered_add_facts = []
+                        filtered_del_facts = []
+
+                        for fact in outcome.add_facts:
+                            _, args = _parse_fact(fact)
+                            tomato = args[0] if args else None
+                            if tomato not in unavailable_tomatoes:
+                                filtered_add_facts.append(fact)
+
+                        for fact in outcome.del_facts:
+                            _, args = _parse_fact(fact)
+                            tomato = args[0] if args else None
+                            if tomato not in unavailable_tomatoes:
+                                filtered_del_facts.append(fact)
+
+                        filtered_add_facts = _dedup_facts(filtered_add_facts)
+                        filtered_del_facts = _dedup_facts(filtered_del_facts)
+                        key = (
+                            tuple(sorted(filtered_add_facts)),
+                            tuple(sorted(filtered_del_facts)),
+                        )
+
+                        if key not in merged:
+                            merged[key] = TransitionOutcome(
+                                add_facts=filtered_add_facts,
+                                del_facts=filtered_del_facts,
+                                probability=outcome.probability,
+                                fluent_effects=outcome.fluent_effects,
+                            )
+                        else:
+                            merged[key].probability += outcome.probability
+                    outcomes = list(merged.values())
+
+        # Action history belongs to each simulated state. This prevents one
+        # POMCP branch's detect/scan sequence from leaking into another branch.
+        active_streak = self._action_streak_fluent(action_type, action)
+        next_streaks = {}
+        for fluent_name in self._all_action_streak_fluents():
+            current_streak = int(state.get_fluent(
+                self.REWARD_STATE_OBJECT,
+                fluent_name,
+                0,
+            ))
+            next_streaks[fluent_name] = float(
+                min(self.ACTION_STREAK_LIMIT, current_streak + 1)
+                if fluent_name == active_streak
+                else 0
+            )
+
+        streak_outcomes = []
         for outcome in outcomes:
-            filtered_add_facts = []
-            filtered_del_facts = []
-
-            for fact in outcome.add_facts:
-                pred, args = _parse_fact(fact)
-                tomato = args[0] if args else None
-
-                if tomato not in unavailable_tomatoes:
-                    filtered_add_facts.append(fact)
-
-            for fact in outcome.del_facts:
-                _, args = _parse_fact(fact)
-                tomato = args[0] if args else None
-
-                if tomato not in unavailable_tomatoes:
-                    filtered_del_facts.append(fact)
-
-            filtered_add_facts = _dedup_facts(filtered_add_facts)
-            filtered_del_facts = _dedup_facts(filtered_del_facts)
-            key = (tuple(sorted(filtered_add_facts)), tuple(sorted(filtered_del_facts)))
-
-            if key not in merged:
-                merged[key] = TransitionOutcome(
-                    add_facts=filtered_add_facts,
-                    del_facts=filtered_del_facts,
-                    probability=outcome.probability,
-                    fluent_effects=outcome.fluent_effects,
-                )
-            else:
-                merged[key].probability += outcome.probability
-                
-        return list(merged.values())
+            fluent_effects = {
+                obj: dict(values)
+                for obj, values in outcome.fluent_effects.items()
+            }
+            fluent_effects.setdefault(self.REWARD_STATE_OBJECT, {}).update(
+                next_streaks
+            )
+            streak_outcomes.append(TransitionOutcome(
+                add_facts=list(outcome.add_facts),
+                del_facts=list(outcome.del_facts),
+                probability=outcome.probability,
+                fluent_effects=fluent_effects,
+            ))
+        return streak_outcomes
 
     
     

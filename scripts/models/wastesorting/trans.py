@@ -17,6 +17,9 @@ from models.transition import TransitionOutcome
     
 
 class TransitionWastesorting:
+    REWARD_STATE_OBJECT = "__reward_state__"
+    DETECT_STREAK_FLUENT = "detect_streak"
+
     CATEGORY_PREDICATES = ("plastic", "can", "paper", "general")
     PLACE_ACTIONS = {
         "place_gw_bin",
@@ -179,14 +182,39 @@ class TransitionWastesorting:
         return tuple(sorted(facts))
 
     def handle_exeception(self, state: State, action: Action, outcomes: List[TransitionOutcome]):
-        if not action.name.startswith("detect_waste("):
-            return outcomes
+        is_detect = action.name.startswith("detect_waste(")
+        if is_detect:
+            _, unavailable_wastes = self._waste_status_from_state(state)
+            outcomes = self._build_detect_outcomes(
+                action,
+                blocked_wastes=unavailable_wastes,
+            )
 
-        _, unavailable_wastes = self._waste_status_from_state(state)
-        return self._build_detect_outcomes(
-            action,
-            blocked_wastes=unavailable_wastes,
-        )
+        current_streak = int(state.get_fluent(
+            self.REWARD_STATE_OBJECT,
+            self.DETECT_STREAK_FLUENT,
+            0,
+        ))
+        next_streak = min(3, current_streak + 1) if is_detect else 0
+
+        # Store the counter in each simulated state. Keeping it on the reward
+        # object would leak history between independent POMCP branches.
+        streak_outcomes = []
+        for outcome in outcomes:
+            fluent_effects = {
+                obj: dict(values)
+                for obj, values in outcome.fluent_effects.items()
+            }
+            fluent_effects.setdefault(self.REWARD_STATE_OBJECT, {})[
+                self.DETECT_STREAK_FLUENT
+            ] = float(next_streak)
+            streak_outcomes.append(TransitionOutcome(
+                add_facts=list(outcome.add_facts),
+                del_facts=list(outcome.del_facts),
+                probability=outcome.probability,
+                fluent_effects=fluent_effects,
+            ))
+        return streak_outcomes
     
     
     

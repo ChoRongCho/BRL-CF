@@ -39,7 +39,7 @@ cd /home/changmin/PyProject/00_BRL-CF
 pip install numpy openai
 ```
 
-LLM 설정은 `scripts/baseline/llm_setting.json` 또는 환경 변수로 지정한다.
+LLM 설정은 프로젝트 루트의 `llm_setting.json` 또는 환경 변수로 지정한다.
 
 ```json
 {

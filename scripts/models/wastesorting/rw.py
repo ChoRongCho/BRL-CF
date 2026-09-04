@@ -5,6 +5,11 @@ from models.action import Action
 
 
 class RewardWastesorting:
+    REWARD_STATE_OBJECT = "__reward_state__"
+    DETECT_STREAK_FLUENT = "detect_streak"
+    CONSECUTIVE_DETECT_LIMIT = 3
+    CONSECUTIVE_DETECT_PENALTY = -10.0
+
     def __init__(self, goal: State = None):
         self.goal = goal or State()
         self.goal_reward = 10.0
@@ -26,7 +31,8 @@ class RewardWastesorting:
     def calculate_action_reward(self, action: Action, 
                                 added: set[str], 
                                 current_facts: set[str], 
-                                next_facts: set[str]) -> float:
+                                next_facts: set[str],
+                                state: State = None) -> float:
         action_name = action.name.replace(" ", "")
         reward_categories = {
             "place_gw_bin": "general",
@@ -36,6 +42,15 @@ class RewardWastesorting:
         }
         action_type = action_name[:action_name.find("(")]
         category = reward_categories.get(action_type)
+
+        if action_type == "detect_waste":
+            current_streak = int(state.get_fluent(
+                self.REWARD_STATE_OBJECT,
+                self.DETECT_STREAK_FLUENT,
+                0,
+            )) if state is not None else 0
+            if current_streak >= self.CONSECUTIVE_DETECT_LIMIT - 1:
+                return self.CONSECUTIVE_DETECT_PENALTY
 
         if category and action_name.endswith(")"):
             args = action_name[action_name.find("(") + 1:-1].split(",")
@@ -65,6 +80,7 @@ class RewardWastesorting:
             added=added,
             current_facts=current_facts,
             next_facts=next_facts,
+            state=state,
         )
 
         total_reward += (state_reward + action_reward)

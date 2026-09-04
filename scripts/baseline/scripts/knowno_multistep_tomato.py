@@ -33,7 +33,10 @@ from tomato_utils import (
 def parse_args():
     parser = argparse.ArgumentParser(description="Run multi-step KnowNo planning for tomato harvesting.")
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--settings", default=str(Path(__file__).with_name("llm_setting.json")))
+    parser.add_argument(
+        "--settings",
+        default=str(Path(__file__).resolve().parents[3] / "llm_setting.json"),
+    )
     parser.add_argument("--instruction", default="Harvest all ripe tomatoes and discard rotten tomatoes.")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
     parser.add_argument("--tomatoes", default="tomato1, tomato2, tomato3, tomato4")

@@ -7,6 +7,14 @@ from models.action import Action
 
 
 class RewardTomato:
+    REWARD_STATE_OBJECT = "__reward_state__"
+    CONSECUTIVE_ACTION_LIMIT = 2
+    CONSECUTIVE_DETECT_REWARD = -5.0
+    CONSECUTIVE_SCAN_REWARD = -5.0
+    CONSECUTIVE_NAVIGATE_REWARD = -5.0
+    SUCCESSFUL_PLACE_REWARD = 10.0
+    SUCCESSFUL_DISCARD_REWARD = 10.0
+
     def __init__(self, goal:State=None):
         self.goal = goal or State()
 
@@ -32,9 +40,32 @@ class RewardTomato:
     def calculate_action_reward(self, action: Action, 
                                 added: set[str], 
                                 current_facts: set[str], 
-                                next_facts: set[str]) -> float:
+                                next_facts: set[str],
+                                state: State = None) -> float:
         action_name = action.name.replace(" ", "")
         action_type = action_name.split("(", 1)[0]
+
+        args = action_name.split("(", 1)[1].rstrip(")").split(",") if "(" in action_name else []
+        streak_fluent = None
+        streak_reward = 0.0
+        if action_type == "detect" and len(args) >= 2:
+            streak_fluent = f"detect_streak_{args[1]}"
+            streak_reward = self.CONSECUTIVE_DETECT_REWARD
+        elif action_type == "scan" and len(args) >= 2:
+            streak_fluent = f"scan_streak_{args[1]}"
+            streak_reward = self.CONSECUTIVE_SCAN_REWARD
+        elif action_type == "navigate":
+            streak_fluent = "navigate_streak"
+            streak_reward = self.CONSECUTIVE_NAVIGATE_REWARD
+
+        if streak_fluent is not None:
+            current_streak = int(state.get_fluent(
+                self.REWARD_STATE_OBJECT,
+                streak_fluent,
+                0,
+            )) if state is not None else 0
+            if current_streak >= self.CONSECUTIVE_ACTION_LIMIT - 1:
+                return streak_reward
 
         if action_type == "pick":
             args = action_name[len("pick("):-1].split(",")
@@ -54,13 +85,8 @@ class RewardTomato:
             tomato = args[1]
             is_loaded = f"loaded({tomato},{args[0]})" in added
 
-            if (
-                is_loaded
-                and f"observed({tomato})" in current_facts
-                and f"scanned({tomato})" in current_facts
-                and self.get_tomato_state(tomato, current_facts) == "ripe"
-            ):
-                return 5.0
+            if is_loaded and f"fresh({tomato})" in current_facts:
+                return self.SUCCESSFUL_PLACE_REWARD
 
         elif action_type == "discard":
             args = action_name[len("discard("):-1].split(",")
@@ -69,13 +95,8 @@ class RewardTomato:
             tomato = args[1]
             is_discarded = f"discarded({tomato})" in added
 
-            if (
-                is_discarded
-                and f"observed({tomato})" in current_facts
-                and f"scanned({tomato})" in current_facts
-                and self.get_tomato_state(tomato, current_facts) == "rotten"
-            ):
-                return 5.0
+            if is_discarded and f"rotten({tomato})" in current_facts:
+                return self.SUCCESSFUL_DISCARD_REWARD
         return 0.0
 
 
@@ -91,6 +112,7 @@ class RewardTomato:
             added=added,
             current_facts=current_facts,
             next_facts=next_facts,
+            state=state,
         )
 
         total_reward += (state_reward + action_reward)

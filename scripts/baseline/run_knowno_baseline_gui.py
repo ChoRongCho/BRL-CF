@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "knowno_baseline_experiment.py"
-SETTINGS_PATH = SCRIPT_DIR / "llm_setting.json"
+SETTINGS_PATH = PROJECT_ROOT / "llm_setting.json"
 ROOT_DUMMY_SETTINGS_PATH = PROJECT_ROOT / "llm_setting_dummy.json"
 
 

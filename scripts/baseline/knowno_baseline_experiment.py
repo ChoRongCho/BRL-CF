@@ -27,7 +27,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     )
     parser.add_argument("--domain", choices=["tomato", "wastesorting", "waste"], required=True)
     parser.add_argument("--scene", default="01", help="Scene number such as 01, 1, 02, ..., 05.")
-    parser.add_argument("--settings", default=str(BASELINE_DIR / "llm_setting.json"))
+    parser.add_argument("--settings", default=str(PROJECT_ROOT / "llm_setting.json"))
     parser.add_argument("--api-key", default="")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
     parser.add_argument("--qhat", type=float, default=None)

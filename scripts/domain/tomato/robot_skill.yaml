@@ -3,6 +3,10 @@ actions:
     type: move
     parameters: [R, L1, L2]
     cost: 8.0
+    planning_policy:
+      streak_fluent: "__reward_state__.navigate_streak"
+      transition: "increment on consecutive navigation actions; reset on a non-navigation action"
+      reward: "use CONSECUTIVE_NAVIGATE_REWARD from the third consecutive navigation"
     preconditions:
       - robot(R)
       - location(L1)
@@ -22,6 +26,11 @@ actions:
     type: observe
     parameters: [R, S]
     cost: 0.5
+    # Documentation; execution is implemented by the domain transition/reward models.
+    planning_policy:
+      streak_fluent: "__reward_state__.detect_streak_<target stem>"
+      transition: "increment only for consecutive detect actions at the same stem; reset every other target streak"
+      reward: "use CONSECUTIVE_DETECT_REWARD from the third consecutive detect at the same stem"
     preconditions:
       - handempty(R)
       - robot(R)
@@ -65,6 +74,11 @@ actions:
     type: observe
     parameters: [R, T]
     cost: 1.0
+    # Documentation; execution is implemented by the domain transition/reward models.
+    planning_policy:
+      streak_fluent: "__reward_state__.scan_streak_<target tomato>"
+      transition: "increment only for consecutive scan actions on the same tomato; reset every other target streak"
+      reward: "use CONSECUTIVE_SCAN_REWARD from the third consecutive scan of the same tomato"
     preconditions:
       - robot(R)
       - tomato(T)

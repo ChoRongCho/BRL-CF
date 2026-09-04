@@ -98,7 +98,7 @@ def print_step_timing(step_log):
 
 
 def main():
-    args = parse_args("wastesorting")   # tomato wastesorting
+    args = parse_args("tomato")   # tomato, wastesorting
     random.seed(args.seed)
     np.random.seed(args.seed)
 

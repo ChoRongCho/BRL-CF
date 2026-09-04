@@ -299,7 +299,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run KnowNo baselines without opening notebooks.")
     parser.add_argument("--mode", choices=["demo", "mobile", "tabletop", "wastesorting", "bimani"], default="mobile")
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--settings", default=str(Path(__file__).with_name("llm_setting.json")))
+    parser.add_argument(
+        "--settings",
+        default=str(Path(__file__).resolve().parents[2] / "llm_setting.json"),
+    )
     parser.add_argument("--instruction", default="Put the bottled water in the bin.")
     parser.add_argument("--scene-objects", default="energy bar, bottled water, rice chips")
     parser.add_argument("--qhat", type=float, default=0.928)

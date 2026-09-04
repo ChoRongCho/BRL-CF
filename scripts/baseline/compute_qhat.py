@@ -10,6 +10,7 @@ import numpy as np
 
 
 BASELINE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASELINE_DIR.parents[1]
 if str(BASELINE_DIR) not in sys.path:
     sys.path.insert(0, str(BASELINE_DIR))
 
@@ -48,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute KnowNo qhat from calibration records.")
     parser.add_argument("--domain", choices=sorted(DOMAIN_CONFIG), default="tomato")
     parser.add_argument("--calibration-file", default="")
-    parser.add_argument("--settings", default=str(BASELINE_DIR / "llm_setting.json"))
+    parser.add_argument("--settings", default=str(PROJECT_ROOT / "llm_setting.json"))
     parser.add_argument("--api-key", default="")
     parser.add_argument("--num-calibration", type=int, default=1)
     parser.add_argument("--num-test", type=int, default=0)

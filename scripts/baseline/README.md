@@ -35,7 +35,7 @@ pip install numpy openai pillow pybullet moviepy gdown
 
 ## OpenAI 설정
 
-API 키는 환경 변수 또는 `baseline/llm_setting.json`으로 설정할 수 있습니다.
+API 키는 환경 변수 또는 프로젝트 루트의 `llm_setting.json`으로 설정할 수 있습니다.
 
 환경 변수 사용:
 

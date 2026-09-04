@@ -46,7 +46,7 @@ class timeout:
 
 
 def load_llm_settings(path: Optional[str | Path] = None) -> Dict[str, Any]:
-    setting_path = Path(path) if path else Path(__file__).resolve().parents[1] / "llm_setting.json"
+    setting_path = Path(path) if path else Path(__file__).resolve().parents[3] / "llm_setting.json"
     if not setting_path.exists():
         return {}
     with setting_path.open("r", encoding="utf-8") as f:
@@ -58,7 +58,7 @@ def configure_openai(api_key: Optional[str] = None, settings_path: Optional[str 
 
     settings = load_llm_settings(settings_path)
     _ACTIVE_SETTINGS = settings
-    _ACTIVE_SETTINGS_PATH = Path(settings_path) if settings_path else Path(__file__).resolve().parents[1] / "llm_setting.json"
+    _ACTIVE_SETTINGS_PATH = Path(settings_path) if settings_path else Path(__file__).resolve().parents[3] / "llm_setting.json"
 
     key = (
         api_key
