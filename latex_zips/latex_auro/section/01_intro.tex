@@ -1,0 +1,38 @@
+\section{Introduction}~\label{intro}
+Recent advances in robotic systems have improved autonomy in perception, manipulation, and planning, but robots still face perception errors~\cite{kaipa2016addressing}, execution failures~\cite{kaelbling1998planning}, and unexpected environmental changes~\cite{kurniawati2016online}. In such environments, human operators can help recover from these failures~\cite{dragan2013legibility, goodrich2008human}, but continuous monitoring is impractical in long-horizon tasks because it increases workload and fatigue~\cite{chen2014human}. Robots should therefore recognize uncertain situations during execution and request assistance only when needed~\cite{sadigh2017active, leusmann2023understanding}. This raises two fundamental questions: when should a robot ask, and what form of information should it request?
+
+
+Recent uncertainty-aware systems selectively request human feedback during task execution~\cite{ren2023robots, liang2024introspective, mullen2025lbap}. These approaches can reduce unnecessary intervention and improve decision making under uncertainty. However, many query mechanisms ask users to select actions, choose among plans, or provide broad intervention. Such action-level feedback can be effective, but it also asks the user to reason about the current state of the robot, action feasibility, and downstream consequences. In this work, we take a different approach and ask the user to verify uncertain state facts while the robot remains responsible for planning.
+
+
+To address this challenge, we present a knowledge-based decision-making framework that integrates uncertainty estimation, state-level query selection, and symbolic planning. We formulate decision making as a partially observable Markov decision process (POMDP)~\cite{kaelbling1998planning} and represent task knowledge using a STRIPS-style symbolic model~\cite{davis1993knowledge,fikes1971strips}. The system maintains a belief over alternative symbolic world hypotheses and updates it using observations during execution. If uncertainty is high, the robot asks the user to verify an informative predicate fact, such as whether an object has a particular category or state. The answer filters inconsistent world hypotheses, after which the robot continues autonomous planning and execution.
+
+
+
+\begin{figure}[t]
+\captionsetup{skip=0pt}
+\centering
+\includegraphics[width=0.5\linewidth]{figures/intro_and_method/fig_intro.jpg}
+\caption{Overview of the proposed framework. A centralized knowledge base connects sensing, planning, feedback management, and user interaction. The robot maintains uncertainty over symbolic world hypotheses and uses this uncertainty to decide whether to continue autonomous execution or request state-level feedback.}
+\label{fig:intro}
+\end{figure}
+
+
+As illustrated in Fig.~\ref{fig:intro}, the framework connects sensing, planning, feedback management, and the user interface through a centralized knowledge base. Observations update the belief over symbolic hypotheses, and user feedback is incorporated as evidence about task facts. Rather than asking the user to choose the next action, the system asks whether a specific task fact is true or false and uses the answer to reduce state ambiguity.
+
+
+We validate the approach in tomato harvesting and waste sorting through system experiments and a Wizard-of-Oz user study. The experiments evaluate query timing, query content, baseline policies, and scalability. The user study examines task performance, interaction effort, workload, and situation awareness. Overall, the results show that state-level verification provides a practical alternative to dense supervision and action-level assistance, with benefits and trade-offs that depend on the task structure.
+
+The main contributions of this work are as follows:
+
+\begin{itemize}
+
+\item We formulate human feedback as targeted verification of uncertain symbolic state facts.
+
+\item We propose an uncertainty-aware feedback trigger that decides \textit{when} the robot should ask for state verification.
+
+\item We introduce an information-driven query selector that decides \textit{what} predicate fact the robot should ask to reduce ambiguity among competing world hypotheses.
+
+\item We integrate belief updates, state-level feedback, and symbolic planning into a single execution loop and evaluate it in tomato harvesting and waste sorting through system experiment and a preliminary user study.
+
+\end{itemize}
