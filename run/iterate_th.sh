@@ -9,7 +9,10 @@ scenes=(1 2 3 4 5)
 
 iterations=40
 seed="${SEED:-random}"
-seed_log_root="experiments_logs/system_log/threshold_seed_logs"
+archive_existing="${ARCHIVE_EXISTING:-true}"
+log_root="experiments_logs/system_log"
+archive_root="experiments_logs/system_log_backup/threshold_$(date +%Y%m%d_%H%M%S)"
+seed_log_root="${log_root}/threshold_seed_logs"
 seed_log="${seed_log_root}/iterate_th_$(date +%Y%m%d_%H%M%S).csv"
 
 total=$((${#domains[@]} * ${#thresholds[@]} * ${#scenes[@]} * iterations))
@@ -18,6 +21,23 @@ current=0
 mkdir -p "$seed_log_root"
 echo "global_index,domain,threshold,scene,seed_mode" > "$seed_log"
 printf "\rProgress: %3d%%" 0
+
+if [[ "$archive_existing" == "true" ]]; then
+    for domain in "${domains[@]}"; do
+        for threshold in "${thresholds[@]}"; do
+            threshold_label="${threshold/./-}"
+            for scene in "${scenes[@]}"; do
+                scene_id=$(printf "%02d" "$((10#$scene))")
+                log_dir="${log_root}/${domain}/scene_${scene_id}_step50/thres_${threshold_label}"
+                if [[ -d "$log_dir" ]]; then
+                    archive_dir="${archive_root}/${domain}/scene_${scene_id}_step50"
+                    mkdir -p "$archive_dir"
+                    mv "$log_dir" "$archive_dir/"
+                fi
+            done
+        done
+    done
+fi
 
 for domain in "${domains[@]}"; do
     for threshold in "${thresholds[@]}"; do
