@@ -174,6 +174,34 @@ def process_mc_raw(mc_raw: str, add_mc: str = "an option not listed here") -> Tu
     return mc_prompt, mc_processed_all, add_mc_prefix
 
 
+def process_mc_raw_preserve_duplicates(
+    mc_raw: str,
+    add_mc: str = "an option not listed here",
+) -> Tuple[str, List[str], str]:
+    """Parse and shuffle four generated options without dropping duplicates.
+
+    Waste KnowNo merges duplicate actions after scoring, as in the deployed
+    04_BRL_WASTE implementation, so their probability mass is retained.
+    """
+    options = []
+    for raw_option in mc_raw.split("\n"):
+        option = raw_option.strip()
+        if (
+            len(option) < 5
+            or option[0] not in ["a", "b", "c", "d", "A", "B", "C", "D", "1", "2", "3", "4"]
+            or option[1] not in [")", "."]
+        ):
+            continue
+        options.append(option[2:].strip().lower().split(".", 1)[0])
+    if len(options) < 4:
+        raise ValueError("Cannot extract four options from the raw output.")
+    options = options[:4] + [add_mc]
+    random.shuffle(options)
+    prefixes = ["A) ", "B) ", "C) ", "D) ", "E) "]
+    prompt = "\n".join(prefix + option for prefix, option in zip(prefixes, options))
+    return prompt, options, prefixes[options.index(add_mc)][0]
+
+
 def temperature_scaling(logits: Sequence[float], temperature: float) -> np.ndarray:
     logits = np.array(logits)
     logits /= temperature

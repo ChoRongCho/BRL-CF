@@ -8,7 +8,9 @@ scenes=(1 2 3 4 5)
 
 
 iterations=40
-seed="${SEED:-random}"
+# SEED=random: generate one random seed per domain/scene/iteration pair.
+# SEED=N: use N as a reproducible base and derive a distinct seed per pair.
+seed_mode="${SEED:-random}"
 archive_existing="${ARCHIVE_EXISTING:-true}"
 log_root="experiments_logs/system_log"
 archive_root="experiments_logs/system_log_backup/threshold_$(date +%Y%m%d_%H%M%S)"
@@ -19,8 +21,17 @@ total=$((${#domains[@]} * ${#thresholds[@]} * ${#scenes[@]} * iterations))
 current=0
 
 mkdir -p "$seed_log_root"
-echo "global_index,domain,threshold,scene,seed_mode" > "$seed_log"
+echo "global_index,pair_id,domain,scene,iteration,threshold,seed" > "$seed_log"
 printf "\rProgress: %3d%%" 0
+
+if [[ "$seed_mode" != "random" && ! "$seed_mode" =~ ^[0-9]+$ ]]; then
+    echo "SEED must be a non-negative integer or random: ${seed_mode}"
+    exit 1
+fi
+
+generate_seed() {
+    od -An -N4 -tu4 /dev/urandom | tr -d ' '
+}
 
 if [[ "$archive_existing" == "true" ]]; then
     for domain in "${domains[@]}"; do
@@ -39,13 +50,26 @@ if [[ "$archive_existing" == "true" ]]; then
     done
 fi
 
-for domain in "${domains[@]}"; do
-    for threshold in "${thresholds[@]}"; do
-        for scene in "${scenes[@]}"; do
-            for ((i = 1; i <= iterations; i++)); do
+pair_id=0
+for domain_index in "${!domains[@]}"; do
+    domain="${domains[$domain_index]}"
+    for scene in "${scenes[@]}"; do
+        for ((i = 1; i <= iterations; i++)); do
+            pair_id=$((pair_id + 1))
+            if [[ "$seed_mode" == "random" ]]; then
+                paired_seed=$(generate_seed)
+            else
+                # Distinct and reproducible across domain, scene, and repetition.
+                paired_seed=$((
+                    (10#$seed_mode + domain_index * 1000000 + 10#$scene * 1000 + i)
+                    % 4294967295
+                ))
+            fi
+
+            for threshold in "${thresholds[@]}"; do
                 current=$((current + 1))
-                echo "${current},${domain},${threshold},${scene},${seed}" >> "$seed_log"
-                ./run/run_threshold_experiment.sh --domain "$domain" --scene "$scene" --iter 1 --threshold "$threshold" --seed "$seed" >/dev/null
+                echo "${current},${pair_id},${domain},${scene},${i},${threshold},${paired_seed}" >> "$seed_log"
+                ./run/run_threshold_experiment.sh --domain "$domain" --scene "$scene" --iter 1 --threshold "$threshold" --seed "$paired_seed" >/dev/null
                 percent=$((current * 100 / total))
                 printf "\rProgress: %3d%%" "$percent"
             done
@@ -56,4 +80,4 @@ done
 python3 experiments/system_eval/analysis_experiment.py >/dev/null
 python3 experiments/system_eval/read_csv_experiment.py >/dev/null
 printf "\rProgress: 100%%\n"
-echo "Seed mode log saved to ${seed_log}"
+echo "Paired seed log saved to ${seed_log}"

@@ -8,20 +8,21 @@ DOMAIN="${DOMAIN:-tomato}"
 SCENE="${SCENE:-01}"
 
 # 사용자 선택: v1(structured), v2(natural language)
-PROMPT_VERSION="${PROMPT_VERSION:-v1}"
+PROMPT_VERSION="${PROMPT_VERSION:-v2}"
 
 MAX_STEPS="${MAX_STEPS:-50}"
 # Optional fixed seed. Leave empty to generate a new random seed on each run.
 SEED="${SEED:-}"
 # Lower temperature keeps option probabilities less flat, so the runner asks
 # only when the model is genuinely uncertain.
-SCORE_TEMPERATURE="${SCORE_TEMPERATURE:-3.0}"
+SCORE_TEMPERATURE="${SCORE_TEMPERATURE:-5.0}"
 VERBOSE="${VERBOSE:-false}"
 DRY_RUN="${DRY_RUN:-false}"
 LOG_FILE="${LOG_FILE:-}"
+AUTO_ANSWER="${AUTO_ANSWER:-true}"
 
 if [[ "${DOMAIN}" == "tomato" ]]; then
-  QHAT="0.92"
+  QHAT="${QHAT:-0.8404}"
   DETECT_SUCCESS_PROB="0.85"
   DETECT_LABEL_ERROR_PROB="0.05"
   SCAN_SUCCESS_PROB="0.9"
@@ -31,7 +32,7 @@ if [[ "${DOMAIN}" == "tomato" ]]; then
   PLACE_FAILURE_PROB="0.01"
   DISCARD_FAILURE_PROB="0.01"
 elif [[ "${DOMAIN}" == "wastesorting" || "${DOMAIN}" == "waste" ]]; then
-  QHAT="0.92"
+  QHAT="${QHAT:-0.8704}"
   DETECT_SUCCESS_PROB="0.9"
   DETECT_LABEL_ERROR_PROB="0.2"
 else
@@ -71,6 +72,10 @@ fi
 
 if [[ "${VERBOSE}" == "true" ]]; then
   CMD+=(--verbose)
+fi
+
+if [[ "${AUTO_ANSWER}" == "true" ]]; then
+  CMD+=(--auto-answer)
 fi
 
 if [[ -n "${LOG_FILE}" ]]; then

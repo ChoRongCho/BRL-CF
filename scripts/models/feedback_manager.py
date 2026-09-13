@@ -15,13 +15,14 @@ from utils.utils import _parse_fact
 from collections import defaultdict
 
 class FeedbackManger:
-    def __init__(self, args, conf_threshold):
+    def __init__(self, args, conf_threshold, transition_model=None):
         self.args = args
         self.domain_name = self.args.domain
         self.conf_threshold = conf_threshold
         self.num_of_query = 0
         self.query_log = []
         self.use_llm = False
+        self.transition_model = transition_model
 
         if self.args.answer_type == "auto":
             self.is_human_answer = False
@@ -174,12 +175,23 @@ class FeedbackManger:
                             belief: Belief, 
                             step: int = None, 
                             action_name: str = None,
+                            action: Action = None,
+                            oracle_prior_state: State = None,
                             observation_facts=None,
                             oracle_state_facts=None) -> Belief:
         """
         
         """
         
+        # Sample one transition outcome per executed action. All questions asked
+        # for this action must refer to the same virtual successor state.
+        oracle_successor_facts = None
+        if not self.is_human_answer:
+            oracle_successor_facts = self._sample_oracle_successor_facts(
+                action=action,
+                prior_state=oracle_prior_state,
+            )
+
         # ================ compute confidence and human ask ================
         confidence = self.compute_confidence(belief.frontier_weights)
         while confidence < self.conf_threshold:
@@ -197,6 +209,7 @@ class FeedbackManger:
                 action_name,
                 observation_facts=observation_facts,
                 oracle_state_facts=oracle_state_facts,
+                oracle_successor_facts=oracle_successor_facts,
             )
             
             self.num_of_query += 1
@@ -242,6 +255,7 @@ class FeedbackManger:
         action_name,
         observation_facts=None,
         oracle_state_facts=None,
+        oracle_successor_facts=None,
     ):
         
         question = self.refining_query(target_fact, action_name)
@@ -269,7 +283,34 @@ class FeedbackManger:
                 action_name,
                 observation_facts=observation_facts,
                 oracle_state_facts=oracle_state_facts,
+                oracle_successor_facts=oracle_successor_facts,
             )
+
+    def _sample_oracle_successor_facts(self, action, prior_state):
+        """Sample one virtual successor from the domain transition table."""
+        if action is None or prior_state is None or self.transition_model is None:
+            return None
+
+        action_schema, _ = _parse_fact(action.name.replace(" ", ""))
+        if action_schema in {"detect", "scan", "detect_waste"}:
+            return None
+
+        outcomes = self.transition_model.get_next_state_distribution(
+            prior_state,
+            action,
+        )
+        if not outcomes:
+            return None
+
+        probabilities = self.normalize(np.array(
+            [max(0.0, float(outcome.probability)) for outcome in outcomes],
+            dtype=float,
+        ))
+        selected_idx = int(np.random.choice(len(outcomes), p=probabilities))
+        return {
+            str(fact).replace(" ", "")
+            for fact in outcomes[selected_idx].next_state.facts
+        }
 
     def _get_oracle_facts(self):
         """Return normalized facts declared in scene YAML."""
@@ -290,6 +331,7 @@ class FeedbackManger:
         action_name=None,
         observation_facts=None,
         oracle_state_facts=None,
+        oracle_successor_facts=None,
     ):
         """
         Dispatch an Oracle query to the active domain implementation.
@@ -324,7 +366,7 @@ class FeedbackManger:
                 )
 
             if (
-                action_schema == "scan"
+                action_schema in {"scan", "pick_n_scan"}
                 and target_predicate in {"scanned", "fresh", "rotten"}
                 and len(target_args) == 1
                 and len(action_args) >= 2
@@ -337,18 +379,8 @@ class FeedbackManger:
                     else target_fact in true_facts
                 )
 
-            action_success_rates = {
-                "navigate": 0.90,
-                "prepare_nav": 1.0,
-                "pick_n_scan": 1.0,
-                "pick": 0.95,
-                "place": 0.99,
-                "discard": 0.99,
-            }
-            if action_schema in action_success_rates:
-                return bool(
-                    np.random.random() < action_success_rates[action_schema]
-                )
+            if oracle_successor_facts is not None:
+                return target_fact in oracle_successor_facts
 
             return target_fact in true_facts
 
@@ -395,6 +427,9 @@ class FeedbackManger:
 
                     if not front_cleared:
                         return False
+
+            if oracle_successor_facts is not None:
+                return target_fact in oracle_successor_facts
 
             return target_fact in true_facts
 

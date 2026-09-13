@@ -20,7 +20,7 @@
 
 기존 planner는 초기 hidden state를 command-line 인자로 받는다.
 
-- Tomato: `--labels`, `--locations`
+- Tomato: `--ripeness`, `--freshness`, `--locations`
 - Waste sorting: `--labels`
 
 따라서 직접 planner를 실행할 때만 아래 표의 값을 인자로 넣으면 된다. 권장 실행 방식은 `knowno_baseline_experiment.py` 또는 `run/run_knowno_baseline.sh`이다.
@@ -30,7 +30,7 @@
 저장소 루트에서 실행한다.
 
 ```bash
-cd /home/changmin/PyProject/00_BRL-CF
+cd /home/fr/brl/02_BRL_POMDP_CODE
 ```
 
 필요 패키지:
@@ -51,6 +51,24 @@ LLM 설정은 프로젝트 루트의 `llm_setting.json` 또는 환경 변수로 
 `gpt-3.5-turbo-instruct`는 completions 모델이다. baseline의 `scripts/llm.py`는 이 모델을 `completions.create()` 경로로 호출한다.
 
 ## Recommended Runner
+
+논문용 400회 비교 실험은 다음 명령으로 실행한다.
+
+```bash
+./run/iterate_knowno.sh
+```
+
+이 runner는 완료된 When--What 실험의 `ours` 행에서 동일한 400개 seed를 읽는다. 설정은 03/04 실제 로봇 KnowNo 구현과 동일한 GPT-4o, structured prompt(v1), generation temperature 0.0, score temperature 5.0, 최대 50 step, 정확한 Oracle 자동 응답이다. Calibration 값은 Tomato `qhat=0.8404`, Waste Sorting `qhat=0.8704`이다. 기존 KnowNo 로그는 실행 시 날짜-시간 archive로 옮긴다. 중단 후에는 완료 marker를 유지한 채 다음 명령으로 이어서 실행한다.
+
+```bash
+./run/iterate_knowno.sh --resume
+```
+
+API를 호출하지 않고 400개 seed와 실제 command만 점검하려면 다음을 사용한다.
+
+```bash
+./run/iterate_knowno.sh --dry-run
+```
 
 도메인과 scene은 shell script에서 수정한다.
 
@@ -83,7 +101,8 @@ python3 scripts/baseline/knowno_baseline_experiment.py --domain tomato --scene 0
 
 주요 인자:
 
-- `--labels`: tomato별 true property. 값은 `ripe`, `unripe`, `rotten`.
+- `--ripeness`: tomato별 true ripeness. 값은 `ripe`, `unripe`.
+- `--freshness`: tomato별 true marketability. 값은 `fresh`, `rotten`.
 - `--locations`: tomato별 true location. 값은 `stem_01`, `stem_02`.
 - `--detect-success-prob`: detect 성공 확률.
 - `--detect-label-error-prob`: detect label error 확률.
@@ -100,7 +119,8 @@ python3 scripts/baseline/knowno_baseline_experiment.py --domain tomato --scene 0
 
 ```bash
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
-  --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
+  --ripeness "tomato1:ripe,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
+  --freshness "tomato1:fresh,tomato2:rotten,tomato3:fresh,tomato4:fresh" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -108,7 +128,8 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 
 ```bash
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
-  --labels "tomato1:ripe,tomato2:unripe,tomato3:rotten,tomato4:ripe" \
+  --ripeness "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
+  --freshness "tomato1:fresh,tomato2:fresh,tomato3:rotten,tomato4:fresh" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -116,7 +137,8 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 
 ```bash
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
-  --labels "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:rotten" \
+  --ripeness "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
+  --freshness "tomato1:fresh,tomato2:fresh,tomato3:fresh,tomato4:rotten" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -124,7 +146,8 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 
 ```bash
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
-  --labels "tomato1:rotten,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
+  --ripeness "tomato1:ripe,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
+  --freshness "tomato1:rotten,tomato2:fresh,tomato3:fresh,tomato4:fresh" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -132,7 +155,8 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 
 ```bash
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
-  --labels "tomato1:rotten,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
+  --ripeness "tomato1:ripe,tomato2:unripe,tomato3:ripe,tomato4:ripe" \
+  --freshness "tomato1:rotten,tomato2:fresh,tomato3:fresh,tomato4:fresh" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -142,7 +166,8 @@ Example with deterministic seed and verbose logging:
 python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
   --seed 1 \
   --verbose \
-  --labels "tomato1:ripe,tomato2:rotten,tomato3:ripe,tomato4:unripe" \
+  --ripeness "tomato1:ripe,tomato2:ripe,tomato3:ripe,tomato4:unripe" \
+  --freshness "tomato1:fresh,tomato2:rotten,tomato3:fresh,tomato4:fresh" \
   --locations "tomato1:stem_01,tomato2:stem_01,tomato3:stem_02,tomato4:stem_02"
 ```
 
@@ -251,7 +276,7 @@ python3 scripts/baseline/scripts/knowno_multistep_tomato.py \
 
 ## Computing qhat
 
-`qhat=0.928`은 실행 중 바뀌는 값이 아니라, calibration set에서 한 번 구해 둔 conformal threshold이다. 각 calibration sample에서 정답 option의 확률을 구하고, nonconformity score를 다음처럼 계산한다.
+`qhat`은 실행 중 바뀌는 값이 아니라 calibration set에서 한 번 구해 둔 conformal threshold이다. 03/04 실제 로봇 설정을 따라 Tomato는 `0.8404`, Waste Sorting은 `0.8704`를 사용한다. 각 calibration sample에서 정답 option의 확률을 구하고, nonconformity score를 다음처럼 계산한다.
 
 ```text
 score = 1 - max probability assigned to a correct option
@@ -303,6 +328,6 @@ Prediction set이 singleton이면 baseline은 해당 option을 실행한다. Pre
 
 ## Current Limitation
 
-`knowno_baseline_experiment.py`는 scene YAML의 `true_init`만 읽는다. 기존 planner의 내부 실행 로직은 그대로 두고, scene 정보를 `--labels`, `--locations` 인자로 변환해 전달한다.
+`knowno_baseline_experiment.py`는 scene YAML의 `true_init`만 읽는다. Tomato의 ripeness와 freshness를 분리해 `--ripeness`, `--freshness`, `--locations`로 전달하고, Waste의 category는 `--labels`로 전달한다.
 
 즉, domain YAML의 `goal`, `facts`, action schema 전체를 baseline planner가 직접 사용하는 구조는 아직 아니다.

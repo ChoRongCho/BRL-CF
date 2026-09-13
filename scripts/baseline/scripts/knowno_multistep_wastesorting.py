@@ -15,7 +15,8 @@ from scripts.calibration import (
 from log_waste import RunLogger
 from scripts.llm import call_llm, configure_openai
 from scripts.env import WASTE_MC_PROMPT_FILE
-from scripts.prompt import process_mc_raw, temperature_scaling, top_choice_logprobs
+from scripts.prompt import process_mc_raw_preserve_duplicates, temperature_scaling, top_choice_logprobs
+from scripts.auto_answer import select_waste_answer
 from utils import GREEN, RESET, YELLOW, usage_total
 from wastesorting_utils import (
     AVAILABLE_BINS,
@@ -36,7 +37,7 @@ def parse_args():
         default=str(Path(__file__).resolve().parents[3] / "llm_setting.json"),
     )
     parser.add_argument("--instruction", default="Discard all waste.")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--scene-objects", default="waste1, waste2, waste3, waste4")
     parser.add_argument("--qhat", type=float, default=0.92)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=3.0)
@@ -52,6 +53,7 @@ def parse_args():
     parser.add_argument("--log-file", default="")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", action="store_true", help="Also print detailed log records to the terminal.")
+    parser.add_argument("--auto-answer", action="store_true", help="Use the exact task-state oracle when KnowNo asks for help.")
     parser.add_argument("--calibration-file", default=str(WASTE_MC_PROMPT_FILE))
     parser.add_argument("--target-success", type=float, default=0.8)
     parser.add_argument("--write-calibration-template", default="")
@@ -141,6 +143,7 @@ def main() -> None:
         "model": settings.get("model") or settings.get("model_name"),
         "prompt_version": args.prompt_version,
         "seed": args.seed,
+        "expert": "exact_oracle" if args.auto_answer else "human_input",
     })
     console("Instruction:", args.instruction)
     console("Prompt version:", args.prompt_version)
@@ -226,7 +229,7 @@ def main() -> None:
             "usage": gen_usage,
             "raw_text": mc_gen_raw,
         })
-        mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw(mc_gen_raw.strip())
+        mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw_preserve_duplicates(mc_gen_raw.strip())
         completed_iterations = step
         candidate_counts.append(len(mc_gen_all))
 
@@ -246,7 +249,15 @@ def main() -> None:
             log(score_prompt)
 
         score_start = time.perf_counter()
-        response, score_text = call_llm(score_prompt, max_tokens=1, logprobs=5)
+        # Match the deployed 04_BRL_WASTE KnowNo planner: let gpt-4o
+        # produce native A--E top-logprobs without legacy completion-token
+        # biases from the original KnowNo notebook.
+        response, score_text = call_llm(
+            score_prompt,
+            max_tokens=1,
+            logprobs=5,
+            logit_bias={},
+        )
         score_elapsed = time.perf_counter() - score_start
         score_usage = response.get("usage")
         total_usage["scoring"] += usage_total(score_usage)
@@ -267,12 +278,34 @@ def main() -> None:
         top_tokens = list(option_logprobs.keys())
         top_logprobs = list(option_logprobs.values())
         scores = temperature_scaling(top_logprobs, temperature=args.score_temperature)
+        generated_scores = dict(zip(top_tokens, scores))
+
+        # Match 04_BRL_WASTE: merge semantically identical options after
+        # scoring and sum their probability mass before thresholding.
+        unique_options = []
+        combined_scores = []
+        option_indexes = {}
+        for token, option in zip(tokens, mc_gen_all):
+            normalized = option.lower().strip().rstrip(".")
+            if normalized not in option_indexes:
+                option_indexes[normalized] = len(unique_options)
+                unique_options.append(option)
+                combined_scores.append(0.0)
+            combined_scores[option_indexes[normalized]] += float(generated_scores.get(token, 0.0))
+        mc_gen_all = unique_options
+        top_tokens = tokens[:len(mc_gen_all)]
+        scores = np.asarray(combined_scores)
+        top_logprobs = [float(np.log(score)) if score > 0.0 else -np.inf for score in scores]
+        mc_gen_full = "\n".join(f"{token}) {option}" for token, option in zip(top_tokens, mc_gen_all))
+        add_mc_prefix = top_tokens[mc_gen_all.index("an option not listed here")]
+        candidate_counts[-1] = len(mc_gen_all)
         preds = [token for token, score in zip(top_tokens, scores) if score >= 1 - qhat]
         prediction_set_sizes.append(len(preds))
         log_json(f"Step {step} decision data:", {
             "options": mc_gen_all,
             "add_mc_prefix": add_mc_prefix,
             "option_logprobs": option_logprobs,
+            "combined_option_scores": dict(zip(top_tokens, scores.tolist())),
             "scores": scores.tolist(),
             "threshold": 1 - qhat,
             "prediction_set": preds,
@@ -312,14 +345,36 @@ def main() -> None:
             help_count += 1
             help_candidate_counts.append(len(mc_gen_all))
             help_prediction_set_sizes.append(len(preds))
-            while True:
-                selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
-                if selected_token in tokens:
+            if args.auto_answer:
+                auto_answer = select_waste_answer(
+                    mc_gen_all,
+                    tokens,
+                    add_mc_prefix,
+                    remaining_objects,
+                    hidden_attributes,
+                    observed_attributes,
+                    held_object,
+                    occlusions,
+                    preds,
+                )
+                selected_token = auto_answer["selected_token"]
+                console(f"Oracle selected option {selected_token}.")
+                log_json(f"Step {step} oracle answer:", auto_answer)
+            else:
+                if not preds:
+                    stop_reason = "empty prediction set"
+                    console("Prediction set is empty. PLAN FAILURE reached.")
                     break
-                console("Invalid option. Please enter one of A, B, C, D, or E.")
+                while True:
+                    selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
+                    if selected_token in preds:
+                        break
+                    console(f"Invalid option. Please choose from the prediction set: {preds}")
         else:
             autonomous_count += 1
             selected_token = preds[0]
+        if stop_reason == "empty prediction set":
+            break
         if selected_token not in tokens:
             raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
 
@@ -417,7 +472,7 @@ def main() -> None:
             action_history.append(f"place {placed_object} into {target_bin}")
             result_text = f"Executed: place {placed_object} into {target_bin}"
 
-        source = "user" if help_needed else "prediction set"
+        source = "oracle" if help_needed and args.auto_answer else ("user" if help_needed else "prediction set")
         console(f"Selected/Executed ({source}, option {selected_token}): {selected_action} -> {result_text}")
         log_json(f"Step {step} end:", {
             "remaining_objects": remaining_objects,

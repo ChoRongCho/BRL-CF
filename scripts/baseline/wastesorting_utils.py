@@ -20,8 +20,8 @@ WASTE_LABELS = {
 }
 
 
-def prompt_module(version: str = "v1"):
-    normalized = (version or "v1").lower()
+def prompt_module(version: str = "v2"):
+    normalized = (version or "v2").lower()
     if normalized in {"v1", "structured"}:
         return prompts_v1
     if normalized in {"v2", "natural", "natural_language"}:
@@ -102,7 +102,7 @@ def initialize_hidden_attributes(objects: list[str], label_text: str) -> dict[st
 def build_waste_calibration_prompt(record: dict) -> str:
     if record.get("mc_gen_prompt"):
         return record["mc_gen_prompt"]
-    version = record.get("prompt_version", "v1")
+    version = record.get("prompt_version", "v2")
     return prompt_module(version).build_waste_calibration_prompt_text(record["context"])
 
 
@@ -112,7 +112,7 @@ def build_waste_generation_prompt(
     observed_text: str,
     held_text: str,
     history_text: str,
-    prompt_version: str = "v1",
+    prompt_version: str = "v2",
     occlusion_text: str = "None",
 ) -> str:
     return prompt_module(prompt_version).build_waste_generation_prompt_text(
@@ -133,7 +133,7 @@ def build_waste_score_prompt(
     held_text: str,
     history_text: str,
     mc_gen_full: str,
-    prompt_version: str = "v1",
+    prompt_version: str = "v2",
     occlusion_text: str = "None",
 ) -> str:
     return prompt_module(prompt_version).build_waste_score_prompt_text(

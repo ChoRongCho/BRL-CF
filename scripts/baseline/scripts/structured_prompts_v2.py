@@ -1,13 +1,31 @@
 from __future__ import annotations
 
 from scripts.structured_prompts import (
-    TOMATO_ACTION_OUTPUT_RULES,
-    TOMATO_ACTION_ROLES,
     TOMATO_BACKGROUND,
     WASTE_ACTION_OUTPUT_RULES,
     WASTE_ACTION_ROLES,
     WASTE_BACKGROUND,
 )
+
+
+# Keep v2 self-contained.  Importing these strings from v1 previously made the
+# historical v2 prompt change whenever the deployed 03 prompt was edited.
+TOMATO_ACTION_ROLES = """
+Action roles:
+- navigate to <location>: move the robot to dock_station, stem_01, or stem_02.
+- detect <location>: inspect tomato position and ripeness at the current robot stem (ripe or unripe).
+- pick <tomato>: pick one detected ripe tomato at the current robot stem with an empty hand.
+- scan <tomato>: inspect the specified currently held tomato's marketability (fresh or rotten).
+- place <tomato>: load the held fresh tomato.
+- discard <tomato>: discard the held rotten tomato.
+""".strip()
+
+TOMATO_ACTION_OUTPUT_RULES = """
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: navigate to <location>, detect <location>, pick <tomato>, scan <tomato>, place <tomato>, discard <tomato>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+""".strip()
 
 TOMATO_ENVIRONMENT_SENTENCE = (
     "The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. "
@@ -39,9 +57,9 @@ def _tomato_state_sentences(tomato_state_text: str) -> str:
         scanned = "unknown"
         for part in parts[1:]:
             if part.startswith("observed "):
-                observed = part.removeprefix("observed ").strip()
+                observed = part[len("observed ") :].strip()
             elif part.startswith("scanned "):
-                scanned = part.removeprefix("scanned ").strip()
+                scanned = part[len("scanned ") :].strip()
         sentences.append(
             f"{tomato} is currently {status}; its observed ripeness is {observed}, "
             f"and its scan result is {scanned}."
@@ -101,7 +119,7 @@ We: {_history_sentence(history_text)}
 """.strip()
 
 TOMATO_GENERATION_FEW_SHOT = """
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at dock_station. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato1, tomato2.
@@ -115,7 +133,7 @@ B) navigate to stem_02
 C) detect stem_01
 D) pick tomato1
 
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato1, tomato2.
@@ -127,9 +145,9 @@ You:
 A) pick tomato1
 B) detect stem_01
 C) navigate to stem_02
-D) scan
+D) scan tomato1
 
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is holding tomato1.
 We: The tomatoes that still need attention are tomato1, tomato2.
@@ -138,16 +156,16 @@ We: The loaded tomatoes are none. The discarded tomatoes are none.
 We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1.
 We: What should the robot do next? Answer with four options labeled A), B), C), and D).
 You:
-A) scan
+A) scan tomato1
 B) place tomato1
 C) discard tomato1
 D) pick tomato2
 
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato3, tomato4.
-We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is fresh. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
 We: The loaded tomatoes are tomato1. The discarded tomatoes are tomato2.
 We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan; 8. discard tomato2.
 We: What should the robot do next? Answer with four options labeled A), B), C), and D).
@@ -155,13 +173,13 @@ You:
 A) navigate to stem_02
 B) detect stem_01
 C) pick tomato3
-D) scan
+D) scan tomato3
 
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_01. The robot is holding tomato2.
 We: The tomatoes that still need attention are tomato2, tomato3, tomato4.
-We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently held; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is fresh. tomato2 is currently held; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently unknown; its observed ripeness is unknown, and its scan result is unknown. tomato4 is currently unknown; its observed ripeness is unknown, and its scan result is unknown.
 We: The loaded tomatoes are tomato1. The discarded tomatoes are none.
 We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan.
 We: What should the robot do next? Answer with four options labeled A), B), C), and D).
@@ -171,11 +189,11 @@ B) place tomato2
 C) navigate to stem_02
 D) pick tomato3
 
-We: The task is: Harvest all ripe tomatoes and discard rotten tomatoes.
+We: The task is: Harvest all ripe tomatoes, load fresh tomatoes, and discard rotten tomatoes.
 We: The environment contains four tomatoes: tomato1, tomato2, tomato3, and tomato4. The locations are dock_station, stem_01, and stem_02.
 We: The robot is at stem_02. The robot is not holding a tomato.
 We: The tomatoes that still need attention are tomato3, tomato4.
-We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is ripe. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently detected; its observed ripeness is ripe, and its scan result is unknown. tomato4 is currently detected; its observed ripeness is unripe, and its scan result is unknown.
+We: tomato1 is currently loaded; its observed ripeness is ripe, and its scan result is fresh. tomato2 is currently discarded; its observed ripeness is ripe, and its scan result is rotten. tomato3 is currently detected; its observed ripeness is ripe, and its scan result is unknown. tomato4 is currently detected; its observed ripeness is unripe, and its scan result is unknown.
 We: The loaded tomatoes are tomato1. The discarded tomatoes are tomato2.
 We: So far, the robot has completed these actions: 1. navigate to stem_01; 2. detect stem_01; 3. pick tomato1; 4. scan; 5. place tomato1; 6. pick tomato2; 7. scan; 8. discard tomato2; 9. navigate to stem_02; 10. detect stem_02.
 We: What should the robot do next? Answer with four options labeled A), B), C), and D).

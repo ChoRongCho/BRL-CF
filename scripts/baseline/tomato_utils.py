@@ -10,15 +10,21 @@ from scripts.structured_prompts import (
 )
 
 
-TOMATO_PROPERTIES = ["ripe", "unripe", "rotten"]
-TOMATO_SCAN_RESULTS = ["ripe", "rotten"]
+TOMATO_PROPERTIES = ["ripe", "unripe"]
+TOMATO_SCAN_RESULTS = ["fresh", "rotten"]
 LOCATIONS = ["dock_station", "stem_01", "stem_02"]
 STEMS = ["stem_01", "stem_02"]
 TOMATO_LABELS = {
     "tomato1": "ripe",
-    "tomato2": "rotten",
+    "tomato2": "ripe",
     "tomato3": "ripe",
     "tomato4": "unripe",
+}
+TOMATO_FRESHNESS = {
+    "tomato1": "fresh",
+    "tomato2": "rotten",
+    "tomato3": "fresh",
+    "tomato4": "fresh",
 }
 TOMATO_LOCATIONS = {
     "tomato1": "stem_01",
@@ -28,8 +34,8 @@ TOMATO_LOCATIONS = {
 }
 
 
-def prompt_module(version: str = "v1"):
-    normalized = (version or "v1").lower()
+def prompt_module(version: str = "v2"):
+    normalized = (version or "v2").lower()
     if normalized in {"v1", "structured"}:
         return prompts_v1
     if normalized in {"v2", "natural", "natural_language"}:
@@ -63,7 +69,7 @@ Options:
 A) pick tomato1
 B) detect
 C) navigate to stem_02
-D) scan
+D) scan tomato1
 E) an option not listed here
 
 Correct options:
@@ -85,18 +91,39 @@ def parse_label_map(text: str, valid_values: list[str], kind: str) -> dict[str, 
     return parsed
 
 
-def initialize_tomato_world(tomatoes: list[str], label_text: str, location_text: str):
-    user_labels = parse_label_map(label_text, TOMATO_PROPERTIES, "labels")
+def initialize_tomato_world(
+    tomatoes: list[str],
+    ripeness_text: str,
+    freshness_text: str,
+    location_text: str,
+    legacy_labels: str = "",
+):
+    user_ripeness = parse_label_map(ripeness_text, TOMATO_PROPERTIES, "ripeness")
+    user_freshness = parse_label_map(freshness_text, TOMATO_SCAN_RESULTS, "freshness")
+    if legacy_labels and not user_ripeness and not user_freshness:
+        legacy = parse_label_map(legacy_labels, ["ripe", "unripe", "rotten"], "labels")
+        user_ripeness = {
+            tomato: "ripe" if value == "rotten" else value
+            for tomato, value in legacy.items()
+        }
+        user_freshness = {
+            tomato: "rotten" if value == "rotten" else "fresh"
+            for tomato, value in legacy.items()
+        }
     user_locations = parse_label_map(location_text, LOCATIONS, "locations")
-    hidden_properties = {
-        tomato: user_labels.get(tomato, TOMATO_LABELS.get(tomato, random.choice(TOMATO_PROPERTIES)))
+    hidden_ripeness = {
+        tomato: user_ripeness.get(tomato, TOMATO_LABELS.get(tomato, random.choice(TOMATO_PROPERTIES)))
+        for tomato in tomatoes
+    }
+    hidden_freshness = {
+        tomato: user_freshness.get(tomato, TOMATO_FRESHNESS.get(tomato, random.choice(TOMATO_SCAN_RESULTS)))
         for tomato in tomatoes
     }
     hidden_locations = {
         tomato: user_locations.get(tomato, TOMATO_LOCATIONS.get(tomato, random.choice(STEMS)))
         for tomato in tomatoes
     }
-    return hidden_properties, hidden_locations
+    return hidden_ripeness, hidden_freshness, hidden_locations
 
 
 def parse_tomato_action(action: str):
@@ -135,7 +162,7 @@ def parse_tomato_action(action: str):
 def build_tomato_calibration_prompt(record: dict) -> str:
     if record.get("mc_gen_prompt"):
         return record["mc_gen_prompt"]
-    version = record.get("prompt_version", "v1")
+    version = record.get("prompt_version", "v2")
     return prompt_module(version).build_tomato_calibration_prompt_text(record["context"])
 
 
@@ -176,7 +203,7 @@ def build_tomato_generation_prompt(
     history_text,
     required_next_action_text,
 ):
-    return prompt_module(getattr(args, "prompt_version", "v1")).build_tomato_generation_prompt_text(
+    return prompt_module(getattr(args, "prompt_version", "v2")).build_tomato_generation_prompt_text(
         args.instruction,
         robot_location,
         active_tomatoes,
@@ -201,7 +228,7 @@ def build_tomato_score_prompt(
     mc_gen_full,
     required_next_action_text,
 ):
-    return prompt_module(getattr(args, "prompt_version", "v1")).build_tomato_score_prompt_text(
+    return prompt_module(getattr(args, "prompt_version", "v2")).build_tomato_score_prompt_text(
         args.instruction,
         robot_location,
         active_tomatoes,

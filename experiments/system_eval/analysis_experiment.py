@@ -179,10 +179,25 @@ def parse_scale_metrics(text: str) -> dict[str, Any]:
 
 
 def parse_question_steps(text: str) -> set[int]:
-    return {
+    steps = {
         int(match.group(1))
         for match in re.finditer(r"^Q\d+:\s*step=(\d+),", text, re.MULTILINE)
     }
+
+    # Current logs group questions below a step header in the [Questions]
+    # section instead of repeating the step number on every Q line.
+    marker = "[Questions]"
+    start = text.find(marker)
+    if start == -1:
+        return steps
+    next_section = text.find("\n[", start + len(marker))
+    block = text[start: next_section if next_section != -1 else len(text)]
+    headers = list(re.finditer(r"^Step=(\d+):\s*$", block, re.MULTILINE))
+    for index, header in enumerate(headers):
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(block)
+        if re.search(r"^- Q\d+:", block[header.end():end], re.MULTILINE):
+            steps.add(int(header.group(1)))
+    return steps
 
 
 def normalize_stop_reason(value: Any) -> str:
@@ -215,7 +230,22 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
     experiment = ""
     policy = ""
     threshold = ""
-    if parent_name.startswith("when_"):
+    # Archived directories are retained for reproducibility, but must never be
+    # mixed into the currently selected experiment batch.
+    if ".backup_" in parent_name:
+        return None
+    if parent_name.startswith("when_what_"):
+        experiment = "when_what"
+        match = re.fullmatch(
+            r"when_what_(random|ours_when_only|ours_what_only|ours)"
+            r"_thres_([0-9]+(?:-[0-9]+)?)_rand_([0-9]+(?:-[0-9]+)?)",
+            parent_name,
+        )
+        if match is None:
+            return None
+        policy = match.group(1)
+        threshold = match.group(2).replace("-", ".")
+    elif parent_name.startswith("when_"):
         experiment = "when"
         match = re.fullmatch(r"when_(all|no|ours|random)_rand_.+", parent_name)
         if match is None:
@@ -223,11 +253,14 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
         policy = match.group(1)
     elif parent_name.startswith("thres_"):
         experiment = "threshold"
-        threshold = parent_name.removeprefix("thres_").replace("-", ".")
+        threshold = parent_name[len("thres_"):].replace("-", ".")
     elif parent_name.startswith("scale_ours_"):
         experiment = "scalability"
         policy = "ours"
         threshold = parse_line_value(text, "threshold")
+    elif parent_name == "query_as_action":
+        experiment = "query_baseline"
+        policy = "query_action_pomcp"
     else:
         return None
 
@@ -365,7 +398,7 @@ def knowno_policy_from_path(path: Path) -> str:
     if parent == "when_knowno_gpt4":
         return "knowno_gpt4"
     if parent.startswith("when_knowno_"):
-        return parent.removeprefix("when_")
+        return parent[len("when_"):]
     return "knowno"
 
 

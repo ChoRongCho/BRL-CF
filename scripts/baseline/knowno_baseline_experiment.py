@@ -17,7 +17,6 @@ BASELINE_SCRIPT_DIR = BASELINE_DIR / "scripts"
 DOMAIN_DIR = SCRIPTS_DIR / "domain"
 LOGS_DIR = PROJECT_ROOT / "experiments_logs" / "system_log"
 
-TOMATO_PROPERTIES = {"ripe", "unripe", "rotten"}
 WASTE_LABELS = {"general", "plastic", "paper", "can"}
 
 
@@ -29,13 +28,14 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--scene", default="01", help="Scene number such as 01, 1, 02, ..., 05.")
     parser.add_argument("--settings", default=str(PROJECT_ROOT / "llm_setting.json"))
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--qhat", type=float, default=None)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=None)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--log-file", default="")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--auto-answer", action="store_true")
     parser.add_argument("--detect-success-prob", type=float, default=None)
     parser.add_argument("--detect-label-error-prob", type=float, default=None)
     parser.add_argument("--scan-success-prob", type=float, default=None)
@@ -53,7 +53,11 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
 
 def scene_id(value: str) -> str:
-    text = value.strip().lower().removeprefix("scene_").removeprefix("scene")
+    text = value.strip().lower()
+    for prefix in ("scene_", "scene"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
     try:
         number = int(text)
     except ValueError as exc:
@@ -105,25 +109,30 @@ def format_mapping(mapping: dict[str, str]) -> str:
 
 
 def tomato_args_from_scene(scene_path: Path) -> list[str]:
-    labels: dict[str, str] = {}
+    ripeness: dict[str, str] = {}
+    freshness: dict[str, str] = {}
     locations: dict[str, str] = {}
 
     for fact in read_true_init(scene_path):
-        match = re.fullmatch(r"(ripe|unripe|rotten)\(([^)]+)\)", fact)
+        match = re.fullmatch(r"(ripe|unripe)\(([^)]+)\)", fact)
         if match:
-            labels[match.group(2)] = match.group(1)
+            ripeness[match.group(2)] = match.group(1)
+            continue
+        match = re.fullmatch(r"(fresh|rotten)\(([^)]+)\)", fact)
+        if match:
+            freshness[match.group(2)] = match.group(1)
             continue
         match = re.fullmatch(r"at\(([^,]+),([^)]+)\)", fact)
         if match:
             locations[match.group(1)] = match.group(2)
 
-    if not labels:
-        raise ValueError(f"No tomato property facts found in {scene_path}")
-    unknown_labels = set(labels.values()) - TOMATO_PROPERTIES
-    if unknown_labels:
-        raise ValueError(f"Unsupported tomato labels in {scene_path}: {sorted(unknown_labels)}")
+    if not ripeness or not freshness:
+        raise ValueError(f"Tomato ripeness/freshness facts are incomplete in {scene_path}")
 
-    args = ["--labels", format_mapping(labels)]
+    args = [
+        "--ripeness", format_mapping(ripeness),
+        "--freshness", format_mapping(freshness),
+    ]
     if locations:
         args.extend(["--locations", format_mapping(locations)])
     return args
@@ -211,6 +220,8 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
 
     if args.verbose:
         cmd.append("--verbose")
+    if args.auto_answer:
+        cmd.append("--auto-answer")
     if args.run_calibration:
         cmd.append("--run-calibration")
     append_optional(cmd, "--num-calibration", args.num_calibration)

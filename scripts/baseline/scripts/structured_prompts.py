@@ -14,17 +14,18 @@ TOMATO_BACKGROUND = (
 TOMATO_ACTION_ROLES = """
 Action roles:
 - navigate to <location>: move the robot to dock_station, stem_01, or stem_02.
-- detect <location>: observe tomatoes at the current robot stem.
+- detect <location>: inspect tomato position and ripeness at the current robot stem (ripe or unripe).
 - pick <tomato>: pick one detected ripe tomato at the current robot stem with an empty hand.
-- scan <tomato>: inspect the currently held tomato.
-- place <tomato>: load the held ripe tomato.
+- scan <tomato>: inspect the specified currently held tomato's marketability (fresh or rotten).
+- place <tomato>: load the held fresh tomato.
 - discard <tomato>: discard the held rotten or bad tomato.
+- done: finish the task after three distinct tomatoes have been handled: at least two loaded and at least one discarded.
 """.strip()
 
 TOMATO_ACTION_OUTPUT_RULES = """
 Output rules:
 - Each option must be exactly one allowed action from the action roles.
-- Use only these action formats: navigate to <location>, detect <location>, pick <tomato>, scan, scan <tomato>, place <tomato>, discard <tomato>.
+- Use only these action formats: navigate to <location>, detect <location>, pick <tomato>, scan <tomato>, place <tomato>, discard <tomato>, done.
 - Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
 """.strip()
 
@@ -51,7 +52,21 @@ You:
 A) pick tomato1
 B) detect stem_01
 C) navigate to stem_02
-D) scan
+D) scan tomato1
+
+We: Example state:
+Robot location: stem_01
+Tomato states:
+tomato1: detected, observed ripe, scanned unknown
+tomato2: detected, observed unripe, scanned unknown
+tomato3: unknown, observed unknown, scanned unknown
+tomato4: unknown, observed unknown, scanned unknown
+Held tomato: None
+You:
+A) pick tomato1
+B) scan tomato1
+C) navigate to stem_02
+D) detect stem_01
 
 We: Example state:
 Robot location: stem_01
@@ -60,27 +75,27 @@ tomato1: held, observed ripe, scanned unknown
 tomato2: unknown, observed unknown, scanned unknown
 Held tomato: tomato1
 You:
-A) scan
-B) scan
-C) scan
-D) scan
+A) scan tomato1
+B) place tomato1
+C) discard tomato1
+D) detect stem_01
 
 We: Example state:
 Robot location: stem_01
 Tomato states:
-tomato1: held, observed ripe, scanned ripe
+tomato1: held, observed ripe, scanned fresh
 tomato2: unknown, observed unknown, scanned unknown
 Held tomato: tomato1
 You:
 A) place tomato1
-B) place tomato1
-C) place tomato1
-D) place tomato1
+B) discard tomato1
+C) pick tomato2
+D) navigate to stem_02
 
 We: Example state:
 Robot location: stem_01
 Tomato states:
-tomato1: loaded, observed ripe, scanned ripe
+tomato1: loaded, observed ripe, scanned fresh
 tomato2: discarded, observed ripe, scanned rotten
 tomato3: unknown, observed unknown, scanned unknown
 tomato4: unknown, observed unknown, scanned unknown
@@ -89,7 +104,35 @@ You:
 A) navigate to stem_02
 B) detect stem_01
 C) pick tomato3
-D) scan
+D) scan tomato3
+
+We: Example state:
+Robot location: stem_02
+Tomato states:
+tomato1: loaded, observed ripe, scanned fresh
+tomato2: discarded, observed ripe, scanned rotten
+tomato3: detected, observed unripe, scanned unknown
+tomato4: detected, observed ripe, scanned unknown
+Held tomato: None
+You:
+A) done
+B) detect stem_02
+C) pick tomato4
+D) pick tomato3
+
+We: Example state:
+Robot location: stem_02
+Tomato states:
+tomato1: loaded, observed ripe, scanned fresh
+tomato2: discarded, observed ripe, scanned rotten
+tomato3: detected, observed unripe, scanned unknown
+tomato4: loaded, observed ripe, scanned fresh
+Held tomato: None
+You:
+A) pick tomato3
+B) navigate to dock_station
+C) navigate to stem_01
+D) done
 """.strip()
 
 WASTE_BACKGROUND = (
@@ -174,6 +217,7 @@ We: {TOMATO_BACKGROUND}
 {TOMATO_ACTION_OUTPUT_RULES}
 
 {TOMATO_GENERATION_FEW_SHOT}
+
 
 We: Overall instruction: {instruction}
 We: Robot location: {robot_location}
@@ -289,6 +333,6 @@ We: Actions already completed:
 We: What should the robot do next?
 You:
 {mc_gen_full}
-We: Which option is correct? Answer with a single capital letter.
+We: Which option is correct? Answer with a single capital letter from A, B, C, D, or E.
 You:
 """.strip()

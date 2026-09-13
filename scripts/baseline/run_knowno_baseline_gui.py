@@ -65,7 +65,7 @@ class KnownoGui(tk.Tk):
             "domain": tk.StringVar(value="tomato"),
             "scene": tk.StringVar(value="01"),
             "llm_model": tk.StringVar(value="gpt-4o"),
-            "prompt_version": tk.StringVar(value="v1"),
+            "prompt_version": tk.StringVar(value="v2"),
             "max_steps": tk.StringVar(value="50"),
             "seed": tk.StringVar(value=""),
             "seed_random": tk.BooleanVar(value=True),

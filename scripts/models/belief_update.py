@@ -36,7 +36,11 @@ class BeliefManager:
             getattr(args, "max_particles", 250),
         )
         
-        self.feedback_manager = FeedbackManger(self.args, self.conf_threshold)
+        self.feedback_manager = FeedbackManger(
+            self.args,
+            self.conf_threshold,
+            transition_model=self.transition_model,
+        )
         
         
     def initialize_belief(self, init_state: State):

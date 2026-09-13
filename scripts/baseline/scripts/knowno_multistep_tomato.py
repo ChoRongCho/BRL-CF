@@ -16,6 +16,7 @@ from log_tomato import RunLogger
 from scripts.llm import call_llm, configure_openai
 from scripts.env import TOMATO_MC_PROMPT_FILE
 from scripts.prompt import process_mc_raw, temperature_scaling, top_choice_logprobs
+from scripts.auto_answer import select_tomato_answer
 from utils import GREEN, RESET, YELLOW, usage_total
 from tomato_utils import (
     LOCATIONS,
@@ -38,7 +39,7 @@ def parse_args():
         default=str(Path(__file__).resolve().parents[3] / "llm_setting.json"),
     )
     parser.add_argument("--instruction", default="Harvest all ripe tomatoes and discard rotten tomatoes.")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--tomatoes", default="tomato1, tomato2, tomato3, tomato4")
     parser.add_argument("--qhat", type=float, default=0.92)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=3.0)
@@ -51,11 +52,14 @@ def parse_args():
     parser.add_argument("--pick-failure-prob", type=float, default=0.0)
     parser.add_argument("--place-failure-prob", type=float, default=0.0)
     parser.add_argument("--discard-failure-prob", type=float, default=0.0)
-    parser.add_argument("--labels", default="", help='Optional tomato properties, e.g. "tomato1:ripe,tomato2:rotten".')
+    parser.add_argument("--ripeness", default="", help='True ripeness, e.g. "tomato1:ripe,tomato2:unripe".')
+    parser.add_argument("--freshness", default="", help='True marketability, e.g. "tomato1:fresh,tomato2:rotten".')
+    parser.add_argument("--labels", default="", help=argparse.SUPPRESS)
     parser.add_argument("--locations", default="", help='Optional tomato locations, e.g. "tomato1:stem_01,tomato2:stem_02".')
     parser.add_argument("--log-file", default="")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--verbose", action="store_true", help="Also print detailed log records to the terminal.")
+    parser.add_argument("--auto-answer", action="store_true", help="Use the exact task-state oracle when KnowNo asks for help.")
     parser.add_argument("--calibration-file", default=str(TOMATO_MC_PROMPT_FILE))
     parser.add_argument("--target-success", type=float, default=0.8)
     parser.add_argument("--write-calibration-template", default="")
@@ -65,25 +69,27 @@ def parse_args():
     return parser.parse_args()
 
 
-def tomato_dead_end_reason(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes):
+def tomato_dead_end_reason(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
     for tomato in discarded_tomatoes:
-        if hidden_properties.get(tomato) == "ripe":
-            return f"PLAN FAILURE: true ripe tomato {tomato} was discarded."
+        if hidden_freshness.get(tomato) == "fresh":
+            return f"PLAN FAILURE: true fresh tomato {tomato} was discarded."
     for tomato in loaded_tomatoes:
-        if hidden_properties.get(tomato) == "rotten":
+        if hidden_freshness.get(tomato) == "rotten":
             return f"PLAN FAILURE: true rotten tomato {tomato} was loaded."
-    if held_tomato is not None and hidden_properties.get(held_tomato) == "unripe":
+    if held_tomato is not None and hidden_ripeness.get(held_tomato) == "unripe":
         return f"PLAN FAILURE: true unripe tomato {held_tomato} is held."
     return None
 
 
-def tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes):
+def tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
     if held_tomato is not None:
         return False
-    for tomato, prop in hidden_properties.items():
-        if prop == "ripe" and tomato not in loaded_tomatoes:
+    for tomato, ripeness in hidden_ripeness.items():
+        if ripeness != "ripe":
+            continue
+        if hidden_freshness[tomato] == "fresh" and tomato not in loaded_tomatoes:
             return False
-        if prop == "rotten" and tomato not in discarded_tomatoes:
+        if hidden_freshness[tomato] == "rotten" and tomato not in discarded_tomatoes:
             return False
     return True
 
@@ -99,11 +105,11 @@ def required_tomato_next_action(
 ):
     if held_tomato is not None:
         scanned_property = scanned_properties.get(held_tomato, "unknown")
-        if scanned_property == "ripe":
+        if scanned_property == "fresh":
             return f"place {held_tomato}"
-        if scanned_property in {"rotten", "unripe"}:
+        if scanned_property == "rotten":
             return f"discard {held_tomato}"
-        return "scan"
+        return f"scan {held_tomato}"
 
     if robot_location not in STEMS:
         return "navigate to stem_01 or navigate to stem_02"
@@ -133,7 +139,13 @@ def main() -> None:
     qhat = settings.get("qhat", args.qhat)
 
     tomatoes = [obj.strip().lower() for obj in args.tomatoes.split(",") if obj.strip()]
-    hidden_properties, hidden_locations = initialize_tomato_world(tomatoes, args.labels, args.locations)
+    hidden_ripeness, hidden_freshness, hidden_locations = initialize_tomato_world(
+        tomatoes,
+        args.ripeness,
+        args.freshness,
+        args.locations,
+        legacy_labels=args.labels,
+    )
 
     robot_location = "dock_station"
     observed_properties = {}
@@ -158,12 +170,14 @@ def main() -> None:
         "model": settings.get("model") or settings.get("model_name"),
         "prompt_version": args.prompt_version,
         "seed": args.seed,
+        "expert": "exact_oracle" if args.auto_answer else "human_input",
     })
     console("Instruction:", args.instruction)
     console("Prompt version:", args.prompt_version)
     console("Tomatoes:", ", ".join(tomatoes))
     console("Locations:", ", ".join(LOCATIONS))
-    console("True properties:", ", ".join(f"{obj}: {hidden_properties[obj]}" for obj in sorted(hidden_properties)))
+    console("True ripeness:", ", ".join(f"{obj}: {hidden_ripeness[obj]}" for obj in sorted(hidden_ripeness)))
+    console("True freshness:", ", ".join(f"{obj}: {hidden_freshness[obj]}" for obj in sorted(hidden_freshness)))
     console("True locations:", ", ".join(f"{obj}: {hidden_locations[obj]}" for obj in sorted(hidden_locations)))
     console("Detect success/error:", args.detect_success_prob, "/", args.detect_label_error_prob)
     console("Scan success/error:", args.scan_success_prob, "/", args.scan_label_error_prob)
@@ -198,7 +212,8 @@ def main() -> None:
     for step in range(1, args.max_steps + 1):
         step_start = time.perf_counter()
         dead_end_reason = tomato_dead_end_reason(
-            hidden_properties,
+            hidden_ripeness,
+            hidden_freshness,
             held_tomato,
             loaded_tomatoes,
             discarded_tomatoes,
@@ -214,7 +229,7 @@ def main() -> None:
             })
             break
 
-        if tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes):
+        if tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
             console("\nAll target tomatoes have been handled successfully.")
             stop_reason = "success"
             log_json(f"Step {step} success:", {
@@ -312,7 +327,15 @@ def main() -> None:
             log(score_prompt)
 
         score_start = time.perf_counter()
-        response, score_text = call_llm(score_prompt, max_tokens=1, logprobs=5)
+        # Match the deployed 03_BRL_TOMATO KnowNo planner: let gpt-4o
+        # produce native A--E top-logprobs without legacy completion-token
+        # biases from the original KnowNo notebook.
+        response, score_text = call_llm(
+            score_prompt,
+            max_tokens=1,
+            logprobs=5,
+            logit_bias={},
+        )
         score_elapsed = time.perf_counter() - score_start
         score_usage = response.get("usage")
         total_usage["scoring"] += usage_total(score_usage)
@@ -347,9 +370,11 @@ def main() -> None:
         console(f"\n====== Step {step} ======")
         console("Robot location:", robot_location)
         console("Active tomatoes:", ", ".join(active_tomatoes) if active_tomatoes else "None")
-        true_prop_text = ", ".join(f"{t}: {hidden_properties[t]}" for t in sorted(hidden_properties))
+        true_ripeness_text = ", ".join(f"{t}: {hidden_ripeness[t]}" for t in sorted(hidden_ripeness))
+        true_freshness_text = ", ".join(f"{t}: {hidden_freshness[t]}" for t in sorted(hidden_freshness))
         true_loc_text = ", ".join(f"{t}: {hidden_locations[t]}" for t in sorted(hidden_locations))
-        console_colored(f"{YELLOW}True tomato properties: {true_prop_text}{RESET}", f"True tomato properties: {true_prop_text}")
+        console_colored(f"{YELLOW}True tomato ripeness: {true_ripeness_text}{RESET}", f"True tomato ripeness: {true_ripeness_text}")
+        console_colored(f"{YELLOW}True tomato freshness: {true_freshness_text}{RESET}", f"True tomato freshness: {true_freshness_text}")
         console_colored(f"{YELLOW}True tomato locations: {true_loc_text}{RESET}", f"True tomato locations: {true_loc_text}")
         console("Tomato states:")
         console(tomato_state_text)
@@ -375,14 +400,42 @@ def main() -> None:
             help_count += 1
             help_candidate_counts.append(len(mc_gen_all))
             help_prediction_set_sizes.append(len(preds))
-            while True:
-                selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
-                if selected_token in tokens:
+            if args.auto_answer:
+                auto_answer = select_tomato_answer(
+                    mc_gen_all,
+                    tokens,
+                    add_mc_prefix,
+                    robot_location,
+                    active_tomatoes,
+                    hidden_ripeness,
+                    hidden_freshness,
+                    hidden_locations,
+                    observed_properties,
+                    observed_locations,
+                    held_tomato,
+                    loaded_tomatoes,
+                    discarded_tomatoes,
+                    scanned_properties,
+                    preds,
+                )
+                selected_token = auto_answer["selected_token"]
+                console(f"Oracle selected option {selected_token}.")
+                log_json(f"Step {step} oracle answer:", auto_answer)
+            else:
+                if not preds:
+                    stop_reason = "empty prediction set"
+                    console("Prediction set is empty. PLAN FAILURE reached.")
                     break
-                console("Invalid option. Please enter one of A, B, C, D, or E.")
+                while True:
+                    selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
+                    if selected_token in preds:
+                        break
+                    console(f"Invalid option. Please choose from the prediction set: {preds}")
         else:
             autonomous_count += 1
             selected_token = preds[0]
+        if stop_reason == "empty prediction set":
+            break
         if selected_token not in tokens:
             raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
 
@@ -433,15 +486,14 @@ def main() -> None:
                 detect_roll = random.random()
                 roll_info = {
                     "tomato": tomato,
-                    "true_property": hidden_properties[tomato],
+                    "true_ripeness": hidden_ripeness[tomato],
                     "true_location": hidden_locations[tomato],
                     "previous_property": previous_property,
                     "detect_roll": detect_roll,
                     "detected": detect_roll <= args.detect_success_prob,
                 }
                 if detect_roll <= args.detect_success_prob:
-                    true_property = hidden_properties[tomato]
-                    detected_property = "ripe" if true_property == "rotten" else true_property
+                    detected_property = hidden_ripeness[tomato]
                     label_error_roll = random.random()
                     roll_info["label_error_roll"] = label_error_roll
                     roll_info["label_error"] = label_error_roll <= args.detect_label_error_prob
@@ -505,13 +557,12 @@ def main() -> None:
             scan_roll = random.random()
             scan_info = {
                 "tomato": held_tomato,
-                "true_property": hidden_properties[held_tomato],
+                "true_freshness": hidden_freshness[held_tomato],
                 "scan_roll": scan_roll,
                 "scanned": scan_roll <= args.scan_success_prob,
             }
             if scan_roll <= args.scan_success_prob:
-                true_property = hidden_properties[held_tomato]
-                true_scan_result = "ripe" if true_property == "ripe" else "rotten"
+                true_scan_result = hidden_freshness[held_tomato]
                 label_error_roll = random.random()
                 scan_info["label_error_roll"] = label_error_roll
                 scan_info["label_error"] = label_error_roll <= args.scan_label_error_prob
@@ -525,7 +576,7 @@ def main() -> None:
             else:
                 result_text = "Scan result: no property observed"
             log_json(f"Step {step} scan roll:", scan_info)
-            action_history.append("scan")
+            action_history.append(f"scan {held_tomato}")
 
         elif action_type == "place":
             tomato = action_arg
@@ -533,9 +584,9 @@ def main() -> None:
                 console("Place action does not match the held tomato.")
                 stop_reason = "invalid place target mismatch"
                 break
-            if scanned_properties.get(tomato, observed_properties.get(tomato)) != "ripe":
-                console("Place is intended for ripe tomatoes; discard non-ripe/rotten tomatoes.")
-                stop_reason = f"invalid place non-ripe tomato: {tomato}"
+            if scanned_properties.get(tomato) != "fresh":
+                console("Place requires a held tomato scanned as fresh.")
+                stop_reason = f"invalid place non-fresh tomato: {tomato}"
                 break
             failure_roll = random.random()
             failed = failure_roll <= args.place_failure_prob
@@ -577,10 +628,11 @@ def main() -> None:
                 action_history.append(f"discard {tomato}")
                 result_text = f"Executed: discard {tomato}"
 
-        source = "user" if help_needed else "prediction set"
+        source = "oracle" if help_needed and args.auto_answer else ("user" if help_needed else "prediction set")
         console(f"Selected/Executed ({source}, option {selected_token}): {selected_action} -> {result_text}")
         dead_end_reason = tomato_dead_end_reason(
-            hidden_properties,
+            hidden_ripeness,
+            hidden_freshness,
             held_tomato,
             loaded_tomatoes,
             discarded_tomatoes,
@@ -602,7 +654,7 @@ def main() -> None:
             console(dead_end_reason)
             stop_reason = dead_end_reason
             break
-        if tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes):
+        if tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
             console("\nAll target tomatoes have been handled successfully.")
             stop_reason = "success"
             break
@@ -625,7 +677,7 @@ def main() -> None:
     log_json("Token usage totals:", total_usage)
     total_elapsed = time.perf_counter() - run_start
     console("Total elapsed seconds:", total_elapsed)
-    final_success = tomato_success(hidden_properties, held_tomato, loaded_tomatoes, discarded_tomatoes)
+    final_success = tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes)
     summary = {
         "success": final_success,
         "stop_reason": stop_reason,

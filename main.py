@@ -183,6 +183,7 @@ def main():
         
         # =========== 2. excute action and get observation ===========
         execute_start = time()
+        oracle_prior_state = belief.knowledge.copy()
         observation, r, _, info = env.step(action)
         cumulated_reward += r
         print("[Planner] Observation: ", observation.state.facts)
@@ -207,6 +208,8 @@ def main():
             belief=belief,
             step=i,
             action_name=action.name,
+            action=action,
+            oracle_prior_state=oracle_prior_state,
             observation_facts=observation.state.facts,
             oracle_state_facts=belief.knowledge.facts,
         )
