@@ -22,7 +22,14 @@ WASTE_QHAT="${BATCH_WASTE_QHAT:-0.8704}"
 # Query-Action POMCP
 N_SIMULATIONS="100"
 MAX_DEPTH="20"
+GAMMA="0.95"
+UCB_C="1.0"
+EPSILON="0.005"
+MAX_PARTICLES="250"
+MAX_BELIEF_PARTICLES="8000"
+MAX_NODE_PARTICLES="8000"
 QUERY_COST="1.0"
+FAILURE_PENALTY="${BATCH_FAILURE_PENALTY:-10.0}"
 ANSWER_ACCURACY="1.0"
 MAX_CONSECUTIVE_QUERIES="30"
 
@@ -105,7 +112,7 @@ seed_dir="${LOG_ROOT}/query_baseline_seed_logs"
 seed_log="${seed_dir}/iterate_query_baselines_${timestamp}.csv"
 if [[ "$DRY_RUN" != "true" ]]; then
     mkdir -p "$seed_dir"
-    echo "global_index,baseline,domain,scene,iteration,seed,max_steps,n_simulations,max_depth,query_cost,answer_accuracy,prompt_version,qhat,temperature,expert,status,log_path" > "$seed_log"
+    echo "global_index,baseline,domain,scene,iteration,seed,max_steps,n_simulations,max_depth,query_cost,failure_penalty,answer_accuracy,prompt_version,qhat,temperature,expert,status,log_path" > "$seed_log"
 fi
 
 printf "\rProgress: %3d%%" 0
@@ -155,7 +162,12 @@ for baseline in "${BASELINES[@]}"; do
                 MAX_STEPS="$MAX_STEPS" MAX_STEP="$MAX_STEPS" QHAT="$qhat" \
                 PROMPT_VERSION="$PROMPT_VERSION" SCORE_TEMPERATURE="$SCORE_TEMPERATURE" \
                 N_SIMULATIONS="$N_SIMULATIONS" MAX_DEPTH="$MAX_DEPTH" \
+                GAMMA="$GAMMA" UCB_C="$UCB_C" EPSILON="$EPSILON" \
+                MAX_PARTICLES="$MAX_PARTICLES" \
+                MAX_BELIEF_PARTICLES="$MAX_BELIEF_PARTICLES" \
+                MAX_NODE_PARTICLES="$MAX_NODE_PARTICLES" \
                 QUERY_COST="$QUERY_COST" ANSWER_ACCURACY="$ANSWER_ACCURACY" \
+                FAILURE_PENALTY="$FAILURE_PENALTY" \
                 MAX_CONSECUTIVE_QUERIES="$MAX_CONSECUTIVE_QUERIES" \
                 LOG_ROOT="$LOG_ROOT" LOG_FILE="$log_path" AUTO_ANSWER="true" DRY_RUN="true" \
                     "$SCRIPT_DIR/run_query_baseline.sh"
@@ -167,7 +179,12 @@ for baseline in "${BASELINES[@]}"; do
                 MAX_STEPS="$MAX_STEPS" MAX_STEP="$MAX_STEPS" QHAT="$qhat" \
                 PROMPT_VERSION="$PROMPT_VERSION" SCORE_TEMPERATURE="$SCORE_TEMPERATURE" \
                 N_SIMULATIONS="$N_SIMULATIONS" MAX_DEPTH="$MAX_DEPTH" \
+                GAMMA="$GAMMA" UCB_C="$UCB_C" EPSILON="$EPSILON" \
+                MAX_PARTICLES="$MAX_PARTICLES" \
+                MAX_BELIEF_PARTICLES="$MAX_BELIEF_PARTICLES" \
+                MAX_NODE_PARTICLES="$MAX_NODE_PARTICLES" \
                 QUERY_COST="$QUERY_COST" ANSWER_ACCURACY="$ANSWER_ACCURACY" \
+                FAILURE_PENALTY="$FAILURE_PENALTY" \
                 MAX_CONSECUTIVE_QUERIES="$MAX_CONSECUTIVE_QUERIES" \
                 LOG_ROOT="$LOG_ROOT" LOG_FILE="$log_path" AUTO_ANSWER="true" \
                     "$SCRIPT_DIR/run_query_baseline.sh" >/dev/null; then
@@ -176,7 +193,7 @@ for baseline in "${BASELINES[@]}"; do
                 status="failed"
                 failed=$((failed + 1))
             fi
-            echo "${current},${baseline},${domain},${scene_id},${iteration},${seed},${MAX_STEPS},${N_SIMULATIONS},${MAX_DEPTH},${QUERY_COST},${ANSWER_ACCURACY},${PROMPT_VERSION},${qhat},${SCORE_TEMPERATURE},exact_oracle,${status},${log_path}" >> "$seed_log"
+            echo "${current},${baseline},${domain},${scene_id},${iteration},${seed},${MAX_STEPS},${N_SIMULATIONS},${MAX_DEPTH},${QUERY_COST},${FAILURE_PENALTY},${ANSWER_ACCURACY},${PROMPT_VERSION},${qhat},${SCORE_TEMPERATURE},exact_oracle,${status},${log_path}" >> "$seed_log"
         fi
         printf "\rProgress: %3d%%" "$((current * 100 / total))"
     done < "$PAIRED_SEED_LOG"

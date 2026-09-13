@@ -28,6 +28,7 @@ from utils.logger import logger_exp
 def parse_baseline_args():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--query-cost", type=float, default=1.0)
+    parser.add_argument("--failure-penalty", type=float, default=10.0)
     parser.add_argument("--answer-accuracy", type=float, default=1.0)
     parser.add_argument("--max-consecutive-queries", type=int, default=30)
     baseline, remaining = parser.parse_known_args()
@@ -41,6 +42,8 @@ def parse_baseline_args():
         parser.error("This baseline currently uses the existing Boolean auto Oracle")
     if baseline.query_cost < 0.0:
         parser.error("--query-cost must be non-negative")
+    if baseline.failure_penalty < 0.0:
+        parser.error("--failure-penalty must be non-negative")
     if baseline.max_consecutive_queries < 1:
         parser.error("--max-consecutive-queries must be positive")
     args.query_as_action = baseline
@@ -65,6 +68,7 @@ def main() -> None:
         belief_manager,
         query_cost=args.query_as_action.query_cost,
         answer_accuracy=args.query_as_action.answer_accuracy,
+        failure_penalty=args.query_as_action.failure_penalty,
     )
     env.reset()
     belief = belief_manager.initialize_belief(env.state)
@@ -246,7 +250,14 @@ def main() -> None:
             "max_step": args.max_step,
             "n_simulations": args.n_simulations,
             "max_depth": args.max_depth,
+            "gamma": args.gamma,
+            "c": args.c,
+            "epsilon": args.epsilon,
+            "max_particles": args.max_particles,
+            "max_belief_particles": args.max_belief_particles,
+            "max_node_particles": planner.max_node_particles,
             "query_cost": args.query_as_action.query_cost,
+            "failure_penalty": args.query_as_action.failure_penalty,
             "answer_accuracy": args.query_as_action.answer_accuracy,
             "max_consecutive_queries": args.query_as_action.max_consecutive_queries,
             "log_dir": args.log_dir,

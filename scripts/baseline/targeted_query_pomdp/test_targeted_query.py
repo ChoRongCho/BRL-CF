@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import unittest
 
+from models.action import Action
 from models.state import State
+from planners.tree import POMDPTree
+from scripts.baseline.targeted_query_pomdp.planner import QueryAsActionPOMCPPlanner
 from scripts.baseline.targeted_query_pomdp.query_actions import (
     QueryAction,
     build_query_actions,
@@ -48,6 +51,69 @@ class QueryActionTest(unittest.TestCase):
         next_state = action.apply_action(state)
         self.assertEqual(next_state.facts, state.facts)
         self.assertIsNot(next_state, state)
+
+    def test_hidden_precondition_failure_is_penalized(self):
+        planner = object.__new__(QueryAsActionPOMCPPlanner)
+        planner.failure_penalty = 10.0
+        action = Action(
+            name="place_can_bin(robot,waste1,can_bin)",
+            preconditions=["can(waste1)"],
+        )
+
+        next_state, observation, reward, terminal = planner._generate(
+            State(["paper(waste1)"]),
+            action,
+        )
+
+        self.assertEqual(next_state.facts, ["paper(waste1)"])
+        self.assertEqual(observation, ("invalid_action", action.name))
+        self.assertEqual(reward, -10.0)
+        self.assertTrue(terminal)
+
+    def test_history_uses_union_action_set_across_particles(self):
+        planner = object.__new__(QueryAsActionPOMCPPlanner)
+        planner.tree = POMDPTree()
+        can_action = Action(
+            name="place_can_bin(robot,waste1,can_bin)",
+            preconditions=["can(waste1)"],
+        )
+        paper_action = Action(
+            name="place_paper_bin(robot,waste1,paper_bin)",
+            preconditions=["paper(waste1)"],
+        )
+        query = QueryAction(
+            name="query_can(waste1)",
+            target_fact="can(waste1)",
+            query_schema="query_can",
+            preconditions=["waste(waste1)"],
+            cost=1.0,
+        )
+        planner.task_actions = [can_action, paper_action]
+        planner.query_actions = [query]
+        planner.actions = planner.task_actions + planner.query_actions
+        planner.root_candidate_names = set()
+
+        dummy = Action(name="dummy")
+        action_node = planner.tree.expand_tree_from(
+            planner.tree.root_id,
+            dummy,
+            is_action=True,
+        )
+        history = planner.tree.get_observation_node(action_node, "observation")
+        planner.tree.add_particle(
+            history,
+            State(["waste(waste1)", "can(waste1)"]),
+        )
+        planner.tree.add_particle(
+            history,
+            State(["waste(waste1)", "paper(waste1)"]),
+        )
+
+        names = {action.name for action in planner._history_candidates(history)}
+        self.assertEqual(
+            names,
+            {can_action.name, paper_action.name, query.name},
+        )
 
 
 if __name__ == "__main__":

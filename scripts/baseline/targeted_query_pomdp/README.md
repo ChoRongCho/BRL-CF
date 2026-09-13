@@ -22,6 +22,12 @@ the existing Oracle supplies the answer, the particle belief is conditioned on
 that answer, and its posterior MAP state becomes the symbolic knowledge base.
 Query decisions do not increment the environment's physical-step counter.
 
+At a POMCP history node, all sampled particles share one action set. If a
+physical action's hidden preconditions are false in a particle, that particle
+contributes a terminal reward of `-FAILURE_PENALTY` to the action value. This
+prevents action values from being estimated only on favorable hidden states.
+Non-ambiguous Boolean queries are excluded from the node's candidate set.
+
 Run one episode:
 
 ```bash
@@ -41,7 +47,9 @@ Important globals:
 ```text
 DOMAIN, SCENE, SEED, MAX_STEP
 N_SIMULATIONS, MAX_DEPTH
-QUERY_COST, ANSWER_ACCURACY, MAX_CONSECUTIVE_QUERIES
+GAMMA, UCB_C, EPSILON
+MAX_PARTICLES, MAX_BELIEF_PARTICLES, MAX_NODE_PARTICLES
+QUERY_COST, FAILURE_PENALTY, ANSWER_ACCURACY, MAX_CONSECUTIVE_QUERIES
 LOG_ROOT
 ```
 
@@ -56,4 +64,7 @@ smaller value applies the same answer-flip probability to both the POMCP query
 observation model and the executed Oracle response.
 
 The batch runner uses the paired seeds from the completed When--What
-experiment, with `N_SIMULATIONS=100` and `QUERY_COST=1.0`.
+experiment, with `N_SIMULATIONS=100`, `QUERY_COST=1.0`, and
+`FAILURE_PENALTY=10.0`. All POMCP search settings match Ours: depth `20`,
+discount `0.95`, UCB exploration constant `1.0`, epsilon `0.005`, belief
+particle cap `8000`, and node particle cap `8000`.

@@ -10,7 +10,14 @@ SEED="${SEED:-random}"
 MAX_STEP="${MAX_STEP:-50}"
 N_SIMULATIONS="${N_SIMULATIONS:-100}"
 MAX_DEPTH="${MAX_DEPTH:-20}"
+GAMMA="${GAMMA:-0.95}"
+UCB_C="${UCB_C:-1.0}"
+EPSILON="${EPSILON:-0.005}"
+MAX_PARTICLES="${MAX_PARTICLES:-250}"
+MAX_BELIEF_PARTICLES="${MAX_BELIEF_PARTICLES:-8000}"
+MAX_NODE_PARTICLES="${MAX_NODE_PARTICLES:-8000}"
 QUERY_COST="${QUERY_COST:-1.0}"
+FAILURE_PENALTY="${FAILURE_PENALTY:-10.0}"
 ANSWER_ACCURACY="${ANSWER_ACCURACY:-1.0}"
 MAX_CONSECUTIVE_QUERIES="${MAX_CONSECUTIVE_QUERIES:-30}"
 LOG_ROOT="${LOG_ROOT:-experiments_logs/system_log}"
@@ -39,7 +46,14 @@ python3 scripts/baseline/targeted_query_pomdp/run_experiment.py \
     --max_step "$MAX_STEP" \
     --n_simulations "$N_SIMULATIONS" \
     --max_depth "$MAX_DEPTH" \
+    --gamma "$GAMMA" \
+    --c "$UCB_C" \
+    --epsilon "$EPSILON" \
+    --max_particles "$MAX_PARTICLES" \
+    --max_belief_particles "$MAX_BELIEF_PARTICLES" \
+    --max_node_particles "$MAX_NODE_PARTICLES" \
     --log_dir "$log_dir" \
     --query-cost "$QUERY_COST" \
+    --failure-penalty "$FAILURE_PENALTY" \
     --answer-accuracy "$ANSWER_ACCURACY" \
     --max-consecutive-queries "$MAX_CONSECUTIVE_QUERIES"
