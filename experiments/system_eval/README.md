@@ -134,3 +134,9 @@ experiments/system_eval/legacy/
 ```
 
 They are kept only for reference. New analysis should use the three-stage pipeline above.
+
+## IntroPlan 통합 결과 (2026-09-16)
+
+[네 방법 비교 보고서](figure/query_baselines/00_20260916_071153/README.md).
+IntroPlan 400회를 포함해 도메인별 200개 동일 scene·seed로 KnowNo, IntroPlan, Query-Action POMCP, Ours를 비교한다.
+`analysis_experiment.py` 실행 후 `plot_query_baseline_figure.py`를 실행하면 IntroPlan을 포함한 표·그림·대응 표본 CSV를 생성한다.

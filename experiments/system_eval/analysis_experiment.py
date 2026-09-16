@@ -1,6 +1,6 @@
 """Stage 1: parse raw experiment logs into normalized run-level CSV files.
 
-This script reads both original POMDP experiment logs and KnowNo baseline logs.
+This script reads both original POMDP experiment logs and KnowNo/IntroPlan baseline logs.
 
 Outputs:
     <script_dir>/data/raw_runs/tomato/raw_runs.csv
@@ -393,6 +393,8 @@ def parse_knowno_text_summary(text: str) -> dict[str, Any]:
 
 def knowno_policy_from_path(path: Path) -> str:
     parent = path.parent.name
+    if parent == "when_introplan":
+        return "introplan"
     if parent == "when_knowno_gpt35turbo":
         return "knowno_gpt35turbo"
     if parent == "when_knowno_gpt4":
@@ -440,7 +442,7 @@ def parse_knowno_log(path: Path, output_domain: str, run_id: int, domain_root: P
         query_steps = min(questions, steps)
     return {
         "domain": output_domain,
-        "experiment": "knowno",
+        "experiment": "introplan" if path.parent.name == "when_introplan" else "knowno",
         "policy": knowno_policy_from_path(path),
         "threshold": "",
         "scene": scene,
@@ -495,7 +497,9 @@ def collect_knowno_runs(knowno_root: Path) -> list[dict[str, Any]]:
         if not root.exists():
             continue
         run_id = 0
-        for path in sorted(root.glob("scene_*_step50/when_knowno_*/*.txt")):
+        paths = list(root.glob("scene_*_step50/when_knowno_*/*.txt"))
+        paths.extend(root.glob("scene_*_step50/when_introplan/*.txt"))
+        for path in sorted(paths):
             parsed = parse_knowno_log(path, output_domain, run_id + 1, root)
             if parsed is not None and parsed["scene"] in SCENES:
                 run_id += 1

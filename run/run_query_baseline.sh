@@ -3,12 +3,15 @@
 set -euo pipefail
 
 # One-episode entry point shared by both query baselines.
-# BASELINE: knowno | query_action_pomcp
+# BASELINE: knowno | introplan | query_action_pomcp
 BASELINE="${BASELINE:-knowno}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$BASELINE" in
+    introplan)
+        exec bash "$SCRIPT_DIR/../scripts/baseline/introplan/run.sh"
+        ;;
     knowno)
         exec "$SCRIPT_DIR/run_knowno_baseline.sh"
         ;;
@@ -27,7 +30,7 @@ case "$BASELINE" in
         ;;
     *)
         echo "Unsupported BASELINE: $BASELINE" >&2
-        echo "Use knowno or query_action_pomcp." >&2
+        echo "Use knowno, introplan or query_action_pomcp." >&2
         exit 1
         ;;
 esac
