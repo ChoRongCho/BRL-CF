@@ -8,3 +8,5 @@
 
 실험 실행 로그 전체는 용량 때문에 포함하지 않는다. `raw_runs.csv`는 로그에서
 추출한 실행별 통계이고, paired seed CSV는 실행 재현을 위한 기록이다.
+- `experiments_20260916/`: 최신 LaTeX 정리본. Threshold, When--What, 그리고
+  IntroPlan을 포함한 통합 query-baseline 비교 결과를 보존한다.

@@ -8,6 +8,7 @@ from models.action import Action
 
 class RewardTomato:
     REWARD_STATE_OBJECT = "__reward_state__"
+    # STEP_REWARD = -1.0
     CONSECUTIVE_ACTION_LIMIT = 2
     CONSECUTIVE_DETECT_REWARD = -5.0
     CONSECUTIVE_SCAN_REWARD = -5.0
@@ -116,5 +117,7 @@ class RewardTomato:
         )
 
         total_reward += (state_reward + action_reward)
+        # Uncomment to apply a negative reward on every executed step.
+        # total_reward += self.STEP_REWARD
         
         return total_reward

@@ -24,10 +24,10 @@ def parse_args(domain: str):
     parser.add_argument("--robot_skill", type=str, default=str(default_robot_skill), help="Path to robot-skill yaml")
 
     # POMCP settings
-    parser.add_argument("--gamma", type=float, default=0.95, help="Discount factor for future rewards (0 < gamma ≤ 1)")
+    parser.add_argument("--gamma", type=float, default=0.2, help="Discount factor for future rewards (0 < gamma ≤ 1)")
     parser.add_argument("--c", type=float, default=1.0, help="Exploration constant for UCB in tree search.")
     parser.add_argument("--max_depth", type=int, default=20, help="Maximum simulation depth for each rollout in POMCP.")
-    parser.add_argument("--n_simulations", type=int, default=100, help="Number of Monte Carlo simulations per planning step.")
+    parser.add_argument("--n_simulations", type=int, default=200, help="Number of Monte Carlo simulations per planning step.")
     parser.add_argument("--max_node_particles", type=int, default=None, help="Maximum number of particles cached at each POMCP tree node. Defaults to max_belief_particles.")
     parser.add_argument("--epsilon", type=float, default=0.005, help="")
     

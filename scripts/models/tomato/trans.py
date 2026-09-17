@@ -24,7 +24,7 @@ class TransitionTomato:
         self.type_map = type_map
 
         # original test
-        self.navigate_success_rate = 0.90
+        self.navigate_success_rate = 0.99
         self.prepare_nav_success_rate = 1.0
         self.detect_success_rate = 0.95
         self.pick_success_rate = 0.95

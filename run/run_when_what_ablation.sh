@@ -11,6 +11,8 @@ RANDOM_QUERY_PROB="0.5"
 THRESHOLD="0.8"
 SEED="random"
 LOG_ROOT="experiments_logs/system_log"
+N_SIMULATIONS=""
+GAMMA=""
 
 usage() {
     echo "Usage: $0 --condition random|ours-when-only|ours-what-only|ours [options]"
@@ -22,6 +24,8 @@ usage() {
     echo "  --max-step N                      (default: ${MAXSTEP})"
     echo "  --seed N|random                   (default: ${SEED})"
     echo "  --log-root PATH                   (default: ${LOG_ROOT})"
+    echo "  --n-simulations N                 override POMCP simulation count"
+    echo "  --gamma G                         override POMCP discount factor"
 }
 
 while (($#)); do
@@ -35,6 +39,8 @@ while (($#)); do
         --max-step) MAXSTEP="${2:?Missing value for --max-step}"; shift 2 ;;
         --seed) SEED="${2:?Missing value for --seed}"; shift 2 ;;
         --log-root) LOG_ROOT="${2:?Missing value for --log-root}"; shift 2 ;;
+        --n-simulations) N_SIMULATIONS="${2:?Missing value for --n-simulations}"; shift 2 ;;
+        --gamma) GAMMA="${2:?Missing value for --gamma}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -54,6 +60,10 @@ if ! [[ "$SCENE" =~ ^[0-9]+$ && "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$MAXSTEP" =~ 
 fi
 if [[ "$SEED" != "random" && ! "$SEED" =~ ^[0-9]+$ ]]; then
     echo "seed must be a non-negative integer or random."
+    exit 1
+fi
+if [[ -n "$N_SIMULATIONS" && ! "$N_SIMULATIONS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "n-simulations must be a positive integer."
     exit 1
 fi
 
@@ -93,6 +103,9 @@ for ((run_index = 1; run_index <= ITERATIONS; run_index++)); do
         run_seed="$SEED"
     fi
     echo "[RUN ${run_index}/${ITERATIONS}] condition=${CONDITION}, domain=${DOMAIN}, scene=${scene_id}, threshold=${THRESHOLD}, random_query_prob=${RANDOM_QUERY_PROB}, seed=${run_seed}"
+    planner_args=()
+    [[ -z "$N_SIMULATIONS" ]] || planner_args+=(--n_simulations "$N_SIMULATIONS")
+    [[ -z "$GAMMA" ]] || planner_args+=(--gamma "$GAMMA")
     python3 when_what_ablation_main.py \
         --ablation-condition "$CONDITION" \
         --domain "$DOMAIN" \
@@ -104,7 +117,8 @@ for ((run_index = 1; run_index <= ITERATIONS; run_index++)); do
         --answer_type auto \
         --seed "$run_seed" \
         --log_dir "$log_dir" \
-        --max_step "$MAXSTEP"
+        --max_step "$MAXSTEP" \
+        "${planner_args[@]}"
 done
 
 echo "[DONE] Logs saved under ${log_dir}"

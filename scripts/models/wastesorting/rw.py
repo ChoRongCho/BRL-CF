@@ -6,6 +6,7 @@ from models.action import Action
 
 class RewardWastesorting:
     REWARD_STATE_OBJECT = "__reward_state__"
+    # STEP_REWARD = -1.0
     DETECT_STREAK_FLUENT = "detect_streak"
     CONSECUTIVE_DETECT_LIMIT = 3
     CONSECUTIVE_DETECT_PENALTY = -10.0
@@ -84,5 +85,7 @@ class RewardWastesorting:
         )
 
         total_reward += (state_reward + action_reward)
+        # Uncomment to apply a negative reward on every executed step.
+        # total_reward += self.STEP_REWARD
         
         return total_reward

@@ -155,6 +155,7 @@ def build_paper_rows(summary):
         for domain, prefix in (("wastesorting", "waste"), ("tomato", "tomato")):
             row[prefix + "_success_rate_pct"] = f"{100 * lookup[('success_rate', domain, policy)]:.1f}"
             row[prefix + "_avg_queries"] = f"{lookup[('average_question', domain, policy)]:.1f}"
+            row[prefix + "_avg_queries_success_only"] = f"{lookup[('average_question_success_only', domain, policy)]:.1f}"
             row[prefix + "_query_rate"] = f"{lookup[('query_probability_per_step', domain, policy)]:.2f}"
             row[prefix + "_avg_steps_success"] = f"{lookup[('average_step_success_only', domain, policy)]:.1f}"
         rows.append(row)
@@ -167,6 +168,7 @@ def write_paper_table(output_dir, summary):
     for prefix in ("waste", "tomato"):
         fields.extend([
             prefix + "_success_rate_pct", prefix + "_avg_queries",
+            prefix + "_avg_queries_success_only",
             prefix + "_query_rate", prefix + "_avg_steps_success",
         ])
     write_csv(output_dir / "when_what_paper_table.csv", rows, fields)
@@ -176,10 +178,10 @@ def write_paper_table(output_dir, summary):
         "\\begin{table*}[t]", "\\centering",
         "\\caption{When/What query-policy ablation with Oracle answers. Success rates are percentages, query counts are averages per episode, query rate is the fraction of execution steps with at least one question, and average steps use successful runs only. Each condition-domain cell contains $%d$ episodes.}" % episodes,
         "\\label{tab:when_what_ablation}", "\\footnotesize", "\\setlength{\\tabcolsep}{2pt}",
-        "\\begin{tabular*}{\\textwidth}{@{\\extracolsep{\\fill}}lcccccccc}", "\\toprule",
-        "\\multirow{2}{*}{\\textbf{Condition}} & \\multicolumn{4}{c}{\\textbf{Waste Sorting}} & \\multicolumn{4}{c}{\\textbf{Tomato Harvesting}} \\\\",
-        "\\cmidrule(lr){2-5}\\cmidrule(lr){6-9}",
-        "& \\textbf{Success (\\%)} & \\textbf{Avg. Queries} & \\textbf{Query Rate} & \\textbf{Avg. Steps} & \\textbf{Success (\\%)} & \\textbf{Avg. Queries} & \\textbf{Query Rate} & \\textbf{Avg. Steps} \\\\",
+        "\\begin{tabular*}{\\textwidth}{@{\\extracolsep{\\fill}}lcccccccccc}", "\\toprule",
+        "\\multirow{2}{*}{\\textbf{Condition}} & \\multicolumn{5}{c}{\\textbf{Waste Sorting}} & \\multicolumn{5}{c}{\\textbf{Tomato Harvesting}} \\\\",
+        "\\cmidrule(lr){2-6}\\cmidrule(lr){7-11}",
+        "& \\textbf{Success (\\%)} & \\textbf{Queries (all)} & \\textbf{Queries (success)} & \\textbf{Query Rate} & \\textbf{Avg. Steps} & \\textbf{Success (\\%)} & \\textbf{Queries (all)} & \\textbf{Queries (success)} & \\textbf{Query Rate} & \\textbf{Avg. Steps} \\\\",
         "\\midrule",
     ]
     lines.extend(" & ".join(row[field] for field in fields) + r" \\" for row in rows)

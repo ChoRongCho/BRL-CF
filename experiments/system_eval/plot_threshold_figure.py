@@ -207,6 +207,7 @@ def build_paper_rows(summary: list[dict[str, str]]) -> list[dict[str, str]]:
         for domain, prefix in (("wastesorting", "waste"), ("tomato", "tomato")):
             row[f"{prefix}_success_rate_pct"] = f"{100.0 * value('success_rate', domain, threshold):.1f}"
             row[f"{prefix}_avg_queries"] = f"{value('average_question', domain, threshold):.1f}"
+            row[f"{prefix}_avg_queries_success_only"] = f"{value('average_question_success_only', domain, threshold, allow_nan=True):.1f}"
             row[f"{prefix}_query_rate"] = f"{value('query_probability_per_step', domain, threshold):.2f}"
             avg_steps = value("average_step_success_only", domain, threshold, allow_nan=True)
             row[f"{prefix}_avg_steps_success"] = "--" if math.isnan(avg_steps) else f"{avg_steps:.1f}"
@@ -220,10 +221,12 @@ def write_paper_table(output_dir: Path, summary: list[dict[str, str]]) -> None:
         "threshold",
         "waste_success_rate_pct",
         "waste_avg_queries",
+        "waste_avg_queries_success_only",
         "waste_query_rate",
         "waste_avg_steps_success",
         "tomato_success_rate_pct",
         "tomato_avg_queries",
+        "tomato_avg_queries_success_only",
         "tomato_query_rate",
         "tomato_avg_steps_success",
     ]
@@ -252,11 +255,11 @@ def write_paper_table(output_dir: Path, summary: list[dict[str, str]]) -> None:
         "\\label{tab:sys_tau}",
         "\\footnotesize",
         "\\setlength{\\tabcolsep}{2pt}",
-        "\\begin{tabular*}{\\textwidth}{@{\\extracolsep{\\fill}}lcccccccc}",
+        "\\begin{tabular*}{\\textwidth}{@{\\extracolsep{\\fill}}lcccccccccc}",
         "\\toprule",
-        "\\multirow{2}{*}{$\\boldsymbol{\\tau}$} & \\multicolumn{4}{c}{\\textbf{Waste Sorting}} & \\multicolumn{4}{c}{\\textbf{Tomato Harvesting}} \\\\",
-        "\\cmidrule(lr){2-5}\\cmidrule(lr){6-9}",
-        "& \\textbf{Success (\\%)} & \\textbf{Avg. Queries} & \\textbf{Query Rate} & \\textbf{Avg. Steps} & \\textbf{Success (\\%)} & \\textbf{Avg. Queries} & \\textbf{Query Rate} & \\textbf{Avg. Steps} \\\\",
+        "\\multirow{2}{*}{$\\boldsymbol{\\tau}$} & \\multicolumn{5}{c}{\\textbf{Waste Sorting}} & \\multicolumn{5}{c}{\\textbf{Tomato Harvesting}} \\\\",
+        "\\cmidrule(lr){2-6}\\cmidrule(lr){7-11}",
+        "& \\textbf{Success (\\%)} & \\textbf{Queries (all)} & \\textbf{Queries (success)} & \\textbf{Query Rate} & \\textbf{Avg. Steps} & \\textbf{Success (\\%)} & \\textbf{Queries (all)} & \\textbf{Queries (success)} & \\textbf{Query Rate} & \\textbf{Avg. Steps} \\\\",
         "\\midrule",
     ]
     for row in rows:
