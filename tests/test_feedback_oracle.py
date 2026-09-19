@@ -11,6 +11,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from models.action import Action
+from models.belief import Belief
 from models.feedback_manager import FeedbackManger
 from models.state import State
 from models.transition import NextStateOutcome
@@ -40,6 +41,31 @@ def make_manager(domain, outcomes):
 
 
 class FeedbackOracleTests(unittest.TestCase):
+    def test_feedback_uses_executed_successor_without_resampling(self):
+        manager = make_manager("tomato", [])
+        failed_state = State(["handempty(brl_robot)", "at(tomato1,stem1)"])
+        succeeded_state = State(["holding(brl_robot,tomato1)"])
+        belief = Belief(State(), [failed_state, succeeded_state], np.array([0.5, 0.5]))
+        action = Action(name="pick(brl_robot,tomato1,stem1)")
+
+        with patch.object(
+            manager,
+            "_sample_oracle_successor_facts",
+            side_effect=AssertionError("executed action must not be sampled again"),
+        ):
+            result = manager.get_new_observation(
+                belief,
+                action_name=action.name,
+                action=action,
+                oracle_prior_state=State(),
+                oracle_state_facts=failed_state.facts,
+                oracle_successor_facts=failed_state.facts,
+            )
+
+        self.assertTrue(result.knowledge.has_fact("handempty(brl_robot)"))
+        self.assertTrue(result.knowledge.has_fact("at(tomato1,stem1)"))
+        self.assertFalse(result.knowledge.has_fact("holding(brl_robot,tomato1)"))
+
     def test_tomato_pick_success_maps_deleted_and_added_facts(self):
         outcomes = [
             NextStateOutcome(
@@ -112,7 +138,6 @@ class FeedbackOracleTests(unittest.TestCase):
         self.assertIsNone(waste_manager._sample_oracle_successor_facts(
             Action(name="detect_waste(brl_robot)"), State()
         ))
-
 
 if __name__ == "__main__":
     unittest.main()

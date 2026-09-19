@@ -17,11 +17,13 @@ def parse_args(domain: str):
     default_domain_rule = SCRIPTS_ROOT / "domain" / domain / "domain_rule.yaml"
     default_initial_state = SCRIPTS_ROOT / "domain" / domain / "scene_02.yaml"
     default_robot_skill = SCRIPTS_ROOT / "domain" / domain / "robot_skill.yaml"
+    default_env_setting = SCRIPTS_ROOT / "domain" / domain / "env_setting.yaml"
 
     parser.add_argument("--domain", type=str, default=domain, help="Domain name")
     parser.add_argument("--domain_rule", type=str, default=str(default_domain_rule), help="Path to domain rule yaml")
     parser.add_argument("--initial_state", type=str, default=str(default_initial_state), help="Path to initial state yaml")
     parser.add_argument("--robot_skill", type=str, default=str(default_robot_skill), help="Path to robot-skill yaml")
+    parser.add_argument("--env_setting", "--env-setting", dest="env_setting", type=str, default=str(default_env_setting), help="Path to shared transition/observation setting yaml")
 
     # POMCP settings
     parser.add_argument("--gamma", type=float, default=0.2, help="Discount factor for future rewards (0 < gamma ≤ 1)")
@@ -65,6 +67,7 @@ def parse_args(domain: str):
     args.domain_rule = Path(args.domain_rule)
     args.initial_state = Path(args.initial_state)
     args.robot_skill = Path(args.robot_skill)
+    args.env_setting = Path(args.env_setting)
     if args.domain != domain:
         domain_root = SCRIPTS_ROOT / "domain" / args.domain
         if args.domain_rule == default_domain_rule:
@@ -73,6 +76,8 @@ def parse_args(domain: str):
             args.initial_state = domain_root / "scene_01.yaml"
         if args.robot_skill == default_robot_skill:
             args.robot_skill = domain_root / "robot_skill.yaml"
+        if args.env_setting == default_env_setting:
+            args.env_setting = domain_root / "env_setting.yaml"
     args.log_dir = Path(args.log_dir)
     if args.seed is None:
         args.seed = random.randrange(0, 2**32 - 1)

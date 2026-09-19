@@ -1,8 +1,15 @@
+"""토마토 작업에서 KnowNo를 여러 단계에 걸쳐 실행하는 실험 loop.
+
+각 단계에서 (1) LLM으로 다음 행동 후보를 생성하고, (2) 후보별 점수로
+conformal prediction set을 만들며, (3) 필요한 경우 사람 또는 자동 oracle에
+질의한다. 이어서 (4) 선택되거나 oracle이 제공한 action을 실행하고,
+(5) 작업의 성공·실패·진행 여부를 판단한다.
+"""
+
 from __future__ import annotations
 
 import argparse
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -12,18 +19,28 @@ from scripts.calibration import (
     run_knowno_calibration,
     write_template,
 )
-from log_tomato import RunLogger
 from scripts.llm import call_llm, configure_openai
 from scripts.env import TOMATO_MC_PROMPT_FILE
 from scripts.prompt import process_mc_raw, temperature_scaling, top_choice_logprobs
 from scripts.auto_answer import select_tomato_answer
-from utils import GREEN, RESET, YELLOW, usage_total
+from scripts.knowno_action_validation import validate_tomato_action
+from scripts.utils.logging import build_run_summary, finish_run, show_tomato_decision, start_tomato_run
+from scripts.utils.env_setting import add_env_setting_argument, apply_env_setting
+from scripts.utils.utils import (
+    ActionSelection,
+    PlanningResult,
+    execute_tomato_action,
+    required_tomato_next_action,
+    analyze_asked_prediction_set,
+    tomato_dead_end_reason,
+    tomato_observation_mismatches,
+    tomato_success,
+    usage_total,
+)
 from tomato_utils import (
     LOCATIONS,
-    STEMS,
     TOMATO_BACKGROUND,
     TOMATO_CALIBRATION_TEMPLATE,
-    TOMATO_SCAN_RESULTS,
     build_tomato_calibration_prompt,
     build_tomato_generation_prompt,
     build_tomato_score_prompt,
@@ -44,14 +61,15 @@ def parse_args():
     parser.add_argument("--qhat", type=float, default=0.8404)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=30)
-    parser.add_argument("--detect-success-prob", type=float, default=0.8)
-    parser.add_argument("--detect-label-error-prob", type=float, default=0.0)
-    parser.add_argument("--scan-success-prob", type=float, default=0.9)
-    parser.add_argument("--scan-label-error-prob", type=float, default=0.0)
-    parser.add_argument("--navigate-failure-prob", type=float, default=0.0)
-    parser.add_argument("--pick-failure-prob", type=float, default=0.0)
-    parser.add_argument("--place-failure-prob", type=float, default=0.0)
-    parser.add_argument("--discard-failure-prob", type=float, default=0.0)
+    parser.add_argument("--detect-success-prob", type=float, default=None)
+    parser.add_argument("--detect-label-error-prob", type=float, default=None)
+    parser.add_argument("--scan-success-prob", type=float, default=None)
+    parser.add_argument("--scan-label-error-prob", type=float, default=None)
+    parser.add_argument("--navigate-failure-prob", type=float, default=None)
+    parser.add_argument("--pick-failure-prob", type=float, default=None)
+    parser.add_argument("--place-failure-prob", type=float, default=None)
+    parser.add_argument("--discard-failure-prob", type=float, default=None)
+    add_env_setting_argument(parser, "tomato")
     parser.add_argument("--ripeness", default="", help='True ripeness, e.g. "tomato1:ripe,tomato2:unripe".')
     parser.add_argument("--freshness", default="", help='True marketability, e.g. "tomato1:fresh,tomato2:rotten".')
     parser.add_argument("--labels", default="", help=argparse.SUPPRESS)
@@ -69,65 +87,231 @@ def parse_args():
     return parser.parse_args()
 
 
-def tomato_dead_end_reason(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
-    for tomato in discarded_tomatoes:
-        if hidden_freshness.get(tomato) == "fresh":
-            return f"PLAN FAILURE: true fresh tomato {tomato} was discarded."
-    for tomato in loaded_tomatoes:
-        if hidden_freshness.get(tomato) == "rotten":
-            return f"PLAN FAILURE: true rotten tomato {tomato} was loaded."
-    if held_tomato is not None and hidden_ripeness.get(held_tomato) == "unripe":
-        return f"PLAN FAILURE: true unripe tomato {held_tomato} is held."
-    return None
-
-
-def tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes):
-    if held_tomato is not None:
-        return False
-    for tomato, ripeness in hidden_ripeness.items():
-        if ripeness != "ripe":
-            continue
-        if hidden_freshness[tomato] == "fresh" and tomato not in loaded_tomatoes:
-            return False
-        if hidden_freshness[tomato] == "rotten" and tomato not in discarded_tomatoes:
-            return False
-    return True
-
-
-def required_tomato_next_action(
+def plan_tomato_step(
+    *,
+    args,
+    step,
+    qhat,
+    tokens,
+    tomatoes,
     robot_location,
     active_tomatoes,
+    hidden_ripeness,
+    hidden_freshness,
+    hidden_locations,
     observed_properties,
     observed_locations,
     scanned_properties,
     held_tomato,
+    loaded_tomatoes,
+    discarded_tomatoes,
     detected_stems,
+    action_history,
+    total_usage,
+    logger,
+    call_llm,
 ):
-    if held_tomato is not None:
-        scanned_property = scanned_properties.get(held_tomato, "unknown")
-        if scanned_property == "fresh":
-            return f"place {held_tomato}"
-        if scanned_property == "rotten":
-            return f"discard {held_tomato}"
-        return f"scan {held_tomato}"
+    """후보 생성부터 conformal prediction set 생성까지 한 planning 단계를 수행한다."""
+    history_text = "\n".join(f"{i + 1}. {action}" for i, action in enumerate(action_history)) or "None"
+    tomato_state_text = format_tomato_state(
+        tomatoes,
+        observed_properties,
+        scanned_properties,
+        held_tomato,
+        loaded_tomatoes,
+        discarded_tomatoes,
+    )
+    required_next_action_text = required_tomato_next_action(
+        robot_location,
+        active_tomatoes,
+        observed_properties,
+        observed_locations,
+        scanned_properties,
+        held_tomato,
+        detected_stems,
+    )
+    generation_prompt = build_tomato_generation_prompt(
+        args,
+        robot_location,
+        active_tomatoes,
+        tomato_state_text,
+        held_tomato,
+        loaded_tomatoes,
+        discarded_tomatoes,
+        history_text,
+        required_next_action_text,
+    )
+    logger.json(f"Step {step} start:", {
+        "robot_location": robot_location,
+        "active_tomatoes": active_tomatoes,
+        "observed_properties": observed_properties,
+        "observed_locations": observed_locations,
+        "scanned_properties": scanned_properties,
+        "held_tomato": held_tomato,
+        "loaded_tomatoes": loaded_tomatoes,
+        "discarded_tomatoes": discarded_tomatoes,
+        "action_history": action_history,
+        "detected_stems": sorted(detected_stems),
+        "required_next_action": required_next_action_text,
+    })
+    if args.verbose:
+        logger.file_only(f"\n====== Step {step} generation prompt ======")
+        logger.file_only(generation_prompt)
 
-    if robot_location not in STEMS:
-        return "navigate to stem_01 or navigate to stem_02"
+    generation_start = time.perf_counter()
+    generation_response, generation_text = call_llm(generation_prompt, stop_seq=["We:"], logit_bias={})
+    generation_usage = generation_response.get("usage")
+    total_usage["generation"] += usage_total(generation_usage)
+    total_usage["overall"] += usage_total(generation_usage)
+    logger.json(f"Step {step} generation:", {
+        "elapsed_sec": time.perf_counter() - generation_start,
+        "usage": generation_usage,
+        "raw_text": generation_text,
+    })
+    options_text, options, fallback_token = process_mc_raw(generation_text.strip())
 
-    for tomato in active_tomatoes:
-        if observed_locations.get(tomato) == robot_location and observed_properties.get(tomato) == "ripe":
-            return f"pick {tomato}"
+    score_prompt = build_tomato_score_prompt(
+        args,
+        robot_location,
+        active_tomatoes,
+        tomato_state_text,
+        held_tomato,
+        loaded_tomatoes,
+        discarded_tomatoes,
+        history_text,
+        options_text,
+        required_next_action_text,
+    )
+    if args.verbose:
+        logger.file_only(f"\n====== Step {step} scoring prompt ======")
+        logger.file_only(score_prompt)
 
-    if robot_location in detected_stems:
-        other_stems = [stem for stem in STEMS if stem != robot_location]
-        if other_stems and any(tomato not in observed_locations for tomato in active_tomatoes):
-            return f"navigate to {other_stems[0]}"
+    scoring_start = time.perf_counter()
+    response, score_text = call_llm(score_prompt, max_tokens=1, logprobs=5, logit_bias={})
+    score_usage = response.get("usage")
+    total_usage["scoring"] += usage_total(score_usage)
+    total_usage["overall"] += usage_total(score_usage)
+    logger.json(f"Step {step} scoring:", {
+        "elapsed_sec": time.perf_counter() - scoring_start,
+        "usage": score_usage,
+        "text": score_text,
+    })
 
-    return f"detect {robot_location}"
+    _, _, raw_logprobs = top_choice_logprobs(response)
+    option_logprobs = {}
+    for raw_token, logprob in raw_logprobs.items():
+        token = raw_token.strip().strip("'\"").upper()
+        if token in tokens:
+            option_logprobs[token] = max(logprob, option_logprobs.get(token, -np.inf))
+    if not option_logprobs:
+        raise ValueError(f"LLM did not return any A/B/C/D/E logprobs: {raw_logprobs}")
+
+    scored_tokens = list(option_logprobs)
+    logprobs = list(option_logprobs.values())
+    scores = temperature_scaling(logprobs, temperature=args.score_temperature)
+    prediction_set = [token for token, score in zip(scored_tokens, scores) if score >= 1 - qhat]
+    logger.json(f"Step {step} decision data:", {
+        "options": options,
+        "add_mc_prefix": fallback_token,
+        "option_logprobs": option_logprobs,
+        "scores": scores.tolist(),
+        "threshold": 1 - qhat,
+        "prediction_set": prediction_set,
+    })
+    show_tomato_decision(
+        logger,
+        step,
+        robot_location,
+        active_tomatoes,
+        hidden_ripeness,
+        hidden_freshness,
+        hidden_locations,
+        tomato_state_text,
+        held_tomato,
+        options_text,
+        prediction_set,
+        scored_tokens,
+        logprobs,
+        scores,
+    )
+    return PlanningResult(options_text, options, fallback_token, scored_tokens, logprobs, scores, prediction_set)
+
+
+def select_tomato_action(
+    planning,
+    *,
+    args,
+    step,
+    tokens,
+    robot_location,
+    active_tomatoes,
+    hidden_ripeness,
+    hidden_freshness,
+    hidden_locations,
+    observed_properties,
+    observed_locations,
+    scanned_properties,
+    held_tomato,
+    loaded_tomatoes,
+    discarded_tomatoes,
+    logger,
+):
+    """Prediction set에서 실행할 행동을 고르고 필요하면 외부에 질의한다."""
+    prediction_set = planning.prediction_set
+    help_needed = len(prediction_set) != 1 or planning.fallback_token in prediction_set
+    provided_action = None
+
+    if help_needed and args.auto_answer:
+        answer = select_tomato_answer(
+            planning.options,
+            tokens,
+            planning.fallback_token,
+            robot_location,
+            active_tomatoes,
+            hidden_ripeness,
+            hidden_freshness,
+            hidden_locations,
+            observed_properties,
+            observed_locations,
+            held_tomato,
+            loaded_tomatoes,
+            discarded_tomatoes,
+            scanned_properties,
+            prediction_set,
+        )
+        selected_token = answer["selected_token"]
+        provided_action = answer.get("provided_action")
+        logger.console(f"Oracle selected option {selected_token}.")
+        if provided_action is not None:
+            logger.console(f"Oracle provided action for NoOpt: {provided_action}")
+        logger.json(f"Step {step} oracle answer:", answer)
+    elif help_needed:
+        if not prediction_set:
+            logger.console("Prediction set is empty. PLAN FAILURE reached.")
+            return ActionSelection(None, None, True, error="empty prediction set")
+        while True:
+            selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
+            if selected_token in prediction_set:
+                break
+            logger.console(f"Invalid option. Please choose from the prediction set: {prediction_set}")
+    else:
+        selected_token = prediction_set[0]
+
+    if selected_token not in tokens:
+        raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
+    selected_action = provided_action or planning.options[tokens.index(selected_token)]
+    return ActionSelection(
+        selected_token,
+        selected_action,
+        help_needed,
+        oracle_provided_action=provided_action is not None,
+        oracle_answer=answer if help_needed and args.auto_answer else None,
+    )
 
 
 def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     args = parse_args()
+    apply_env_setting(args, "tomato")
     run_start = time.perf_counter()
     if args.write_calibration_template:
         write_template(args.write_calibration_template, TOMATO_CALIBRATION_TEMPLATE)
@@ -158,33 +342,20 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     detected_stems = set()
     tokens = ["A", "B", "C", "D", "E"]
 
-    logger = RunLogger(__file__, args.log_file, args.verbose, prefix="knowno_multistep_tomato")
+    logger = start_tomato_run(
+        __file__,
+        args,
+        baseline_name,
+        settings,
+        tomatoes,
+        LOCATIONS,
+        hidden_ripeness,
+        hidden_freshness,
+        hidden_locations,
+    )
     console = logger.console
-    console_colored = logger.colored
-    log = logger.file_only
     log_json = logger.json
     total_usage = {"generation": 0, "scoring": 0, "overall": 0}
-    console(f"====== Multi-step Tomato {baseline_name} ======")
-    log_json("Run metadata:", {
-        "argv": sys.argv,
-        "baseline": baseline_name,
-        "model": settings.get("model") or settings.get("model_name"),
-        "prompt_version": args.prompt_version,
-        "seed": args.seed,
-        "expert": "exact_oracle" if args.auto_answer else "human_input",
-    })
-    console("Instruction:", args.instruction)
-    console("Prompt version:", args.prompt_version)
-    console("Tomatoes:", ", ".join(tomatoes))
-    console("Locations:", ", ".join(LOCATIONS))
-    console("True ripeness:", ", ".join(f"{obj}: {hidden_ripeness[obj]}" for obj in sorted(hidden_ripeness)))
-    console("True freshness:", ", ".join(f"{obj}: {hidden_freshness[obj]}" for obj in sorted(hidden_freshness)))
-    console("True locations:", ", ".join(f"{obj}: {hidden_locations[obj]}" for obj in sorted(hidden_locations)))
-    console("Detect success/error:", args.detect_success_prob, "/", args.detect_label_error_prob)
-    console("Scan success/error:", args.scan_success_prob, "/", args.scan_label_error_prob)
-    console("Action failure probabilities:",
-            f"navigate={args.navigate_failure_prob}, pick={args.pick_failure_prob}, "
-            f"place={args.place_failure_prob}, discard={args.discard_failure_prob}")
     qhat = args.qhat
     if args.run_calibration:
         qhat = run_knowno_calibration(
@@ -208,10 +379,15 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     prediction_set_sizes = []
     help_prediction_set_sizes = []
     action_failure_count = 0
+    noopt_recovery_count = 0
+    failure_mode_events = []
+    terminal_failure_category = None
     stop_reason = "unknown"
 
     for step in range(1, args.max_steps + 1):
         step_start = time.perf_counter()
+
+        # 1. 현재 상태에서 작업이 이미 종료되었는지 확인한다.
         dead_end_reason = tomato_dead_end_reason(
             hidden_ripeness,
             hidden_freshness,
@@ -246,202 +422,118 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
             stop_reason = "all tomatoes handled"
             break
 
-        history_text = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(action_history)) or "None"
-        tomato_state_text = format_tomato_state(
-            tomatoes,
-            observed_properties,
-            scanned_properties,
-            held_tomato,
-            loaded_tomatoes,
-            discarded_tomatoes,
+        # 2. 행동 후보와 conformal prediction set을 만든다.
+        planning = plan_tomato_step(
+            args=args,
+            step=step,
+            qhat=qhat,
+            tokens=tokens,
+            tomatoes=tomatoes,
+            robot_location=robot_location,
+            active_tomatoes=active_tomatoes,
+            hidden_ripeness=hidden_ripeness,
+            hidden_freshness=hidden_freshness,
+            hidden_locations=hidden_locations,
+            observed_properties=observed_properties,
+            observed_locations=observed_locations,
+            scanned_properties=scanned_properties,
+            held_tomato=held_tomato,
+            loaded_tomatoes=loaded_tomatoes,
+            discarded_tomatoes=discarded_tomatoes,
+            detected_stems=detected_stems,
+            action_history=action_history,
+            total_usage=total_usage,
+            logger=logger,
+            call_llm=call_llm,
         )
-        required_next_action_text = required_tomato_next_action(
-            robot_location,
-            active_tomatoes,
+        completed_iterations = step
+        candidate_counts.append(len(planning.options))
+        prediction_set_sizes.append(len(planning.prediction_set))
+
+        # 3. 자율 실행하거나 외부 답변을 받아 실행할 행동을 정한다.
+        if planning.fallback_token in planning.prediction_set:
+            fallback_in_prediction_count += 1
+        selection = select_tomato_action(
+            planning,
+            args=args,
+            step=step,
+            tokens=tokens,
+            robot_location=robot_location,
+            active_tomatoes=active_tomatoes,
+            hidden_ripeness=hidden_ripeness,
+            hidden_freshness=hidden_freshness,
+            hidden_locations=hidden_locations,
+            observed_properties=observed_properties,
+            observed_locations=observed_locations,
+            scanned_properties=scanned_properties,
+            held_tomato=held_tomato,
+            loaded_tomatoes=loaded_tomatoes,
+            discarded_tomatoes=discarded_tomatoes,
+            logger=logger,
+        )
+        if selection.help_needed:
+            help_count += 1
+            help_candidate_counts.append(len(planning.options))
+            help_prediction_set_sizes.append(len(planning.prediction_set))
+        else:
+            autonomous_count += 1
+
+        observation_mismatches = tomato_observation_mismatches(
             observed_properties,
             observed_locations,
             scanned_properties,
-            held_tomato,
-            detected_stems,
+            hidden_ripeness,
+            hidden_locations,
+            hidden_freshness,
         )
-
-        # mc_gen_prompt
-        mc_gen_prompt = build_tomato_generation_prompt(
-            args,
-            robot_location,
-            active_tomatoes,
-            tomato_state_text,
-            held_tomato,
-            loaded_tomatoes,
-            discarded_tomatoes,
-            history_text,
-            required_next_action_text,
+        asked_diagnostic = analyze_asked_prediction_set(
+            selection,
+            planning.prediction_set,
+            observation_mismatches,
         )
-
-        log_json(f"Step {step} start:", {
-            "robot_location": robot_location,
-            "active_tomatoes": active_tomatoes,
-            "observed_properties": observed_properties,
-            "observed_locations": observed_locations,
-            "scanned_properties": scanned_properties,
-            "held_tomato": held_tomato,
-            "loaded_tomatoes": loaded_tomatoes,
-            "discarded_tomatoes": discarded_tomatoes,
-            "action_history": action_history,
-            "detected_stems": sorted(detected_stems),
-            "required_next_action": required_next_action_text,
-        })
-        if args.verbose:
-            log(f"\n====== Step {step} generation prompt ======")
-            log(mc_gen_prompt)
-
-        gen_start = time.perf_counter()
-        gen_response, mc_gen_raw = call_llm(mc_gen_prompt, stop_seq=["We:"], logit_bias={})
-        gen_elapsed = time.perf_counter() - gen_start
-        gen_usage = gen_response.get("usage")
-        total_usage["generation"] += usage_total(gen_usage)
-        total_usage["overall"] += usage_total(gen_usage)
-        log_json(f"Step {step} generation:", {
-            "elapsed_sec": gen_elapsed,
-            "usage": gen_usage,
-            "raw_text": mc_gen_raw,
-        })
-        mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw(mc_gen_raw.strip())
-        completed_iterations = step
-        candidate_counts.append(len(mc_gen_all))
-
-        score_prompt = build_tomato_score_prompt(
-            args,
-            robot_location,
-            active_tomatoes,
-            tomato_state_text,
-            held_tomato,
-            loaded_tomatoes,
-            discarded_tomatoes,
-            history_text,
-            mc_gen_full,
-            required_next_action_text,
-        )
-
-        if args.verbose:
-            log(f"\n====== Step {step} scoring prompt ======")
-            log(score_prompt)
-
-        score_start = time.perf_counter()
-        # Match the deployed 03_BRL_TOMATO KnowNo planner: let gpt-4o
-        # produce native A--E top-logprobs without legacy completion-token
-        # biases from the original KnowNo notebook.
-        response, score_text = call_llm(
-            score_prompt,
-            max_tokens=1,
-            logprobs=5,
-            logit_bias={},
-        )
-        score_elapsed = time.perf_counter() - score_start
-        score_usage = response.get("usage")
-        total_usage["scoring"] += usage_total(score_usage)
-        total_usage["overall"] += usage_total(score_usage)
-        log_json(f"Step {step} scoring:", {
-            "elapsed_sec": score_elapsed,
-            "usage": score_usage,
-            "text": score_text,
-        })
-        _, _, top_logprobs_full = top_choice_logprobs(response)
-        option_logprobs = {}
-        for raw_token, logprob in top_logprobs_full.items():
-            token = raw_token.strip().strip("'\"").upper()
-            if token in tokens:
-                option_logprobs[token] = max(logprob, option_logprobs.get(token, -np.inf))
-        if not option_logprobs:
-            raise ValueError(f"LLM did not return any A/B/C/D/E logprobs: {top_logprobs_full}")
-        top_tokens = list(option_logprobs.keys())
-        top_logprobs = list(option_logprobs.values())
-        scores = temperature_scaling(top_logprobs, temperature=args.score_temperature)
-        preds = [token for token, score in zip(top_tokens, scores) if score >= 1 - qhat]
-        prediction_set_sizes.append(len(preds))
-        log_json(f"Step {step} decision data:", {
-            "options": mc_gen_all,
-            "add_mc_prefix": add_mc_prefix,
-            "option_logprobs": option_logprobs,
-            "scores": scores.tolist(),
-            "threshold": 1 - qhat,
-            "prediction_set": preds,
-        })
-
-        console(f"\n====== Step {step} ======")
-        console("Robot location:", robot_location)
-        console("Active tomatoes:", ", ".join(active_tomatoes) if active_tomatoes else "None")
-        true_ripeness_text = ", ".join(f"{t}: {hidden_ripeness[t]}" for t in sorted(hidden_ripeness))
-        true_freshness_text = ", ".join(f"{t}: {hidden_freshness[t]}" for t in sorted(hidden_freshness))
-        true_loc_text = ", ".join(f"{t}: {hidden_locations[t]}" for t in sorted(hidden_locations))
-        console_colored(f"{YELLOW}True tomato ripeness: {true_ripeness_text}{RESET}", f"True tomato ripeness: {true_ripeness_text}")
-        console_colored(f"{YELLOW}True tomato freshness: {true_freshness_text}{RESET}", f"True tomato freshness: {true_freshness_text}")
-        console_colored(f"{YELLOW}True tomato locations: {true_loc_text}{RESET}", f"True tomato locations: {true_loc_text}")
-        console("Tomato states:")
-        console(tomato_state_text)
-        console("Held tomato:", held_tomato if held_tomato else "None")
-        console("\nGenerated options:")
-        highlighted_options = []
-        for option_line in mc_gen_full.splitlines():
-            option_token = option_line[:1].upper()
-            if option_token in preds:
-                highlighted_options.append(f"{GREEN}{option_line}{RESET}")
-            else:
-                highlighted_options.append(option_line)
-        console_colored("\n".join(highlighted_options), mc_gen_full)
-        console("\nOption scores:")
-        for token, logprob, score in zip(top_tokens, top_logprobs, scores):
-            console("Option:", token, "\tlog prob:", logprob, "\tsoftmax:", score)
-        console("Prediction set:", preds)
-
-        help_needed = len(preds) != 1 or add_mc_prefix in preds
-        if add_mc_prefix in preds:
-            fallback_in_prediction_count += 1
-        if help_needed:
-            help_count += 1
-            help_candidate_counts.append(len(mc_gen_all))
-            help_prediction_set_sizes.append(len(preds))
-            if args.auto_answer:
-                auto_answer = select_tomato_answer(
-                    mc_gen_all,
-                    tokens,
-                    add_mc_prefix,
-                    robot_location,
-                    active_tomatoes,
-                    hidden_ripeness,
-                    hidden_freshness,
-                    hidden_locations,
-                    observed_properties,
-                    observed_locations,
-                    held_tomato,
-                    loaded_tomatoes,
-                    discarded_tomatoes,
-                    scanned_properties,
-                    preds,
-                )
-                selected_token = auto_answer["selected_token"]
-                console(f"Oracle selected option {selected_token}.")
-                log_json(f"Step {step} oracle answer:", auto_answer)
-            else:
-                if not preds:
-                    stop_reason = "empty prediction set"
-                    console("Prediction set is empty. PLAN FAILURE reached.")
-                    break
-                while True:
-                    selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
-                    if selected_token in preds:
-                        break
-                    console(f"Invalid option. Please choose from the prediction set: {preds}")
-        else:
-            autonomous_count += 1
-            selected_token = preds[0]
-        if stop_reason == "empty prediction set":
+        if asked_diagnostic is not None:
+            asked_diagnostic = {"step": step, **asked_diagnostic}
+            log_json(f"Step {step} query diagnostic:", asked_diagnostic)
+            if asked_diagnostic["category"] is not None:
+                failure_mode_events.append(asked_diagnostic)
+        if selection.error is not None:
+            if asked_diagnostic is not None:
+                terminal_failure_category = asked_diagnostic["category"]
+            stop_reason = selection.error
             break
-        if selected_token not in tokens:
-            raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
 
-        selected_action = mc_gen_all[tokens.index(selected_token)]
+        selected_token = selection.token
+        selected_action = selection.action
+        oracle_provided_action = selected_action if selection.oracle_provided_action else None
+        if selection.oracle_provided_action:
+            noopt_recovery_count += 1
+        # 4. 선택된 행동을 검증하고 환경 상태에 적용한다.
         action_type, action_arg = parse_tomato_action(selected_action)
+        # 5. 실행 결과를 기록하고 성공·실패·진행 여부를 판단한다.
+        if oracle_provided_action is not None:
+            recovery_feasible, recovery_reason = validate_tomato_action(
+                action_type,
+                action_arg,
+                robot_location,
+                active_tomatoes,
+                hidden_ripeness,
+                hidden_freshness,
+                observed_properties,
+                observed_locations,
+                scanned_properties,
+                held_tomato,
+                loaded_tomatoes,
+                discarded_tomatoes,
+            )
+            log_json(f"Step {step} oracle NoOpt validation:", {
+                "action": selected_action,
+                "feasible": recovery_feasible,
+                "reason": recovery_reason,
+            })
+            if not recovery_feasible:
+                stop_reason = f"invalid oracle NoOpt action: {recovery_reason}"
+                console(stop_reason)
+                break
         if action_type == "done":
             console("Planner selected a terminal action. Stopping.")
             stop_reason = "planner selected terminal action"
@@ -452,184 +544,36 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
             stop_reason = f"non-executable action selected: {selected_action}"
             break
 
-        if action_type == "navigate":
-            if held_tomato is not None:
-                console("Robot is holding a tomato; place or discard it before navigating.")
-                stop_reason = "invalid navigate while holding tomato"
-                break
-            failure_roll = random.random()
-            failed = failure_roll <= args.navigate_failure_prob
-            log_json(f"Step {step} navigate roll:", {
-                "target_location": action_arg,
-                "failure_roll": failure_roll,
-                "failed": failed,
-            })
-            if failed:
-                action_failure_count += 1
-                action_history.append(f"navigate to {action_arg} (failed)")
-                result_text = f"Navigate failed: stayed at {robot_location}"
-            else:
-                robot_location = action_arg
-                action_history.append(f"navigate to {robot_location}")
-                result_text = f"Executed: navigate to {robot_location}"
+        robot_location, held_tomato, result_text, failure_delta, execution_error = execute_tomato_action(
+            action_type,
+            action_arg,
+            args=args,
+            step=step,
+            robot_location=robot_location,
+            active_tomatoes=active_tomatoes,
+            hidden_ripeness=hidden_ripeness,
+            hidden_freshness=hidden_freshness,
+            hidden_locations=hidden_locations,
+            observed_properties=observed_properties,
+            observed_locations=observed_locations,
+            scanned_properties=scanned_properties,
+            held_tomato=held_tomato,
+            loaded_tomatoes=loaded_tomatoes,
+            discarded_tomatoes=discarded_tomatoes,
+            detected_stems=detected_stems,
+            action_history=action_history,
+            console=console,
+            log_json=log_json,
+        )
+        action_failure_count += failure_delta
+        if execution_error is not None:
+            stop_reason = execution_error
+            break
 
-        elif action_type == "detect":
-            if robot_location not in STEMS:
-                console("Detect requires the robot to be at a stem.")
-                stop_reason = "invalid detect outside stem"
-                break
-            new_observations = []
-            detect_rolls = []
-            for tomato in active_tomatoes:
-                if hidden_locations[tomato] != robot_location:
-                    continue
-                previous_property = observed_properties.get(tomato)
-                detect_roll = random.random()
-                roll_info = {
-                    "tomato": tomato,
-                    "true_ripeness": hidden_ripeness[tomato],
-                    "true_location": hidden_locations[tomato],
-                    "previous_property": previous_property,
-                    "detect_roll": detect_roll,
-                    "detected": detect_roll <= args.detect_success_prob,
-                }
-                if detect_roll <= args.detect_success_prob:
-                    detected_property = hidden_ripeness[tomato]
-                    label_error_roll = random.random()
-                    roll_info["label_error_roll"] = label_error_roll
-                    roll_info["label_error"] = label_error_roll <= args.detect_label_error_prob
-                    if label_error_roll <= args.detect_label_error_prob:
-                        candidates = [label for label in ["ripe", "unripe"] if label != detected_property]
-                        observed_properties[tomato] = random.choice(candidates)
-                    else:
-                        observed_properties[tomato] = detected_property
-                    observed_locations[tomato] = robot_location
-                    roll_info["observed_property"] = observed_properties[tomato]
-                    new_observations.append(f"{tomato}: {observed_properties[tomato]} at {robot_location}")
-                detect_rolls.append(roll_info)
-            log_json(f"Step {step} detect rolls:", detect_rolls)
-            detected_stems.add(robot_location)
-            action_history.append(f"detect {robot_location}")
-            result_text = "Detect result: " + (", ".join(new_observations) if new_observations else "no new tomato observed")
-
-        elif action_type == "pick":
-            tomato = action_arg
-            if tomato not in active_tomatoes:
-                console("Selected tomato is not active.")
-                stop_reason = f"invalid pick inactive tomato: {tomato}"
-                break
-            if held_tomato is not None:
-                console("Robot is already holding a tomato.")
-                stop_reason = "invalid pick while holding tomato"
-                break
-            if observed_locations.get(tomato) != robot_location:
-                console("Tomato is not observed at the current robot location.")
-                stop_reason = f"invalid pick tomato not observed here: {tomato}"
-                break
-            if observed_properties.get(tomato) != "ripe":
-                console("Pick requires an observed ripe tomato.")
-                stop_reason = f"invalid pick non-ripe or unknown tomato: {tomato}"
-                break
-            failure_roll = random.random()
-            failed = failure_roll <= args.pick_failure_prob
-            log_json(f"Step {step} pick roll:", {
-                "tomato": tomato,
-                "failure_roll": failure_roll,
-                "failed": failed,
-            })
-            if failed:
-                action_failure_count += 1
-                action_history.append(f"pick {tomato} (failed)")
-                result_text = f"Pick failed: {tomato} was not picked"
-            else:
-                held_tomato = tomato
-                action_history.append(f"pick {tomato}")
-                result_text = f"Executed: pick {tomato}"
-
-        elif action_type == "scan":
-            if held_tomato is None:
-                console("Scan requires a held tomato.")
-                stop_reason = "invalid scan without held tomato"
-                break
-            if action_arg is not None and action_arg != held_tomato:
-                console("Scan action does not match the held tomato.")
-                stop_reason = "invalid scan target mismatch"
-                break
-            scan_roll = random.random()
-            scan_info = {
-                "tomato": held_tomato,
-                "true_freshness": hidden_freshness[held_tomato],
-                "scan_roll": scan_roll,
-                "scanned": scan_roll <= args.scan_success_prob,
-            }
-            if scan_roll <= args.scan_success_prob:
-                true_scan_result = hidden_freshness[held_tomato]
-                label_error_roll = random.random()
-                scan_info["label_error_roll"] = label_error_roll
-                scan_info["label_error"] = label_error_roll <= args.scan_label_error_prob
-                if label_error_roll <= args.scan_label_error_prob:
-                    candidates = [label for label in TOMATO_SCAN_RESULTS if label != true_scan_result]
-                    scanned_properties[held_tomato] = random.choice(candidates)
-                else:
-                    scanned_properties[held_tomato] = true_scan_result
-                scan_info["scanned_property"] = scanned_properties[held_tomato]
-                result_text = f"Scan result: {held_tomato}: {scanned_properties[held_tomato]}"
-            else:
-                result_text = "Scan result: no property observed"
-            log_json(f"Step {step} scan roll:", scan_info)
-            action_history.append(f"scan {held_tomato}")
-
-        elif action_type == "place":
-            tomato = action_arg
-            if held_tomato != tomato:
-                console("Place action does not match the held tomato.")
-                stop_reason = "invalid place target mismatch"
-                break
-            if scanned_properties.get(tomato) != "fresh":
-                console("Place requires a held tomato scanned as fresh.")
-                stop_reason = f"invalid place non-fresh tomato: {tomato}"
-                break
-            failure_roll = random.random()
-            failed = failure_roll <= args.place_failure_prob
-            log_json(f"Step {step} place roll:", {
-                "tomato": tomato,
-                "failure_roll": failure_roll,
-                "failed": failed,
-            })
-            if failed:
-                action_failure_count += 1
-                action_history.append(f"place {tomato} (failed)")
-                result_text = f"Place failed: still holding {tomato}"
-            else:
-                held_tomato = None
-                loaded_tomatoes.append(tomato)
-                action_history.append(f"place {tomato}")
-                result_text = f"Executed: place {tomato}"
-
-        elif action_type == "discard":
-            tomato = action_arg
-            if held_tomato != tomato:
-                console("Discard action does not match the held tomato.")
-                stop_reason = "invalid discard target mismatch"
-                break
-            failure_roll = random.random()
-            failed = failure_roll <= args.discard_failure_prob
-            log_json(f"Step {step} discard roll:", {
-                "tomato": tomato,
-                "failure_roll": failure_roll,
-                "failed": failed,
-            })
-            if failed:
-                action_failure_count += 1
-                action_history.append(f"discard {tomato} (failed)")
-                result_text = f"Discard failed: still holding {tomato}"
-            else:
-                held_tomato = None
-                discarded_tomatoes.append(tomato)
-                action_history.append(f"discard {tomato}")
-                result_text = f"Executed: discard {tomato}"
-
-        source = "oracle" if help_needed and args.auto_answer else ("user" if help_needed else "prediction set")
+        if oracle_provided_action is not None:
+            source = "oracle NoOpt recovery"
+        else:
+            source = "oracle" if selection.help_needed and args.auto_answer else ("user" if selection.help_needed else "prediction set")
         console(f"Selected/Executed ({source}, option {selected_token}): {selected_action} -> {result_text}")
         dead_end_reason = tomato_dead_end_reason(
             hidden_ripeness,
@@ -652,6 +596,24 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
             "step_elapsed_sec": time.perf_counter() - step_start,
         })
         if dead_end_reason is not None:
+            if not selection.help_needed:
+                terminal_failure_category = "when_missed_query_dead_end"
+                failure_event = {
+                    "step": step,
+                    "category": terminal_failure_category,
+                    "help_requested": False,
+                    "selected_token": selected_token,
+                    "selected_action": selected_action,
+                    "observation_error_present": bool(observation_mismatches),
+                    "observation_mismatches": observation_mismatches,
+                    "dead_end_reason": dead_end_reason,
+                }
+                failure_mode_events.append(failure_event)
+                log_json(f"Step {step} failure diagnostic:", failure_event)
+            elif asked_diagnostic is not None and asked_diagnostic["category"] is not None:
+                terminal_failure_category = asked_diagnostic["category"]
+            else:
+                terminal_failure_category = "other_failure_after_query"
             console(dead_end_reason)
             stop_reason = dead_end_reason
             break
@@ -664,63 +626,52 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
         console("\nReached max steps before all tomatoes were handled.")
         stop_reason = "max steps reached"
 
-    console("\n====== Final Plan ======")
-    if action_history:
-        for i, action in enumerate(action_history, start=1):
-            console(f"{i}. {action}")
-    else:
-        console("No action executed.")
-    if held_tomato is not None:
-        console("Held tomato:", held_tomato)
     remaining = [t for t in tomatoes if t not in loaded_tomatoes and t not in discarded_tomatoes]
-    if remaining:
-        console("Unhandled tomatoes:", ", ".join(remaining))
-    log_json("Token usage totals:", total_usage)
     total_elapsed = time.perf_counter() - run_start
-    console("Total elapsed seconds:", total_elapsed)
     final_success = tomato_success(hidden_ripeness, hidden_freshness, held_tomato, loaded_tomatoes, discarded_tomatoes)
-    summary = {
-        "success": final_success,
-        "stop_reason": stop_reason,
-        "planning_length": len(action_history),
-        "planning_iterations": completed_iterations,
-        "question_count": help_count,
-        "autonomous_action_count": autonomous_count,
-        "fallback_in_prediction_count": fallback_in_prediction_count,
-        "average_candidate_count": (sum(candidate_counts) / len(candidate_counts)) if candidate_counts else 0.0,
-        "average_candidate_count_when_asked": (
-            sum(help_candidate_counts) / len(help_candidate_counts)
-            if help_candidate_counts else 0.0
-        ),
-        "average_prediction_set_size": (
-            sum(prediction_set_sizes) / len(prediction_set_sizes)
-            if prediction_set_sizes else 0.0
-        ),
-        "average_prediction_set_size_when_asked": (
-            sum(help_prediction_set_sizes) / len(help_prediction_set_sizes)
-            if help_prediction_set_sizes else 0.0
-        ),
-        "action_failure_count": action_failure_count,
-        "loaded_tomatoes": loaded_tomatoes,
-        "discarded_tomatoes": discarded_tomatoes,
-        "held_tomato": held_tomato,
-        "unhandled_tomatoes": remaining,
-        "token_usage": total_usage,
-        "total_elapsed_seconds": total_elapsed,
+    failure_mode_counts = {
+        category: sum(event["category"] == category for event in failure_mode_events)
+        for category in (
+            "when_missed_query_dead_end",
+            "what_missing_correct_option_after_observation_error",
+            "when_what_missing_correct_option_without_observation_error",
+        )
     }
-    log_json("Summary:", summary)
-    console("\n====== Summary ======")
-    console("Success:", final_success)
-    console("Stop reason:", stop_reason)
-    console("Planning length:", len(action_history))
-    console("Planning iterations:", completed_iterations)
-    console("Question count:", help_count)
-    console("Average candidate count when asked:", summary["average_candidate_count_when_asked"])
-    console("Average prediction set size when asked:", summary["average_prediction_set_size_when_asked"])
-    console("Autonomous action count:", autonomous_count)
-    console("Fallback in prediction count:", fallback_in_prediction_count)
-    console("Action failure count:", action_failure_count)
-    logger.close()
+    summary = build_run_summary(
+        success=final_success,
+        stop_reason=stop_reason,
+        action_history=action_history,
+        planning_iterations=completed_iterations,
+        question_count=help_count,
+        autonomous_action_count=autonomous_count,
+        fallback_in_prediction_count=fallback_in_prediction_count,
+        noopt_recovery_count=noopt_recovery_count,
+        candidate_counts=candidate_counts,
+        help_candidate_counts=help_candidate_counts,
+        prediction_set_sizes=prediction_set_sizes,
+        help_prediction_set_sizes=help_prediction_set_sizes,
+        action_failure_count=action_failure_count,
+        terminal_failure_category=terminal_failure_category,
+        failure_mode_counts=failure_mode_counts,
+        failure_mode_events=failure_mode_events,
+        token_usage=total_usage,
+        total_elapsed_seconds=total_elapsed,
+        loaded_tomatoes=loaded_tomatoes,
+        discarded_tomatoes=discarded_tomatoes,
+        held_tomato=held_tomato,
+        unhandled_tomatoes=remaining,
+    )
+    finish_run(
+        logger,
+        action_history,
+        total_usage,
+        total_elapsed,
+        summary,
+        held_label="Held tomato:",
+        held_value=held_tomato,
+        remaining_label="Unhandled tomatoes:",
+        remaining_values=remaining,
+    )
 
 
 if __name__ == "__main__":

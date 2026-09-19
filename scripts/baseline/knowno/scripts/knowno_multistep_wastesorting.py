@@ -1,8 +1,15 @@
+"""폐기물 분류 작업에서 KnowNo를 여러 단계에 걸쳐 실행하는 실험 loop.
+
+각 단계에서 (1) LLM으로 다음 행동 후보를 생성하고, (2) 후보별 점수로
+conformal prediction set을 만들며, (3) 필요한 경우 사람 또는 자동 oracle에
+질의한다. 이어서 (4) 선택되거나 oracle이 제공한 action을 실행하고,
+(5) 작업의 성공·실패·진행 여부를 판단한다.
+"""
+
 from __future__ import annotations
 
 import argparse
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -12,15 +19,28 @@ from scripts.calibration import (
     run_knowno_calibration,
     write_template,
 )
-from log_waste import RunLogger
 from scripts.llm import call_llm, configure_openai
 from scripts.env import WASTE_MC_PROMPT_FILE
 from scripts.prompt import process_mc_raw_preserve_duplicates, temperature_scaling, top_choice_logprobs
 from scripts.auto_answer import select_waste_answer
-from utils import GREEN, RESET, YELLOW, usage_total
+from scripts.knowno_action_validation import validate_waste_action
+from scripts.utils.logging import build_run_summary, finish_run, show_waste_decision, start_waste_run
+from scripts.utils.env_setting import add_env_setting_argument, apply_env_setting
+from scripts.utils.utils import (
+    ActionSelection,
+    PlanningResult,
+    analyze_asked_prediction_set,
+    execute_waste_action,
+    occlusion_text,
+    parse_occlusions,
+    usage_total,
+    visible_objects,
+    waste_dead_end_reason,
+    waste_observation_mismatches,
+    waste_success,
+)
 from wastesorting_utils import (
     AVAILABLE_BINS,
-    WASTE_ATTRIBUTES,
     WASTE_BACKGROUND,
     WASTE_CALIBRATION_TEMPLATE,
     build_waste_calibration_prompt,
@@ -42,8 +62,11 @@ def parse_args():
     parser.add_argument("--qhat", type=float, default=0.8704)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=20)
-    parser.add_argument("--detect-success-prob", type=float, default=0.8)
-    parser.add_argument("--detect-label-error-prob", type=float, default=0.0)
+    parser.add_argument("--detect-success-prob", type=float, default=None)
+    parser.add_argument("--detect-label-error-prob", type=float, default=None)
+    parser.add_argument("--pick-failure-prob", type=float, default=None)
+    parser.add_argument("--place-failure-prob", type=float, default=None)
+    add_env_setting_argument(parser, "wastesorting")
     parser.add_argument("--labels", default="", help='Optional true labels, e.g. "waste1:can,waste2:paper".')
     parser.add_argument(
         "--occlusions",
@@ -63,52 +86,220 @@ def parse_args():
     return parser.parse_args()
 
 
-def waste_dead_end_reason(hidden_attributes, placed_objects):
-    for obj, target_bin in placed_objects.items():
-        true_bin = f"{hidden_attributes[obj]} bin"
-        if target_bin != true_bin:
-            return f"PLAN FAILURE: true {hidden_attributes[obj]} waste {obj} was placed into {target_bin}."
-    return None
+def plan_waste_step(
+    *,
+    args,
+    step,
+    qhat,
+    tokens,
+    remaining_objects,
+    hidden_attributes,
+    observed_attributes,
+    held_object,
+    placed_objects,
+    occlusions,
+    action_history,
+    total_usage,
+    logger,
+    call_llm,
+):
+    """후보 생성부터 conformal prediction set 생성까지 한 planning 단계를 수행한다."""
+    history_text = "\n".join(f"{i + 1}. {action}" for i, action in enumerate(action_history)) or "None"
+    held_text = held_object if held_object is not None else "None"
+    current_occlusion_text = occlusion_text(occlusions, remaining_objects)
+    observed_text = (
+        ", ".join(f"{obj}: {attr}" for obj, attr in sorted(observed_attributes.items()))
+        if observed_attributes
+        else "None"
+    )
+    generation_prompt = build_waste_generation_prompt(
+        args.instruction,
+        remaining_objects,
+        observed_text,
+        held_text,
+        history_text,
+        args.prompt_version,
+        current_occlusion_text,
+    )
+    logger.json(f"Step {step} start:", {
+        "remaining_objects": remaining_objects,
+        "observed_attributes": observed_attributes,
+        "held_object": held_object,
+        "occlusions": occlusions,
+        "placed_objects": placed_objects,
+        "action_history": action_history,
+    })
+    if args.verbose:
+        logger.file_only(f"\n====== Step {step} generation prompt ======")
+        logger.file_only(generation_prompt)
+
+    generation_start = time.perf_counter()
+    generation_response, generation_text = call_llm(generation_prompt, stop_seq=["We:"], logit_bias={})
+    generation_usage = generation_response.get("usage")
+    total_usage["generation"] += usage_total(generation_usage)
+    total_usage["overall"] += usage_total(generation_usage)
+    logger.json(f"Step {step} generation:", {
+        "elapsed_sec": time.perf_counter() - generation_start,
+        "usage": generation_usage,
+        "raw_text": generation_text,
+    })
+    options_text, options, fallback_token = process_mc_raw_preserve_duplicates(generation_text.strip())
+
+    score_prompt = build_waste_score_prompt(
+        args.instruction,
+        remaining_objects,
+        observed_text,
+        held_text,
+        history_text,
+        options_text,
+        args.prompt_version,
+        current_occlusion_text,
+    )
+    if args.verbose:
+        logger.file_only(f"\n====== Step {step} scoring prompt ======")
+        logger.file_only(score_prompt)
+
+    scoring_start = time.perf_counter()
+    response, score_text = call_llm(score_prompt, max_tokens=1, logprobs=5, logit_bias={})
+    score_usage = response.get("usage")
+    total_usage["scoring"] += usage_total(score_usage)
+    total_usage["overall"] += usage_total(score_usage)
+    logger.json(f"Step {step} scoring:", {
+        "elapsed_sec": time.perf_counter() - scoring_start,
+        "usage": score_usage,
+        "text": score_text,
+    })
+
+    _, _, raw_logprobs = top_choice_logprobs(response)
+    option_logprobs = {}
+    for raw_token, logprob in raw_logprobs.items():
+        token = raw_token.strip().strip("'\"").upper()
+        if token in tokens:
+            option_logprobs[token] = max(logprob, option_logprobs.get(token, -np.inf))
+    if not option_logprobs:
+        raise ValueError(f"LLM did not return any A/B/C/D/E logprobs: {raw_logprobs}")
+
+    scored_tokens = list(option_logprobs)
+    generated_scores = dict(zip(scored_tokens, temperature_scaling(
+        list(option_logprobs.values()),
+        temperature=args.score_temperature,
+    )))
+
+    unique_options = []
+    combined_scores = []
+    option_indexes = {}
+    for token, option in zip(tokens, options):
+        normalized = option.lower().strip().rstrip(".")
+        if normalized not in option_indexes:
+            option_indexes[normalized] = len(unique_options)
+            unique_options.append(option)
+            combined_scores.append(0.0)
+        combined_scores[option_indexes[normalized]] += float(generated_scores.get(token, 0.0))
+
+    options = unique_options
+    scored_tokens = tokens[:len(options)]
+    scores = np.asarray(combined_scores)
+    logprobs = [float(np.log(score)) if score > 0.0 else -np.inf for score in scores]
+    options_text = "\n".join(f"{token}) {option}" for token, option in zip(scored_tokens, options))
+    fallback_token = scored_tokens[options.index("an option not listed here")]
+    prediction_set = [token for token, score in zip(scored_tokens, scores) if score >= 1 - qhat]
+    logger.json(f"Step {step} decision data:", {
+        "options": options,
+        "add_mc_prefix": fallback_token,
+        "option_logprobs": option_logprobs,
+        "combined_option_scores": dict(zip(scored_tokens, scores.tolist())),
+        "scores": scores.tolist(),
+        "threshold": 1 - qhat,
+        "prediction_set": prediction_set,
+    })
+    show_waste_decision(
+        logger,
+        step,
+        remaining_objects,
+        hidden_attributes,
+        observed_text,
+        current_occlusion_text,
+        held_text,
+        options_text,
+        prediction_set,
+        scored_tokens,
+        logprobs,
+        scores,
+    )
+    return PlanningResult(options_text, options, fallback_token, scored_tokens, logprobs, scores, prediction_set)
 
 
-def waste_success(hidden_attributes, remaining_objects, held_object, placed_objects):
-    if held_object is not None or remaining_objects:
-        return False
-    for obj, label in hidden_attributes.items():
-        if placed_objects.get(obj) != f"{label} bin":
-            return False
-    return True
+def select_waste_action(
+    planning,
+    *,
+    args,
+    step,
+    tokens,
+    remaining_objects,
+    hidden_attributes,
+    observed_attributes,
+    held_object,
+    occlusions,
+    logger,
+):
+    """Prediction set에서 실행할 행동을 고르고 필요하면 외부에 질의한다."""
+    prediction_set = planning.prediction_set
+    help_needed = len(prediction_set) != 1 or planning.fallback_token in prediction_set
+    provided_action = None
+    if help_needed and args.auto_answer:
+        answer = select_waste_answer(
+            planning.options,
+            tokens,
+            planning.fallback_token,
+            remaining_objects,
+            hidden_attributes,
+            observed_attributes,
+            held_object,
+            occlusions,
+            prediction_set,
+        )
+        selected_token = answer["selected_token"]
+        provided_action = answer.get("provided_action")
+        logger.console(f"Oracle selected option {selected_token}.")
+        if provided_action is not None:
+            logger.console(f"Oracle provided action for NoOpt: {provided_action}")
+        logger.json(f"Step {step} oracle answer:", answer)
+    elif help_needed:
+        if not prediction_set:
+            logger.console("Prediction set is empty. PLAN FAILURE reached.")
+            return ActionSelection(None, None, True, error="empty prediction set")
+        while True:
+            selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
+            if selected_token in prediction_set:
+                break
+            logger.console(f"Invalid option. Please choose from the prediction set: {prediction_set}")
+    else:
+        selected_token = prediction_set[0]
 
-
-def parse_occlusions(text: str) -> dict[str, str]:
-    occlusions = {}
-    if not text:
-        return occlusions
-    for item in text.split(","):
-        if ":" not in item:
-            raise ValueError('Occlusions must use "hidden:blocker" format, e.g. "waste4:waste3".')
-        hidden, blocker = [part.strip().lower() for part in item.split(":", 1)]
-        occlusions[hidden] = blocker
-    return occlusions
-
-
-def visible_objects(remaining_objects: list[str], occlusions: dict[str, str]) -> list[str]:
-    remaining = set(remaining_objects)
-    return [obj for obj in remaining_objects if occlusions.get(obj) not in remaining]
-
-
-def occlusion_text(occlusions: dict[str, str], remaining_objects: list[str]) -> str:
-    remaining = set(remaining_objects)
-    active = [
-        f"{hidden} is under {blocker} and cannot be detected until {blocker} is placed"
-        for hidden, blocker in sorted(occlusions.items())
-        if hidden in remaining and blocker in remaining
-    ]
-    return "; ".join(active) if active else "None"
+    if selected_token not in tokens:
+        raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
+    selected_action = provided_action or planning.options[planning.scored_tokens.index(selected_token)]
+    if selected_action == "an option not listed here":
+        logger.console("Selected 'an option not listed here'. PLAN FAILURE reached.")
+        return ActionSelection(
+            selected_token,
+            selected_action,
+            help_needed,
+            error="selected fallback option",
+            oracle_answer=answer if help_needed and args.auto_answer else None,
+        )
+    return ActionSelection(
+        selected_token,
+        selected_action,
+        help_needed,
+        oracle_provided_action=provided_action is not None,
+        oracle_answer=answer if help_needed and args.auto_answer else None,
+    )
 
 
 def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     args = parse_args()
+    apply_env_setting(args, "wastesorting")
     run_start = time.perf_counter()
     if args.write_calibration_template:
         write_template(args.write_calibration_template, WASTE_CALIBRATION_TEMPLATE)
@@ -131,28 +322,18 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     action_history = []
     tokens = ["A", "B", "C", "D", "E"]
 
-    logger = RunLogger(__file__, args.log_file, args.verbose, prefix="knowno_multistep_waste")
+    logger = start_waste_run(
+        __file__,
+        args,
+        baseline_name,
+        settings,
+        remaining_objects,
+        AVAILABLE_BINS,
+        hidden_attributes,
+    )
     console = logger.console
-    console_colored = logger.colored
-    log = logger.file_only
     log_json = logger.json
     total_usage = {"generation": 0, "scoring": 0, "overall": 0}
-    console(f"====== Multi-step Waste Sorting {baseline_name} ======")
-    log_json("Run metadata:", {
-        "argv": sys.argv,
-        "baseline": baseline_name,
-        "model": settings.get("model") or settings.get("model_name"),
-        "prompt_version": args.prompt_version,
-        "seed": args.seed,
-        "expert": "exact_oracle" if args.auto_answer else "human_input",
-    })
-    console("Instruction:", args.instruction)
-    console("Prompt version:", args.prompt_version)
-    console("Initial objects:", ", ".join(remaining_objects))
-    console("Available bins:", ", ".join(AVAILABLE_BINS))
-    console("True labels:", ", ".join(f"{obj}: {label}" for obj, label in sorted(hidden_attributes.items())))
-    console("Detect success probability:", args.detect_success_prob)
-    console("Detect label error probability:", args.detect_label_error_prob)
     qhat = args.qhat
     
     # 1. Run Calibration
@@ -179,213 +360,113 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
     prediction_set_sizes = []
     help_prediction_set_sizes = []
     action_failure_count = 0
+    noopt_recovery_count = 0
+    failure_mode_events = []
+    terminal_failure_category = None
 
     for step in range(1, args.max_steps + 1):
         step_start = time.perf_counter()
+
+        # 1. 현재 상태에서 작업이 이미 종료되었는지 확인한다.
         if not remaining_objects and held_object is None:
             console("\nAll objects have been sorted.")
             stop_reason = "success"
             break
 
-        history_text = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(action_history))
-        if not history_text:
-            history_text = "None"
-        held_text = held_object if held_object is not None else "None"
-        current_occlusion_text = occlusion_text(occlusions, remaining_objects)
-        observed_text = (
-            ", ".join(f"{obj}: {attr}" for obj, attr in sorted(observed_attributes.items()))
-            if observed_attributes
-            else "None"
+        # 2. 행동 후보와 conformal prediction set을 만든다.
+        planning = plan_waste_step(
+            args=args,
+            step=step,
+            qhat=qhat,
+            tokens=tokens,
+            remaining_objects=remaining_objects,
+            hidden_attributes=hidden_attributes,
+            observed_attributes=observed_attributes,
+            held_object=held_object,
+            placed_objects=placed_objects,
+            occlusions=occlusions,
+            action_history=action_history,
+            total_usage=total_usage,
+            logger=logger,
+            call_llm=call_llm,
         )
-
-        mc_gen_prompt = build_waste_generation_prompt(
-            args.instruction,
-            remaining_objects,
-            observed_text,
-            held_text,
-            history_text,
-            args.prompt_version,
-            current_occlusion_text,
-        )
-
-        log_json(f"Step {step} start:", {
-            "remaining_objects": remaining_objects,
-            "observed_attributes": observed_attributes,
-            "held_object": held_object,
-            "occlusions": occlusions,
-            "action_history": action_history,
-        })
-        if args.verbose:
-            log(f"\n====== Step {step} generation prompt ======")
-            log(mc_gen_prompt)
-
-        gen_start = time.perf_counter()
-        gen_response, mc_gen_raw = call_llm(mc_gen_prompt, stop_seq=["We:"], logit_bias={})
-        gen_elapsed = time.perf_counter() - gen_start
-        gen_usage = gen_response.get("usage")
-        total_usage["generation"] += usage_total(gen_usage)
-        total_usage["overall"] += usage_total(gen_usage)
-        log_json(f"Step {step} generation:", {
-            "elapsed_sec": gen_elapsed,
-            "usage": gen_usage,
-            "raw_text": mc_gen_raw,
-        })
-        mc_gen_full, mc_gen_all, add_mc_prefix = process_mc_raw_preserve_duplicates(mc_gen_raw.strip())
         completed_iterations = step
-        candidate_counts.append(len(mc_gen_all))
+        candidate_counts.append(len(planning.options))
+        prediction_set_sizes.append(len(planning.prediction_set))
 
-        score_prompt = build_waste_score_prompt(
-            args.instruction,
-            remaining_objects,
-            observed_text,
-            held_text,
-            history_text,
-            mc_gen_full,
-            args.prompt_version,
-            current_occlusion_text,
-        )
-
-        if args.verbose:
-            log(f"\n====== Step {step} scoring prompt ======")
-            log(score_prompt)
-
-        score_start = time.perf_counter()
-        # Match the deployed 04_BRL_WASTE KnowNo planner: let gpt-4o
-        # produce native A--E top-logprobs without legacy completion-token
-        # biases from the original KnowNo notebook.
-        response, score_text = call_llm(
-            score_prompt,
-            max_tokens=1,
-            logprobs=5,
-            logit_bias={},
-        )
-        score_elapsed = time.perf_counter() - score_start
-        score_usage = response.get("usage")
-        total_usage["scoring"] += usage_total(score_usage)
-        total_usage["overall"] += usage_total(score_usage)
-        log_json(f"Step {step} scoring:", {
-            "elapsed_sec": score_elapsed,
-            "usage": score_usage,
-            "text": score_text,
-        })
-        _, _, top_logprobs_full = top_choice_logprobs(response)
-        option_logprobs = {}
-        for raw_token, logprob in top_logprobs_full.items():
-            token = raw_token.strip().strip("'\"").upper()
-            if token in tokens:
-                option_logprobs[token] = max(logprob, option_logprobs.get(token, -np.inf))
-        if not option_logprobs:
-            raise ValueError(f"LLM did not return any A/B/C/D/E logprobs: {top_logprobs_full}")
-        top_tokens = list(option_logprobs.keys())
-        top_logprobs = list(option_logprobs.values())
-        scores = temperature_scaling(top_logprobs, temperature=args.score_temperature)
-        generated_scores = dict(zip(top_tokens, scores))
-
-        # Match 04_BRL_WASTE: merge semantically identical options after
-        # scoring and sum their probability mass before thresholding.
-        unique_options = []
-        combined_scores = []
-        option_indexes = {}
-        for token, option in zip(tokens, mc_gen_all):
-            normalized = option.lower().strip().rstrip(".")
-            if normalized not in option_indexes:
-                option_indexes[normalized] = len(unique_options)
-                unique_options.append(option)
-                combined_scores.append(0.0)
-            combined_scores[option_indexes[normalized]] += float(generated_scores.get(token, 0.0))
-        mc_gen_all = unique_options
-        top_tokens = tokens[:len(mc_gen_all)]
-        scores = np.asarray(combined_scores)
-        top_logprobs = [float(np.log(score)) if score > 0.0 else -np.inf for score in scores]
-        mc_gen_full = "\n".join(f"{token}) {option}" for token, option in zip(top_tokens, mc_gen_all))
-        add_mc_prefix = top_tokens[mc_gen_all.index("an option not listed here")]
-        candidate_counts[-1] = len(mc_gen_all)
-        preds = [token for token, score in zip(top_tokens, scores) if score >= 1 - qhat]
-        prediction_set_sizes.append(len(preds))
-        log_json(f"Step {step} decision data:", {
-            "options": mc_gen_all,
-            "add_mc_prefix": add_mc_prefix,
-            "option_logprobs": option_logprobs,
-            "combined_option_scores": dict(zip(top_tokens, scores.tolist())),
-            "scores": scores.tolist(),
-            "threshold": 1 - qhat,
-            "prediction_set": preds,
-        })
-
-        console(f"\n====== Step {step} ======")
-        console("Remaining objects:", ", ".join(remaining_objects) if remaining_objects else "None")
-        true_text = ", ".join(f"{obj}: {label}" for obj, label in sorted(hidden_attributes.items()))
-        console_colored(f"{YELLOW}True waste attributes: {true_text}{RESET}", f"True waste attributes: {true_text}")
-        console("Observed waste attributes:", observed_text)
-        console("Occluded waste objects:", current_occlusion_text)
-        console("Held object:", held_text)
-        console("\nGenerated options:")
-        highlighted_options = []
-        for option_line in mc_gen_full.splitlines():
-            option_token = option_line[:1].upper()
-            if option_token in preds:
-                highlighted_options.append(f"{GREEN}{option_line}{RESET}")
-            else:
-                highlighted_options.append(option_line)
-        console_colored("\n".join(highlighted_options), mc_gen_full)
-        console("\nOption scores:")
-        for token, logprob, score in zip(top_tokens, top_logprobs, scores):
-            console("Option:", token, "\tlog prob:", logprob, "\tsoftmax:", score)
-        console("Prediction set:", preds)
-
-        # KnowNo decision rule: act only when the prediction set is a singleton
-        # and not the fallback "option not listed here"; otherwise ask for help.
-        if preds == [add_mc_prefix]:
+        # 3. 자율 실행하거나 외부 답변을 받아 실행할 행동을 정한다.
+        if planning.prediction_set == [planning.fallback_token] and not args.auto_answer:
             console("Prediction set only includes 'an option not listed here'. PLAN FAILURE reached.")
             stop_reason = "prediction set only includes fallback"
             break
-        help_needed = len(preds) != 1 or add_mc_prefix in preds
-        if add_mc_prefix in preds:
+        if planning.fallback_token in planning.prediction_set:
             fallback_in_prediction_count += 1
-        if help_needed:
+        selection = select_waste_action(
+            planning,
+            args=args,
+            step=step,
+            tokens=tokens,
+            remaining_objects=remaining_objects,
+            hidden_attributes=hidden_attributes,
+            observed_attributes=observed_attributes,
+            held_object=held_object,
+            occlusions=occlusions,
+            logger=logger,
+        )
+        if selection.help_needed:
             help_count += 1
-            help_candidate_counts.append(len(mc_gen_all))
-            help_prediction_set_sizes.append(len(preds))
-            if args.auto_answer:
-                auto_answer = select_waste_answer(
-                    mc_gen_all,
-                    tokens,
-                    add_mc_prefix,
-                    remaining_objects,
-                    hidden_attributes,
-                    observed_attributes,
-                    held_object,
-                    occlusions,
-                    preds,
-                )
-                selected_token = auto_answer["selected_token"]
-                console(f"Oracle selected option {selected_token}.")
-                log_json(f"Step {step} oracle answer:", auto_answer)
-            else:
-                if not preds:
-                    stop_reason = "empty prediction set"
-                    console("Prediction set is empty. PLAN FAILURE reached.")
-                    break
-                while True:
-                    selected_token = input("Help needed. Choose an option (A/B/C/D/E): ").strip().upper()
-                    if selected_token in preds:
-                        break
-                    console(f"Invalid option. Please choose from the prediction set: {preds}")
+            help_candidate_counts.append(len(planning.options))
+            help_prediction_set_sizes.append(len(planning.prediction_set))
         else:
             autonomous_count += 1
-            selected_token = preds[0]
-        if stop_reason == "empty prediction set":
-            break
-        if selected_token not in tokens:
-            raise ValueError(f"Selected option must be one of {tokens}, got {selected_token!r}")
 
-        selected_action = mc_gen_all[tokens.index(selected_token)]
-        if selected_action == add_mc_prefix:
-            console("Selected 'an option not listed here'. PLAN FAILURE reached.")
-            stop_reason = "selected fallback option"
+        observation_mismatches = waste_observation_mismatches(
+            observed_attributes,
+            hidden_attributes,
+        )
+        asked_diagnostic = analyze_asked_prediction_set(
+            selection,
+            planning.prediction_set,
+            observation_mismatches,
+        )
+        if asked_diagnostic is not None:
+            asked_diagnostic = {"step": step, **asked_diagnostic}
+            log_json(f"Step {step} query diagnostic:", asked_diagnostic)
+            if asked_diagnostic["category"] is not None:
+                failure_mode_events.append(asked_diagnostic)
+        if selection.error is not None:
+            if asked_diagnostic is not None:
+                terminal_failure_category = asked_diagnostic["category"]
+            stop_reason = selection.error
             break
 
+        selected_token = selection.token
+        selected_action = selection.action
+        oracle_provided_action = selected_action if selection.oracle_provided_action else None
+        if selection.oracle_provided_action:
+            noopt_recovery_count += 1
+        # 4. 선택된 행동을 검증하고 환경 상태에 적용한다.
         action_type, action_arg = parse_waste_action(selected_action)
+        # 5. 실행 결과를 기록하고 성공·실패·진행 여부를 판단한다.
+        if oracle_provided_action is not None:
+            recovery_feasible, recovery_reason = validate_waste_action(
+                action_type,
+                action_arg,
+                remaining_objects,
+                hidden_attributes,
+                observed_attributes,
+                held_object,
+                occlusions,
+            )
+            log_json(f"Step {step} oracle NoOpt validation:", {
+                "action": selected_action,
+                "feasible": recovery_feasible,
+                "reason": recovery_reason,
+            })
+            if not recovery_feasible:
+                stop_reason = f"invalid oracle NoOpt action: {recovery_reason}"
+                console(stop_reason)
+                break
         if action_type == "done":
             console("Planner selected a terminal action. Stopping.")
             stop_reason = "planner selected terminal action"
@@ -395,85 +476,30 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
             stop_reason = f"non-executable action: {selected_action}"
             break
 
-        # Lightweight state update for the high-level planner view. This is not
-        # a physics simulation; it tracks observed attributes, held object, and
-        # removes an object only after a separate place action.
-        if action_type == "detect":
-            new_observations = []
-            detect_rolls = []
-            for obj in visible_objects(remaining_objects, occlusions):
-                if obj in observed_attributes:
-                    continue
-                detect_roll = random.random()
-                roll_info = {
-                    "object": obj,
-                    "true_label": hidden_attributes[obj],
-                    "detect_roll": detect_roll,
-                    "detected": detect_roll <= args.detect_success_prob,
-                }
-                if detect_roll <= args.detect_success_prob:
-                    true_label = hidden_attributes[obj]
-                    label_error_roll = random.random()
-                    roll_info["label_error_roll"] = label_error_roll
-                    roll_info["label_error"] = label_error_roll <= args.detect_label_error_prob
-                    if label_error_roll <= args.detect_label_error_prob:
-                        candidates = [label for label in WASTE_ATTRIBUTES if label != true_label]
-                        observed_attributes[obj] = random.choice(candidates)
-                    else:
-                        observed_attributes[obj] = true_label
-                    roll_info["observed_label"] = observed_attributes[obj]
-                    new_observations.append(f"{obj}: {observed_attributes[obj]}")
-                detect_rolls.append(roll_info)
-            log_json(f"Step {step} detect rolls:", detect_rolls)
-            action_history.append("detect")
-            if new_observations:
-                result_text = "Detect result: " + ", ".join(new_observations)
-            else:
-                result_text = "Detect result: no new attribute observed"
+        held_object, result_text, step_action_failures, execution_error = execute_waste_action(
+            action_type,
+            action_arg,
+            args=args,
+            step=step,
+            remaining_objects=remaining_objects,
+            hidden_attributes=hidden_attributes,
+            observed_attributes=observed_attributes,
+            held_object=held_object,
+            placed_objects=placed_objects,
+            occlusions=occlusions,
+            action_history=action_history,
+            console=console,
+            log_json=log_json,
+        )
+        action_failure_count += step_action_failures
+        if execution_error is not None:
+            stop_reason = execution_error
+            break
 
-        elif action_type == "pick":
-            matched_object = None
-            for obj in remaining_objects:
-                if action_arg in obj or obj in action_arg:
-                    matched_object = obj
-                    break
-            if matched_object is None:
-                console("Selected object is not in the current state. Stopping to avoid compounding error.")
-                stop_reason = f"invalid pick unavailable object: {action_arg}"
-                break
-            if matched_object not in visible_objects(remaining_objects, occlusions):
-                blocker = occlusions.get(matched_object)
-                console(f"Selected object is occluded by {blocker}. Place the blocker before picking it.")
-                stop_reason = f"invalid pick occluded object: {matched_object}"
-                break
-
-            if held_object is not None:
-                console("Robot is already holding an object. Place it before picking another one.")
-                stop_reason = "invalid pick while holding object"
-                break
-            held_object = matched_object
-            action_history.append(f"pick {matched_object}")
-            result_text = f"Executed: pick {matched_object}"
-
-        elif action_type == "place":
-            if held_object is None:
-                console("Robot is not holding anything. Pick an object before placing.")
-                stop_reason = "invalid place without held object"
-                break
-            place_object, target_bin = action_arg
-            if not (place_object in held_object or held_object in place_object):
-                console("Place action does not match the held object. Stopping to avoid compounding error.")
-                stop_reason = "invalid place target mismatch"
-                break
-            placed_object = held_object
-            held_object = None
-            remaining_objects.remove(placed_object)
-            observed_attributes.pop(placed_object, None)
-            placed_objects[placed_object] = target_bin
-            action_history.append(f"place {placed_object} into {target_bin}")
-            result_text = f"Executed: place {placed_object} into {target_bin}"
-
-        source = "oracle" if help_needed and args.auto_answer else ("user" if help_needed else "prediction set")
+        if oracle_provided_action is not None:
+            source = "oracle NoOpt recovery"
+        else:
+            source = "oracle" if selection.help_needed and args.auto_answer else ("user" if selection.help_needed else "prediction set")
         console(f"Selected/Executed ({source}, option {selected_token}): {selected_action} -> {result_text}")
         log_json(f"Step {step} end:", {
             "remaining_objects": remaining_objects,
@@ -485,6 +511,24 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
         })
         dead_end_reason = waste_dead_end_reason(hidden_attributes, placed_objects)
         if dead_end_reason is not None:
+            if not selection.help_needed:
+                terminal_failure_category = "when_missed_query_dead_end"
+                failure_event = {
+                    "step": step,
+                    "category": terminal_failure_category,
+                    "help_requested": False,
+                    "selected_token": selected_token,
+                    "selected_action": selected_action,
+                    "observation_error_present": bool(observation_mismatches),
+                    "observation_mismatches": observation_mismatches,
+                    "dead_end_reason": dead_end_reason,
+                }
+                failure_mode_events.append(failure_event)
+                log_json(f"Step {step} failure diagnostic:", failure_event)
+            elif asked_diagnostic is not None and asked_diagnostic["category"] is not None:
+                terminal_failure_category = asked_diagnostic["category"]
+            else:
+                terminal_failure_category = "other_failure_after_query"
             console(dead_end_reason)
             stop_reason = dead_end_reason
             break
@@ -497,61 +541,50 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
         console("\nReached max steps before all objects were sorted.")
         stop_reason = "max steps reached"
 
-    console("\n====== Final Plan ======")
-    if action_history:
-        for i, action in enumerate(action_history, start=1):
-            console(f"{i}. {action}")
-    else:
-        console("No action executed.")
-    if held_object is not None:
-        console("Held object:", held_object)
-    if remaining_objects:
-        console("Unsorted objects:", ", ".join(remaining_objects))
-    log_json("Token usage totals:", total_usage)
     total_elapsed = time.perf_counter() - run_start
-    console("Total elapsed seconds:", total_elapsed)
     final_success = waste_success(hidden_attributes, remaining_objects, held_object, placed_objects)
-    summary = {
-        "success": final_success,
-        "stop_reason": stop_reason,
-        "planning_length": len(action_history),
-        "planning_iterations": completed_iterations,
-        "question_count": help_count,
-        "autonomous_action_count": autonomous_count,
-        "fallback_in_prediction_count": fallback_in_prediction_count,
-        "average_candidate_count": (sum(candidate_counts) / len(candidate_counts)) if candidate_counts else 0.0,
-        "average_candidate_count_when_asked": (
-            sum(help_candidate_counts) / len(help_candidate_counts)
-            if help_candidate_counts else 0.0
-        ),
-        "average_prediction_set_size": (
-            sum(prediction_set_sizes) / len(prediction_set_sizes)
-            if prediction_set_sizes else 0.0
-        ),
-        "average_prediction_set_size_when_asked": (
-            sum(help_prediction_set_sizes) / len(help_prediction_set_sizes)
-            if help_prediction_set_sizes else 0.0
-        ),
-        "action_failure_count": action_failure_count,
-        "placed_objects": placed_objects,
-        "held_object": held_object,
-        "unsorted_objects": remaining_objects,
-        "token_usage": total_usage,
-        "total_elapsed_seconds": total_elapsed,
+    failure_mode_counts = {
+        category: sum(event["category"] == category for event in failure_mode_events)
+        for category in (
+            "when_missed_query_dead_end",
+            "what_missing_correct_option_after_observation_error",
+            "when_what_missing_correct_option_without_observation_error",
+        )
     }
-    log_json("Summary:", summary)
-    console("\n====== Summary ======")
-    console("Success:", final_success)
-    console("Stop reason:", stop_reason)
-    console("Planning length:", len(action_history))
-    console("Planning iterations:", completed_iterations)
-    console("Question count:", help_count)
-    console("Average candidate count when asked:", summary["average_candidate_count_when_asked"])
-    console("Average prediction set size when asked:", summary["average_prediction_set_size_when_asked"])
-    console("Autonomous action count:", autonomous_count)
-    console("Fallback in prediction count:", fallback_in_prediction_count)
-    console("Action failure count:", action_failure_count)
-    logger.close()
+    summary = build_run_summary(
+        success=final_success,
+        stop_reason=stop_reason,
+        action_history=action_history,
+        planning_iterations=completed_iterations,
+        question_count=help_count,
+        autonomous_action_count=autonomous_count,
+        fallback_in_prediction_count=fallback_in_prediction_count,
+        noopt_recovery_count=noopt_recovery_count,
+        candidate_counts=candidate_counts,
+        help_candidate_counts=help_candidate_counts,
+        prediction_set_sizes=prediction_set_sizes,
+        help_prediction_set_sizes=help_prediction_set_sizes,
+        action_failure_count=action_failure_count,
+        terminal_failure_category=terminal_failure_category,
+        failure_mode_counts=failure_mode_counts,
+        failure_mode_events=failure_mode_events,
+        token_usage=total_usage,
+        total_elapsed_seconds=total_elapsed,
+        placed_objects=placed_objects,
+        held_object=held_object,
+        unsorted_objects=remaining_objects,
+    )
+    finish_run(
+        logger,
+        action_history,
+        total_usage,
+        total_elapsed,
+        summary,
+        held_label="Held object:",
+        held_value=held_object,
+        remaining_label="Unsorted objects:",
+        remaining_values=remaining_objects,
+    )
 
 
 if __name__ == "__main__":

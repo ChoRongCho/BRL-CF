@@ -218,9 +218,97 @@ class Environment:
 
 
     def _apply_action(self, action: Dict[str, Any]) -> None:
+        # Planning applicability is evaluated against the robot's belief, but
+        # execution feasibility must be evaluated against the hidden physical
+        # state.  Otherwise a belief-compatible pick at the wrong stem can be
+        # sampled as a success and copied into true_state.
+        self.last_execution_applicable = self._is_physically_executable(action)
+        if not self.last_execution_applicable:
+            return
         self.state = self.transition_model.sample_next_state(self.state, action)
         self._update_true_state_from_execution(action)
         self._sync_models_with_state()
+
+    def _is_physically_executable(self, action: Action) -> bool:
+        """Check only physical preconditions against the executed world.
+
+        Semantic labels such as ripe/fresh or a waste category are deliberately
+        excluded: the robot may execute a physically possible but task-wrong
+        action and should then receive PLAN FAILURE.  Location, gripper state,
+        and occlusion determine whether the physical action can succeed.
+        """
+        normalized = action.name.replace(" ", "")
+        action_name, _, raw_args = normalized.rstrip(")").partition("(")
+        args = raw_args.split(",") if raw_args else []
+        runtime = self.state
+        hidden = self.true_state
+
+        if self.domain_name == "tomato":
+            if action_name == "navigate" and len(args) >= 3:
+                robot, source, _ = args[:3]
+                return (
+                    runtime.has_fact(f"located({robot},{source})")
+                    and runtime.has_fact(f"handempty({robot})")
+                )
+            if action_name == "prepare_nav":
+                return True
+            if action_name == "detect" and len(args) >= 2:
+                robot, stem = args[:2]
+                return (
+                    runtime.has_fact(f"located({robot},{stem})")
+                    and runtime.has_fact(f"handempty({robot})")
+                )
+            if action_name in {"pick", "pick_n_scan"} and len(args) >= 3:
+                robot, tomato, stem = args[:3]
+                return (
+                    runtime.has_fact(f"located({robot},{stem})")
+                    and runtime.has_fact(f"handempty({robot})")
+                    and hidden.has_fact(f"at({tomato},{stem})")
+                )
+            if action_name in {"scan", "place", "discard"} and len(args) >= 2:
+                robot, tomato = args[:2]
+                return (
+                    runtime.has_fact(f"holding({robot},{tomato})")
+                    or runtime.has_fact(f"holded({tomato},{robot})")
+                )
+            return True
+
+        if self.domain_name == "wastesorting":
+            if action_name == "detect_waste" and args:
+                return runtime.has_fact(f"handempty({args[0]})")
+            if action_name == "pick" and len(args) >= 2:
+                robot, waste = args[:2]
+                if not runtime.has_fact(f"handempty({robot})"):
+                    return False
+                if any(
+                    fact.startswith(f"in_bin({waste},")
+                    or fact.endswith(f",{waste})") and fact.startswith("holding(")
+                    for fact in runtime.facts
+                ):
+                    return False
+                for fact in hidden.facts:
+                    if not fact.startswith("occ("):
+                        continue
+                    top, bottom = fact[4:-1].split(",", 1)
+                    if bottom != waste:
+                        continue
+                    top_cleared = any(
+                        current.startswith(f"in_bin({top},")
+                        or (
+                            current.startswith("holding(")
+                            and current.endswith(f",{top})")
+                        )
+                        for current in runtime.facts
+                    )
+                    if not top_cleared:
+                        return False
+                return True
+            if action_name.startswith("place_") and len(args) >= 2:
+                robot, waste = args[:2]
+                return runtime.has_fact(f"holding({robot},{waste})")
+            return True
+
+        return True
 
     def _update_true_state_from_execution(self, action: Action) -> None:
         action_name = action.name.split("(")[0]
@@ -332,6 +420,7 @@ class Environment:
             true_unripe = set()
             true_rotten = set()
             true_fresh = set()
+            at_stem = set()
             picked = set()
             loaded = set()
             discarded = set()
@@ -347,6 +436,8 @@ class Environment:
                     true_rotten.add(args[0])
                 elif predicate == "fresh":
                     true_fresh.add(args[0])
+                elif predicate == "at" and len(args) >= 2:
+                    at_stem.add(args[0])
                 elif predicate == "holding" and len(args) >= 2:
                     picked.add(args[1])
                 elif predicate == "holded":
@@ -358,6 +449,8 @@ class Environment:
                     loaded.add(args[0])
                     picked.add(args[0])
 
+            if picked & at_stem:
+                return "PLAN FAILURE"
             if picked & true_unripe:
                 return "PLAN FAILURE"
             if loaded & true_rotten:
@@ -418,6 +511,9 @@ class Environment:
             "step_count": self.step_count,
             "current_state_size": self.state.get_size(),
             "applicable_actions": applicable_actions,
+            "execution_applicable": getattr(
+                self, "last_execution_applicable", True
+            ),
         }
 
     def render(self) -> None:

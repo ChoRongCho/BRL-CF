@@ -28,19 +28,13 @@ class TransitionWastesorting:
         "place_plastic_bin",
     }
 
-    def __init__(self, type_map: Dict[str, List[str]]):
+    def __init__(self, type_map: Dict[str, List[str]], settings: Dict | None = None):
         self.type_map = type_map
-
-        # # original
-        # self.detect_observed_success_rate = 0.995
-        # self.detect_classification_success_rate = 0.50
-        # self.pick_success_rate = 0.98
-        # self.place_success_rate = 0.95
-        
-        self.detect_observed_success_rate = 0.90
-        self.detect_classification_success_rate = 0.50
-        self.pick_success_rate = 0.90
-        self.place_success_rate = 0.90
+        success = (settings or {}).get("success", {})
+        self.detect_observed_success_rate = float(success.get("detect_observed", 0.90))
+        self.detect_classification_success_rate = float(success.get("detect_classification", 0.50))
+        self.pick_success_rate = float(success.get("pick", 0.90))
+        self.place_success_rate = float(success.get("place", 0.90))
         
     
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:

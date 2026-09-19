@@ -29,7 +29,15 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         super().__init__(args=args, env=env, belief_manager=belief_manager)
         if not 0.5 <= answer_accuracy <= 1.0:
             raise ValueError("answer_accuracy must be in [0.5, 1.0]")
-        self.task_actions = list(env.actions)
+        static_predicates = {
+            declaration.split("(", 1)[0]
+            for declaration in env.obj_type
+            if "(" in declaration
+        }
+        self.task_actions = [
+            action for action in env.actions
+            if self._has_valid_static_binding(action, env.state, static_predicates)
+        ]
         self.query_actions = build_query_actions(
             env.domain_name,
             env.obj_type,
@@ -40,8 +48,17 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         self.answer_accuracy = float(answer_accuracy)
         self.failure_penalty = float(failure_penalty)
         self._applicable_action_cache.clear()
-        self.root_query_names: set[str] = set()
-        self.root_candidate_names: set[str] = set()
+        self.root_query_names = set()
+        self.root_candidate_names = set()
+
+    @staticmethod
+    def _has_valid_static_binding(action, state, static_predicates):
+        """Reject only groundings that violate immutable object-type facts."""
+        for precondition in action.preconditions:
+            predicate = precondition.split("(", 1)[0]
+            if predicate in static_predicates and not state.has_fact(precondition):
+                return False
+        return True
 
     def _sample_query_answer(self, state, action: QueryAction) -> bool:
         correct = state.has_fact(action.target_fact)
@@ -75,32 +92,31 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         return next_state, observation, reward, False
 
     def _root_candidates(self, belief):
-        task = [a for a in self.task_actions if a.is_applicable(belief.knowledge)]
-        queries = [
-            a for a in self.query_actions
-            if a.is_applicable(belief.knowledge)
-            and fact_is_ambiguous(belief.frontier, a.target_fact)
+        """Return applicable task actions and currently ambiguous questions."""
+        task = [
+            action for action in self.task_actions
+            if action.is_applicable(belief.knowledge)
         ]
-        self.root_query_names = {a.name for a in queries}
+        queries = [
+            action for action in self.query_actions
+            if action.is_applicable(belief.knowledge)
+            and fact_is_ambiguous(belief.frontier, action.target_fact)
+        ]
+        self.root_query_names = {action.name for action in queries}
         candidates = task + queries
-        self.root_candidate_names = {a.name for a in candidates}
+        self.root_candidate_names = {action.name for action in candidates}
         return candidates
 
     def _history_candidates(self, history):
-        """Return one shared action set for every particle at this history."""
+        """Build the shared action set represented by a history belief."""
         if history == self.tree.root_id:
             return [
                 action for action in self.actions
                 if action.name in self.root_candidate_names
             ]
-
         particles = self.tree.get_node(history).frontiers
         if not particles:
             return []
-
-        # A physical action is available at the information state if it is
-        # feasible in at least one remaining hypothesis.  Samples in which its
-        # hidden preconditions are false receive the terminal failure penalty.
         task = [
             action for action in self.task_actions
             if any(action.is_applicable(particle) for particle in particles)
@@ -171,9 +187,7 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         else:
             probabilities = np.array([], dtype=float)
 
-        # Make the complete root belief available before the first simulation,
-        # so root ambiguity and the common action set do not depend on whichever
-        # particle happens to be sampled first.
+        # Make the complete root belief available for diagnostics and sampling.
         root_node = self.tree.get_node(root)
         root_node.frontiers = [particle.copy() for particle in particles]
         if not root_node.frontiers:
@@ -194,7 +208,7 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         candidates = [
             (action, node_id)
             for action, node_id in self.tree.get_action_children(root)
-            if action.name in {item.name for item in root_candidates}
+            if self.tree.get_visit(node_id) > 0
         ]
         if not candidates:
             return None
@@ -215,12 +229,21 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, 0.0)
             return 0.0
-        self._ensure_action_children(history, candidates)
+
+        # A newly reached observation history must be initialized by rollout.
+        # Expanding its action children before this check makes ``is_leaf_node``
+        # permanently false and bypasses the rollout policy entirely.
         if self.tree.is_leaf_node(history):
+            self._ensure_action_children(history, candidates)
             value = self.rollout(state, depth)
             self.tree.increment_visit(history)
             self.tree.set_value_if_first(history, value)
             return value
+
+        # A history can later receive particles with additional applicable
+        # physical actions, so add any newly available children after the
+        # first-visit rollout.
+        self._ensure_action_children(history, candidates)
 
         action, action_node = self._select_candidate(
             history,
@@ -249,9 +272,15 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
     def rollout(self, state, depth):
         if self._should_stop(depth):
             return 0.0
-        # Query actions remain in the explicit search tree. Physical-only
-        # rollouts avoid long random chains of unrelated questions.
-        applicable = [a for a in self.task_actions if a.is_applicable(state)]
+        # Query actions are evaluated explicitly in the search tree.  During a
+        # rollout, continue the task with a physical action whose symbolic
+        # preconditions hold in the simulated state.  Sampling from the full
+        # grounded set here would spend most rollouts on impossible actions and
+        # make their failure penalties dominate the value estimate.
+        applicable = [
+            action for action in self.task_actions
+            if action.is_applicable(state)
+        ]
         if not applicable:
             return 0.0
         action = random.choice(applicable)

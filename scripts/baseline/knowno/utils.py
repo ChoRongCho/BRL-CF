@@ -1,16 +1,3 @@
-from __future__ import annotations
+"""이전 import 경로를 위한 호환 wrapper."""
 
-
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RESET = "\033[0m"
-
-
-def usage_total(usage) -> int:
-    if not usage:
-        return 0
-    return (
-        usage.get("total_tokens")
-        or usage.get("total_token_count")
-        or sum(value for key, value in usage.items() if key.endswith("tokens") and isinstance(value, int))
-    )
+from scripts.utils.utils import GREEN, RESET, YELLOW, usage_total

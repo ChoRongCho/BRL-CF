@@ -79,20 +79,20 @@ def main():
     rows = paired_rows(seed_path, domains, scenes, repetitions)
     for domain in domains:
         for scene in scenes:
-            for filename in (f'scene_{scene:02}.yaml', 'domain_rule.yaml', 'robot_skill.yaml'):
+            for filename in (f'scene_{scene:02}.yaml', 'domain_rule.yaml', 'robot_skill.yaml', 'env_setting.yaml'):
                 if not (ROOT / 'scripts/domain' / domain / filename).is_file():
                     raise ValueError(f'Missing domain file: {domain}/{filename}')
     configs = {}
     qhats = {'knowno': {'tomato': setting('KNOWNO_TOMATO_QHAT', '.8404'), 'wastesorting': setting('KNOWNO_WASTE_QHAT', '.8704')},
              'introplan': {'tomato': setting('INTROPLAN_TOMATO_QHAT', '.9809474992495626'), 'wastesorting': setting('INTROPLAN_WASTE_QHAT', '.9615342162270937')}}
-    query_defaults = dict(N_SIMULATIONS='100', MAX_DEPTH='20', GAMMA='.95', UCB_C='1.0', EPSILON='.005',
+    query_defaults = dict(N_SIMULATIONS='100', MAX_DEPTH='20', GAMMA='.2', UCB_C='1.0', EPSILON='.005',
                           MAX_PARTICLES='250', MAX_BELIEF_PARTICLES='8000', MAX_NODE_PARTICLES='8000',
-                          QUERY_COST='1.0', FAILURE_PENALTY='10.0', ANSWER_ACCURACY='1.0', MAX_CONSECUTIVE_QUERIES='30')
+                          QUERY_COST='1.0', FAILURE_PENALTY='10.0', ANSWER_ACCURACY='1.0')
     for baseline in baselines:
         config = {'MAX_STEPS': str(steps), 'MAX_STEP': str(steps)}
         if baseline == 'query_action_pomcp':
             config.update({k: setting(k, v) for k, v in query_defaults.items()})
-            integer_keys = ('N_SIMULATIONS', 'MAX_DEPTH', 'MAX_PARTICLES', 'MAX_BELIEF_PARTICLES', 'MAX_NODE_PARTICLES', 'MAX_CONSECUTIVE_QUERIES')
+            integer_keys = ('N_SIMULATIONS', 'MAX_DEPTH', 'MAX_PARTICLES', 'MAX_BELIEF_PARTICLES', 'MAX_NODE_PARTICLES')
             for k in integer_keys:
                 if int(config[k]) < 1: raise ValueError(f'{k} must be positive')
             for k in set(query_defaults) - set(integer_keys):
@@ -127,17 +127,27 @@ def main():
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(path), str(destination))
     seed_log = log_root / 'baseline_seed_logs' / f'iterate_baseline_{timestamp}.csv'
-    fields = ['global_index', 'baseline', 'domain', 'scene', 'iteration', 'seed', 'max_steps', 'prompt_version', 'qhat', 'temperature',
+    fields = ['global_index', 'baseline', 'domain', 'scene', 'iteration', 'seed', 'max_steps', 'env_setting', 'env_setting_sha256', 'prompt_version', 'qhat', 'temperature',
               'top_k', 'n_simulations', 'max_depth', 'query_cost', 'failure_penalty', 'answer_accuracy', 'expert', 'status', 'log_path']
     if not dry_run:
         seed_log.parent.mkdir(parents=True, exist_ok=True)
         with seed_log.open('w', newline='') as f: csv.writer(f).writerow(fields)
+        env_setting_hashes = {
+            domain: hashlib.sha256(
+                (ROOT / 'scripts/domain' / domain / 'env_setting.yaml').read_bytes()
+            ).hexdigest()
+            for domain in domains
+        }
         seed_log.with_suffix('.json').write_text(json.dumps(dict(configs=configs, qhats=qhats, baselines=baselines,
             domains=domains, scenes=scenes, repetitions=repetitions, paired_seed_log=str(seed_path),
-            paired_seed_sha256=hashlib.sha256(seed_path.read_bytes()).hexdigest()), indent=2))
+            paired_seed_sha256=hashlib.sha256(seed_path.read_bytes()).hexdigest(),
+            env_setting_sha256=env_setting_hashes), indent=2))
     failed = skipped = 0
     for index, (baseline, domain, scene, iteration, seed) in enumerate(plans, 1):
         config = dict(configs[baseline])
+        env_setting = ROOT / 'scripts/domain' / domain / 'env_setting.yaml'
+        config['ENV_SETTING'] = str(env_setting)
+        config['env_setting_sha256'] = hashlib.sha256(env_setting.read_bytes()).hexdigest()
         if baseline in qhats: config['QHAT'] = qhats[baseline][domain]
         fingerprint = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
         log_dir = episode_dir(baseline, domain, scene)
@@ -175,6 +185,7 @@ def main():
             else: status = 'failed'; failed += 1
         with seed_log.open('a', newline='') as f:
             csv.writer(f).writerow([index, baseline, domain, f'{scene:02}', iteration, seed, steps,
+                config['ENV_SETTING'], config['env_setting_sha256'],
                 config.get('PROMPT_VERSION',''), config.get('QHAT',''), config.get('SCORE_TEMPERATURE',''), config.get('TOP_K',''),
                 config.get('N_SIMULATIONS',''), config.get('MAX_DEPTH',''), config.get('QUERY_COST',''),
                 config.get('FAILURE_PENALTY',''), config.get('ANSWER_ACCURACY',''), 'exact_oracle', status, str(log_path)])

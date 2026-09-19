@@ -20,25 +20,16 @@ class TransitionTomato:
     }
     ACTION_STREAK_LIMIT = 3
 
-    def __init__(self, type_map: Dict[str, List[str]]):
+    def __init__(self, type_map: Dict[str, List[str]], settings: Dict | None = None):
         self.type_map = type_map
-
-        # original test
-        self.navigate_success_rate = 0.99
-        self.prepare_nav_success_rate = 1.0
-        self.detect_success_rate = 0.95
-        self.pick_success_rate = 0.95
-        self.scan_success_rate = 0.90
-        self.place_success_rate = 0.99
-        self.discard_success_rate = 0.99
-        
-        # self.navigate_success_rate = 0.85
-        # self.prepare_nav_success_rate = 1.0
-        # self.detect_success_rate = 0.85
-        # self.pick_success_rate = 0.85
-        # self.scan_success_rate = 0.85
-        # self.place_success_rate = 0.85
-        # self.discard_success_rate = 0.85
+        success = (settings or {}).get("success", {})
+        self.navigate_success_rate = float(success.get("navigate", 0.99))
+        self.prepare_nav_success_rate = float(success.get("prepare_nav", 1.0))
+        self.detect_success_rate = float(success.get("detect", 0.95))
+        self.pick_success_rate = float(success.get("pick", 0.95))
+        self.scan_success_rate = float(success.get("scan", 0.90))
+        self.place_success_rate = float(success.get("place", 0.99))
+        self.discard_success_rate = float(success.get("discard", 0.99))
 
 
     def _expand_free_variables_in_fact(self, fact: str) -> List[str]:

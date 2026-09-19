@@ -128,8 +128,7 @@ def _type_fact(obj_type, symbol: str, value: str) -> str:
 
 
 def fact_is_ambiguous(states: Sequence[State], fact: str) -> bool:
+    """Return whether both truth values remain possible in the belief."""
     if len(states) < 2:
         return False
-    values = {state.has_fact(fact) for state in states}
-    return len(values) == 2
-
+    return len({state.has_fact(fact) for state in states}) == 2

@@ -1,0 +1,50 @@
+version: 1
+domain: tomato
+
+# Physical action outcomes P(s' | s, a).
+transition:
+  success:
+    navigate: 0.99
+    prepare_nav: 1.0
+    detect: 0.95
+    pick: 0.95
+    scan: 0.90
+    place: 0.99
+    discard: 0.99
+
+# Sensor outcomes P(o | s, a). Baselines should read this same section rather
+# than defining their own detect/scan accuracy.
+observation:
+  source: true_init
+  default_success: 0.95
+
+  detect:
+    sampling_reference: hidden_true_state
+    likelihood_reference: candidate_belief_state
+    sampling_success_range: [0.85, 0.95]
+    likelihood_success: 0.90
+    classification_success: 0.95
+    false_positive: 0.03
+    true_detection_confidence_range: [0.85, 0.95]
+    false_detection_confidence_range: [0.60, 0.70]
+    labels: [ripe, unripe]
+    rotten_visual_label: ripe
+    false_positive_label_source: hidden_true_label
+    confidence_used_in_likelihood: false
+    exclude_removed_tomatoes: true
+    joint_distribution: independent_cartesian
+    normalize_joint_distribution: true
+
+  scan:
+    sampling_reference: hidden_true_state
+    likelihood_reference: candidate_belief_state
+    success: 0.85
+    labels: [fresh, rotten]
+    pick_n_scan_uses_scan_model: true
+
+  navigate:
+    success: 0.95
+    failure_distribution: uniform_wrong_locations_and_empty
+
+  place:
+    success: 1.0

@@ -27,6 +27,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--domain", choices=["tomato", "wastesorting", "waste"], required=True)
     parser.add_argument("--scene", default="01", help="Scene number such as 01, 1, 02, ..., 05.")
     parser.add_argument("--settings", default=str(PROJECT_ROOT / "llm_setting.json"))
+    parser.add_argument("--env-setting", default="", help="Shared environment setting yaml; defaults by domain.")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
     parser.add_argument("--qhat", type=float, default=None)
@@ -200,6 +201,7 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
         append_optional(scene_args, "--occlusions", waste_occlusions_for_scene(scene))
 
     cmd = [sys.executable, str(planner), "--settings", args.settings]
+    append_optional(cmd, "--env-setting", args.env_setting or DOMAIN_DIR / domain / "env_setting.yaml")
     append_optional(cmd, "--api-key", args.api_key)
     append_optional(cmd, "--prompt-version", args.prompt_version)
     append_optional(cmd, "--qhat", args.qhat)
@@ -209,13 +211,13 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     append_optional(cmd, "--log-file", args.log_file or default_log_file(domain, scene, args.settings))
     append_optional(cmd, "--detect-success-prob", args.detect_success_prob)
     append_optional(cmd, "--detect-label-error-prob", args.detect_label_error_prob)
+    append_optional(cmd, "--pick-failure-prob", args.pick_failure_prob)
+    append_optional(cmd, "--place-failure-prob", args.place_failure_prob)
 
     if domain == "tomato":
         append_optional(cmd, "--scan-success-prob", args.scan_success_prob)
         append_optional(cmd, "--scan-label-error-prob", args.scan_label_error_prob)
         append_optional(cmd, "--navigate-failure-prob", args.navigate_failure_prob)
-        append_optional(cmd, "--pick-failure-prob", args.pick_failure_prob)
-        append_optional(cmd, "--place-failure-prob", args.place_failure_prob)
         append_optional(cmd, "--discard-failure-prob", args.discard_failure_prob)
 
     if args.verbose:

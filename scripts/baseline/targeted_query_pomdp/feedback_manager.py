@@ -403,6 +403,9 @@ class FeedbackManger:
             if action_schema == "detect_waste" and target_predicate == "detected":
                 return target_fact in observation_set
 
+            if target_predicate == "detected":
+                return target_fact in current_state_set
+
             if (
                 action_schema == "detect_waste"
                 and target_predicate in {"can", "paper", "general", "plastic"}

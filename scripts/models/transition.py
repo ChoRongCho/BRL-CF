@@ -29,13 +29,15 @@ class TransitionModel:
     def __init__(self, domain: str, 
                  actions: List[Action], 
                  obj_type: Dict[str, List[str]], 
-                 true_state: State):
+                 true_state: State,
+                 settings: Dict | None = None):
         """
         """
         self.domain = domain
         self.actions = actions
         self.obj_type = obj_type
         self.true_state = true_state
+        self.settings = settings or {}
 
         self.type_map = self._build_type_map()
         self.trans_model = None
@@ -93,7 +95,7 @@ class TransitionModel:
 
             if self.domain == "tomato":
                 from models.tomato.trans import TransitionTomato
-                self.trans_model = TransitionTomato(type_map=self.type_map)
+                self.trans_model = TransitionTomato(type_map=self.type_map, settings=self.settings)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "blocksworld":
                 from models.blocksworld.trans import TransitionBlocksworld
@@ -101,7 +103,7 @@ class TransitionModel:
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             elif self.domain == "wastesorting":
                 from models.wastesorting.trans import TransitionWastesorting
-                self.trans_model = TransitionWastesorting(type_map=self.type_map)
+                self.trans_model = TransitionWastesorting(type_map=self.type_map, settings=self.settings)
                 self.transition_table[a.name] = self.trans_model.build_outcomes(a_name, a)
             else:
                 raise ValueError("Domain is wrong")

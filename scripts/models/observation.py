@@ -40,12 +40,14 @@ class ObservationModel:
         obj_type: Dict[str, List[str]],
         noise: float = 0.15,
         true_state: State | None = None,
+        settings: Dict | None = None,
     ):
         self.domain = domain
         self.noise = noise
         self.obj_type = obj_type
         self.actions = actions
         self.true_state = true_state
+        self.settings = settings or {}
 
         self.type_map = self._build_type_map()
         self.domain_model = self._build_domain_model()
@@ -70,7 +72,7 @@ class ObservationModel:
     def _build_domain_model(self):
         if self.domain == "tomato":
             from models.tomato.obs import ObservationTomato
-            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationTomato(type_map=self.type_map, noise=self.noise, true_state=self.true_state, settings=self.settings)
 
         elif self.domain == "blocksworld":
             from models.blocksworld.obs import ObservationBlocksworld
@@ -78,7 +80,7 @@ class ObservationModel:
 
         elif self.domain == "wastesorting":
             from models.wastesorting.obs import ObservationWastesorting
-            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state)
+            return ObservationWastesorting(type_map=self.type_map, noise=self.noise, true_state=self.true_state, settings=self.settings)
 
         else:
             raise ValueError(f"Unknown domain: {self.domain}")

@@ -99,6 +99,7 @@ def apply_ablation_feedback(
     step,
     action,
     oracle_prior_state,
+    oracle_successor_facts=None,
     observation_facts,
 ):
     """Run one action's query episode using the existing domain Oracle."""
@@ -111,10 +112,9 @@ def apply_ablation_feedback(
         when_rng,
     )
 
-    # The existing Oracle samples exactly one virtual transition outcome for an
-    # executed non-perception action. Every question for this action shares it.
-    oracle_successor_facts = None
-    if not feedback_manager.is_human_answer:
+    # Use the outcome actually executed by the environment. Retain a fallback
+    # for standalone callers that do not provide it.
+    if not feedback_manager.is_human_answer and oracle_successor_facts is None:
         oracle_successor_facts = feedback_manager._sample_oracle_successor_facts(
             action=action,
             prior_state=oracle_prior_state,
@@ -134,7 +134,7 @@ def apply_ablation_feedback(
             target_fact,
             action.name,
             observation_facts=observation_facts,
-            oracle_state_facts=belief.knowledge.facts,
+            oracle_state_facts=oracle_successor_facts,
             oracle_successor_facts=oracle_successor_facts,
         )
         feedback_manager.num_of_query += 1
@@ -292,6 +292,7 @@ def main():
             step=step,
             action=action,
             oracle_prior_state=oracle_prior_state,
+            oracle_successor_facts=env.true_state.facts,
             observation_facts=observation.state.facts,
         )
         interaction_elapsed = time() - interaction_start

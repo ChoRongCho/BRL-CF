@@ -1,0 +1,42 @@
+version: 1
+domain: wastesorting
+
+# Physical action outcomes P(s' | s, a).
+transition:
+  success:
+    detect_observed: 0.90
+    detect_classification: 0.50
+    pick: 0.90
+    place: 0.90
+
+# Sensor outcomes P(o | s, a).
+observation:
+  source: true_init
+  default_success: 0.95
+
+  detect:
+    sampling_reference: hidden_true_state
+    likelihood_reference: candidate_belief_state
+    sampling_success_range: [0.94, 1.0]
+    likelihood_success: 0.97
+    classification_success: 0.85
+    false_positive: 0.03
+    # Sampling omits unavailable/occluded objects entirely. The false-positive
+    # term is used only while scoring a supplied observation against a belief.
+    sampling_excludes_nondetectable_waste: true
+    likelihood_allows_false_positive: true
+    confidence_used_in_likelihood: false
+    true_detection_confidence_range: [0.85, 0.95]
+    false_detection_confidence_range: [0.60, 0.70]
+    labels: [plastic, can, paper, general]
+    wrong_label_distribution: uniform
+    exclude_held_or_binned_waste: true
+    respect_occlusion: true
+    joint_distribution: independent_cartesian
+    normalize_joint_distribution: true
+
+  pick:
+    success: 0.95
+
+  place:
+    success: 0.95

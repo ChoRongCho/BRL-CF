@@ -10,7 +10,7 @@ SEED="${SEED:-random}"
 MAX_STEP="${MAX_STEP:-50}"
 N_SIMULATIONS="${N_SIMULATIONS:-100}"
 MAX_DEPTH="${MAX_DEPTH:-20}"
-GAMMA="${GAMMA:-0.95}"
+GAMMA="${GAMMA:-0.2}"
 UCB_C="${UCB_C:-1.0}"
 EPSILON="${EPSILON:-0.005}"
 MAX_PARTICLES="${MAX_PARTICLES:-250}"
@@ -19,7 +19,6 @@ MAX_NODE_PARTICLES="${MAX_NODE_PARTICLES:-8000}"
 QUERY_COST="${QUERY_COST:-1.0}"
 FAILURE_PENALTY="${FAILURE_PENALTY:-10.0}"
 ANSWER_ACCURACY="${ANSWER_ACCURACY:-1.0}"
-MAX_CONSECUTIVE_QUERIES="${MAX_CONSECUTIVE_QUERIES:-30}"
 LOG_ROOT="${LOG_ROOT:-experiments_logs/system_log}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +32,7 @@ fi
 initial_state="scripts/domain/${DOMAIN}/scene_${scene_id}.yaml"
 domain_rule="scripts/domain/${DOMAIN}/domain_rule.yaml"
 robot_skill="scripts/domain/${DOMAIN}/robot_skill.yaml"
+env_setting="${ENV_SETTING:-scripts/domain/${DOMAIN}/env_setting.yaml}"
 log_dir="${LOG_ROOT}/${DOMAIN}/scene_${scene_id}_step${MAX_STEP}/query_as_action"
 
 cd "$PROJECT_ROOT"
@@ -41,6 +41,7 @@ python3 scripts/baseline/targeted_query_pomdp/run_experiment.py \
     --domain_rule "$domain_rule" \
     --initial_state "$initial_state" \
     --robot_skill "$robot_skill" \
+    --env-setting "$env_setting" \
     --answer_type auto \
     --seed "$SEED" \
     --max_step "$MAX_STEP" \
@@ -55,5 +56,4 @@ python3 scripts/baseline/targeted_query_pomdp/run_experiment.py \
     --log_dir "$log_dir" \
     --query-cost "$QUERY_COST" \
     --failure-penalty "$FAILURE_PENALTY" \
-    --answer-accuracy "$ANSWER_ACCURACY" \
-    --max-consecutive-queries "$MAX_CONSECUTIVE_QUERIES"
+    --answer-accuracy "$ANSWER_ACCURACY"

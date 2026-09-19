@@ -9,6 +9,7 @@ from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
 from models.action import Action
 from models.observation import Observation, ObservationOutcome
+from shared.env_setting import probability_range
 
 
 Choice = Dict
@@ -29,24 +30,48 @@ class ObservationWastesorting:
         noise: float = 0.05,
         true_state: State | None = None,
         observation_source: str = "true_init",
+        settings: Dict | None = None,
     ):
+        settings = settings or {}
+        detect = settings.get("detect", {})
         self.type_map = type_map
         self.noise = noise
         self.true_state = true_state
-        self.observation_source = observation_source
-        self.use_true_init_observation = observation_source == "true_init"
-
-        # # original
-        # self.detect_observed_success_rate = 0.9
-        # self.detect_classification_success_rate = 0.8
-        # self.pick_observation_success_rate = 0.98
-        # self.place_observation_success_rate = 0.98
-        
-        self.detect_observed_success_rate = 0.97
-        self.detect_classification_success_rate = 0.85
-        self.pick_observation_success_rate = 0.95
-        self.place_observation_success_rate = 0.95
-        self.false_positive_rate = 0.03
+        self.observation_source = settings.get("source", observation_source)
+        self.use_true_init_observation = self.observation_source == "true_init"
+        self.detect_sampling_success_range = probability_range(
+            detect.get("sampling_success_range", [0.94, 1.0]),
+            "observation.detect.sampling_success_range",
+        )
+        self.detect_observed_success_rate = float(detect.get("likelihood_success", 0.97))
+        self.detect_classification_success_rate = float(detect.get("classification_success", 0.85))
+        self.pick_observation_success_rate = float(settings.get("pick", {}).get("success", 0.95))
+        self.place_observation_success_rate = float(settings.get("place", {}).get("success", 0.95))
+        self.false_positive_rate = float(detect.get("false_positive", 0.03))
+        self.true_detection_confidence_range = probability_range(
+            detect.get("true_detection_confidence_range", [0.85, 0.95]),
+            "observation.detect.true_detection_confidence_range",
+        )
+        self.false_detection_confidence_range = probability_range(
+            detect.get("false_detection_confidence_range", [0.60, 0.70]),
+            "observation.detect.false_detection_confidence_range",
+        )
+        self.exclude_held_or_binned_waste = bool(detect.get("exclude_held_or_binned_waste", True))
+        self.respect_occlusion = bool(detect.get("respect_occlusion", True))
+        self.sampling_excludes_nondetectable_waste = bool(
+            detect.get("sampling_excludes_nondetectable_waste", True)
+        )
+        self.likelihood_allows_false_positive = bool(
+            detect.get("likelihood_allows_false_positive", True)
+        )
+        self.joint_distribution = detect.get("joint_distribution", "independent_cartesian")
+        self.normalize_joint_distribution = bool(detect.get("normalize_joint_distribution", True))
+        if detect.get("wrong_label_distribution", "uniform") != "uniform":
+            raise ValueError("Only uniform wrong-label distribution is supported")
+        if self.joint_distribution != "independent_cartesian":
+            raise ValueError(f"Unsupported waste detect joint_distribution: {self.joint_distribution}")
+        if not self.sampling_excludes_nondetectable_waste:
+            raise ValueError("Waste detect sampling currently requires nondetectable objects to be excluded")
 
         if self.use_true_init_observation and self.true_state is None:
             raise ValueError("observation_source=true_init requires initial_state.yaml true_init")
@@ -91,8 +116,11 @@ class ObservationWastesorting:
         p_miss = 1.0 - p_detect
         p_correct = self.detect_classification_success_rate
         p_wrong = (1.0 - p_correct) / (len(category_predicates) - 1)
-        p_false_category = self.false_positive_rate / len(category_predicates)
-        p_no_false_positive = 1.0 - self.false_positive_rate
+        likelihood_false_positive = (
+            self.false_positive_rate if self.likelihood_allows_false_positive else 0.0
+        )
+        p_false_category = likelihood_false_positive / len(category_predicates)
+        p_no_false_positive = 1.0 - likelihood_false_positive
         likelihood = 1.0
 
         for waste in self._detectable_wastes_from_action(action):
@@ -235,9 +263,9 @@ class ObservationWastesorting:
         return False
 
     def _has_detectable_waste(self, runtime_state: State, gt_state: State, waste: str) -> bool:
-        if self._waste_is_unavailable(runtime_state, waste):
+        if self.exclude_held_or_binned_waste and self._waste_is_unavailable(runtime_state, waste):
             return False
-        if self._waste_is_occluded(runtime_state, gt_state, waste):
+        if self.respect_occlusion and self._waste_is_occluded(runtime_state, gt_state, waste):
             return False
         if self.use_true_init_observation:
             return self._category_label_for_state(gt_state, waste) is not None
@@ -283,13 +311,13 @@ class ObservationWastesorting:
         sample_dynamic: bool = False,
     ) -> List[Choice]:
         p_detect = (
-            random.uniform(0.94, 1.0)
+            random.uniform(*self.detect_sampling_success_range)
             if sample_dynamic
             else self.detect_observed_success_rate
         )
         p_miss = 1.0 - p_detect
         true_positive_confidence = (
-            random.uniform(0.85, 0.95) if sample_dynamic else None
+            random.uniform(*self.true_detection_confidence_range) if sample_dynamic else None
         )
         p_correct_class = self.detect_classification_success_rate
         labels = [f"{pred}({waste})" for pred in category_predicates]
@@ -321,7 +349,7 @@ class ObservationWastesorting:
                     (
                         {
                             waste: {
-                                "detection_confidence": random.uniform(0.60, 0.70)
+                                "detection_confidence": random.uniform(*self.false_detection_confidence_range)
                             }
                         }
                         if sample_dynamic
@@ -332,8 +360,7 @@ class ObservationWastesorting:
             ]
         )
 
-    @staticmethod
-    def _merge_detect_choices(per_waste_choices: List[List[Choice]]) -> List[ObservationOutcome]:
+    def _merge_detect_choices(self, per_waste_choices: List[List[Choice]]) -> List[ObservationOutcome]:
         outcome_map = {}
 
         for combo in product(*per_waste_choices):
@@ -372,7 +399,7 @@ class ObservationWastesorting:
                     }
                     for obj in {item[0] for item in fluent_key}
                 },
-                probability=probability / total,
+                probability=(probability / total if self.normalize_joint_distribution else probability),
             )
             for (facts_key, fluent_key), probability in outcome_map.items()
         ]

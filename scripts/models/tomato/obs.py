@@ -12,6 +12,7 @@ from utils.utils import _dedup_facts, _parse_fact, _format_fact
 from models.state import State
 from models.action import Action
 from models.observation import Observation, ObservationOutcome
+from shared.env_setting import probability_range
 
 
 Choice = Dict
@@ -41,18 +42,54 @@ class ObservationTomato:
         noise: float = 0.1,
         true_state: State | None = None,
         observation_source: str = "true_init",
+        settings: Dict | None = None,
     ):
+        settings = settings or {}
+        detect = settings.get("detect", {})
+        scan = settings.get("scan", {})
+        navigate = settings.get("navigate", {})
+        place = settings.get("place", {})
         self.type_map = type_map
         self.noise = noise
         self.true_state = true_state
-        self.observation_source = observation_source
-        self.use_true_init_observation = observation_source == "true_init"
+        self.observation_source = settings.get("source", observation_source)
+        self.use_true_init_observation = self.observation_source == "true_init"
+        self.detect_sampling_success_range = probability_range(
+            detect.get("sampling_success_range", [0.85, 0.95]),
+            "observation.detect.sampling_success_range",
+        )
+        self.detect_observed_success_rate = float(detect.get("likelihood_success", 0.90))
+        self.detect_classification_success_rate = float(detect.get("classification_success", 0.95))
+        self.false_positive_rate = float(detect.get("false_positive", 0.03))
+        self.true_detection_confidence_range = probability_range(
+            detect.get("true_detection_confidence_range", [0.85, 0.95]),
+            "observation.detect.true_detection_confidence_range",
+        )
+        self.false_detection_confidence_range = probability_range(
+            detect.get("false_detection_confidence_range", [0.60, 0.70]),
+            "observation.detect.false_detection_confidence_range",
+        )
+        self.rotten_visual_label = detect.get("rotten_visual_label", "ripe")
+        self.exclude_removed_tomatoes = bool(detect.get("exclude_removed_tomatoes", True))
+        self.joint_distribution = detect.get("joint_distribution", "independent_cartesian")
+        self.normalize_joint_distribution = bool(detect.get("normalize_joint_distribution", True))
+        self.scan_success_rate = float(scan.get("success", 0.85))
+        self.pick_n_scan_uses_scan_model = bool(scan.get("pick_n_scan_uses_scan_model", True))
+        self.navigate_success_rate = float(navigate.get("success", 0.95))
+        self.navigate_failure_distribution = navigate.get(
+            "failure_distribution", "uniform_wrong_locations_and_empty"
+        )
+        self.place_observation_success_rate = float(place.get("success", 1.0))
 
-        self.detect_observed_success_rate = 0.85
-        self.detect_classification_success_rate = 0.95
-        self.scan_success_rate = 0.85
-        self.navigate_success_rate = 0.95
-        self.false_positive_rate = 0.03
+        if self.joint_distribution != "independent_cartesian":
+            raise ValueError(f"Unsupported tomato detect joint_distribution: {self.joint_distribution}")
+        if self.navigate_failure_distribution != "uniform_wrong_locations_and_empty":
+            raise ValueError(
+                "Unsupported tomato navigate failure_distribution: "
+                f"{self.navigate_failure_distribution}"
+            )
+        if not self.pick_n_scan_uses_scan_model:
+            raise ValueError("Tomato pick_n_scan currently requires the scan observation model")
 
         if self.use_true_init_observation and self.true_state is None:
             raise ValueError("observation_source=true_init requires initial_state.yaml true_init")
@@ -92,7 +129,9 @@ class ObservationTomato:
             return self._build_navigate_distribution(state, action)
 
         if action_name == "place":
-            return self._build_certain_candidate_distribution(state, action)
+            return self._build_default_distribution_with_success(
+                state, action, self.place_observation_success_rate
+            )
         
         else:
             return self._build_default_distribution(state, action)
@@ -198,8 +237,7 @@ class ObservationTomato:
             return self.true_state
         return state
 
-    @staticmethod
-    def _ripeness_label_for_state(state: State, tomato: str, *, detect_mode: bool = False) -> str | None:
+    def _ripeness_label_for_state(self, state: State, tomato: str, *, detect_mode: bool = False) -> str | None:
         """
         Return the tomato ripeness label in a state.
 
@@ -209,7 +247,9 @@ class ObservationTomato:
         if state.has_fact(f"unripe({tomato})"):
             return f"unripe({tomato})"
         if state.has_fact(f"rotten({tomato})"):
-            return f"ripe({tomato})" if detect_mode else f"rotten({tomato})"
+            if detect_mode:
+                return f"{self.rotten_visual_label}({tomato})"
+            return f"rotten({tomato})"
         if state.has_fact(f"ripe({tomato})"):
             return f"ripe({tomato})"
         return None
@@ -257,7 +297,9 @@ class ObservationTomato:
         if self.use_true_init_observation:
             if not gt_state.has_fact(at_fact):
                 return False
-            return not self._tomato_is_no_longer_at_stem(runtime_state, tomato)
+            if self.exclude_removed_tomatoes:
+                return not self._tomato_is_no_longer_at_stem(runtime_state, tomato)
+            return True
 
         return runtime_state.has_fact(observed_fact) and runtime_state.has_fact(at_fact)
 
@@ -270,6 +312,11 @@ class ObservationTomato:
         return [ObservationOutcome(facts=true_facts, probability=1.0)]
 
     def _build_default_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
+        return self._build_default_distribution_with_success(state, action, 1.0 - self.noise)
+
+    def _build_default_distribution_with_success(
+        self, state: State, action: Action, success_rate: float
+    ) -> List[ObservationOutcome]:
         candidates = self.build_candidates(action)
         true_facts = [fact for fact in candidates if state.has_fact(fact)]
 
@@ -277,8 +324,8 @@ class ObservationTomato:
             return [ObservationOutcome(facts=[], probability=1.0)]
 
         return [
-            ObservationOutcome(facts=true_facts, probability=1.0 - self.noise),
-            ObservationOutcome(facts=[], probability=self.noise),
+            ObservationOutcome(facts=true_facts, probability=success_rate),
+            ObservationOutcome(facts=[], probability=1.0 - success_rate),
         ]
 
     def _build_navigate_distribution(self, state: State, action: Action) -> List[ObservationOutcome]:
@@ -445,17 +492,17 @@ class ObservationTomato:
 
         if exists_at_target:
             p_detect = (
-                random.uniform(0.85, 0.95)
+                random.uniform(*self.detect_sampling_success_range)
                 if sample_dynamic
-                else 0.90
+                else self.detect_observed_success_rate
             )
             detection_confidence = (
-                random.uniform(0.85, 0.95) if sample_dynamic else None
+                random.uniform(*self.true_detection_confidence_range) if sample_dynamic else None
             )
         else:
             p_detect = self.false_positive_rate
             detection_confidence = (
-                random.uniform(0.60, 0.70) if sample_dynamic else None
+                random.uniform(*self.false_detection_confidence_range) if sample_dynamic else None
             )
         p_miss = 1.0 - p_detect
 
@@ -500,8 +547,7 @@ class ObservationTomato:
             self._detect_choice(observed_unripe, unripe_prob, fluents),
         ]
 
-    @staticmethod
-    def _merge_detect_choices(per_tomato_choices: List[List[Choice]]) -> List[ObservationOutcome]:
+    def _merge_detect_choices(self, per_tomato_choices: List[List[Choice]]) -> List[ObservationOutcome]:
         """
         Cartesian-compose local tomato choices into global outcomes.
 
@@ -546,7 +592,11 @@ class ObservationTomato:
                 ObservationOutcome(
                     facts=list(facts_key),
                     fluents=fluents,
-                    probability=probability / total,
+                    probability=(
+                        probability / total
+                        if self.normalize_joint_distribution
+                        else probability
+                    ),
                 )
             )
 

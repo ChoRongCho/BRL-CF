@@ -17,7 +17,6 @@ N_SIMULATIONS="100"
 MAX_DEPTH="20"
 QUERY_COST="1.0"
 ANSWER_ACCURACY="1.0"
-MAX_CONSECUTIVE_QUERIES="30"
 LOG_ROOT="experiments_logs/system_log"
 ARCHIVE_EXISTING="true"
 PAIRED_SEED_LOG="experiments_logs/system_log/when_what_seed_logs/iterate_when_what_20260912_150132.csv"
@@ -90,7 +89,6 @@ while IFS=, read -r domain condition scene iteration seed threshold random_query
     MAX_DEPTH="$MAX_DEPTH" \
     QUERY_COST="$QUERY_COST" \
     ANSWER_ACCURACY="$ANSWER_ACCURACY" \
-    MAX_CONSECUTIVE_QUERIES="$MAX_CONSECUTIVE_QUERIES" \
     LOG_ROOT="$LOG_ROOT" \
         "$SCRIPT_DIR/run.sh" >/dev/null
     printf "\rProgress: %3d%%" "$((current * 100 / total))"

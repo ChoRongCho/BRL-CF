@@ -23,18 +23,8 @@ AUTO_ANSWER="${AUTO_ANSWER:-true}"
 
 if [[ "${DOMAIN}" == "tomato" ]]; then
   QHAT="${QHAT:-0.8404}"
-  DETECT_SUCCESS_PROB="0.85"
-  DETECT_LABEL_ERROR_PROB="0.05"
-  SCAN_SUCCESS_PROB="0.9"
-  SCAN_LABEL_ERROR_PROB="0.15"
-  NAVIGATE_FAILURE_PROB="0.05"
-  PICK_FAILURE_PROB="0.05"
-  PLACE_FAILURE_PROB="0.01"
-  DISCARD_FAILURE_PROB="0.01"
 elif [[ "${DOMAIN}" == "wastesorting" || "${DOMAIN}" == "waste" ]]; then
   QHAT="${QHAT:-0.8704}"
-  DETECT_SUCCESS_PROB="0.9"
-  DETECT_LABEL_ERROR_PROB="0.2"
 else
   echo "Unsupported DOMAIN: ${DOMAIN}. Use tomato or wastesorting." >&2
   exit 1
@@ -43,6 +33,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BASELINE_DIR="${PROJECT_ROOT}/scripts/baseline/knowno"
+NORMALIZED_DOMAIN="${DOMAIN}"
+[[ "${NORMALIZED_DOMAIN}" != "waste" ]] || NORMALIZED_DOMAIN="wastesorting"
+ENV_SETTING="${ENV_SETTING:-${PROJECT_ROOT}/scripts/domain/${NORMALIZED_DOMAIN}/env_setting.yaml}"
 
 if [[ -z "${SEED}" ]]; then
   SEED="$(( ( $(date +%s%N) + RANDOM ) % 4294967295 ))"
@@ -51,24 +44,14 @@ fi
 CMD=(
   python3 "${BASELINE_DIR}/knowno_baseline_experiment.py"
   --domain "${DOMAIN}"
+  --env-setting "${ENV_SETTING}"
   --scene "${SCENE}"
   --prompt-version "${PROMPT_VERSION}"
   --qhat "${QHAT}"
   --temperature "${SCORE_TEMPERATURE}"
   --max-steps "${MAX_STEPS}"
   --seed "${SEED}"
-  --detect-success-prob "${DETECT_SUCCESS_PROB}"
-  --detect-label-error-prob "${DETECT_LABEL_ERROR_PROB}"
 )
-
-if [[ "${DOMAIN}" == "tomato" ]]; then
-  CMD+=(--scan-success-prob "${SCAN_SUCCESS_PROB}")
-  CMD+=(--scan-label-error-prob "${SCAN_LABEL_ERROR_PROB}")
-  CMD+=(--navigate-failure-prob "${NAVIGATE_FAILURE_PROB}")
-  CMD+=(--pick-failure-prob "${PICK_FAILURE_PROB}")
-  CMD+=(--place-failure-prob "${PLACE_FAILURE_PROB}")
-  CMD+=(--discard-failure-prob "${DISCARD_FAILURE_PROB}")
-fi
 
 if [[ "${VERBOSE}" == "true" ]]; then
   CMD+=(--verbose)
