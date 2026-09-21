@@ -39,17 +39,24 @@ def logger_exp(result: Dict[str, Any], log_dir: str | Path = "experiments_logs/s
     for key in sorted(meta):
         lines.append(f"{key}: {meta[key]}")
 
-    lines.extend([
+    plan_summary = [
         "",
         "[Plan Summary]",
         f"success: {result.get('success')}",
         f"end_reason: {result.get('end_reason')}",
         f"steps: {result.get('steps')}",
+    ]
+    if "physical_steps" in result:
+        plan_summary.append(f"physical_steps: {result.get('physical_steps')}")
+    if "total_actions" in result:
+        plan_summary.append(f"total_actions: {result.get('total_actions')}")
+    plan_summary.extend([
         f"cumulated_reward: {reward.get('cumulated', 0.0)}",
         f"total_questions: {result.get('total_questions', 0)}",
         "",
         "[Timing]",
     ])
+    lines.extend(plan_summary)
     for key in ("search_time", "execute_time", "update_time", "interaction_time", "pruning_time", "step_total_time"):
         value = timing.get(key, {})
         lines.append(

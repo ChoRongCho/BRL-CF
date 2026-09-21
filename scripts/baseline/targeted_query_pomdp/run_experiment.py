@@ -22,6 +22,12 @@ Pseudo code::
 
        if action이 QueryAction이면:
            a. 질문 action에 지정된 target fact의 참/거짓을 oracle에 묻는다.
+                1. 도메인별 질문 종류를 코드에 미리 정의.
+                2. 현재 scene의 모든 객체를 넣어 Boolean QueryAction을 전부 생성.
+                3. 현재 belief의 후보 state 사이에서 참·거짓이 갈리는 질문만 남기기.
+                4. 물리 행동과 남은 질문 행동을 하나의 POMCP action space에 넣가.
+                5. POMCP가 추정한 누적 보상 Q-value가 가장 높은 action을 고르기.
+                6. 선택된 action이 QueryAction이면 그 action에 미리 연결된 target_fact를 oracle에게 질의.
            b. answer_accuracy에 따라 oracle 답변 또는 반대 답변을 사용한다.
            c. 답변과 일치하는 belief particle만 남기고 확률을 정규화한다.
            d. posterior의 MAP state를 다음 planning의 symbolic knowledge로 쓴다.
@@ -36,8 +42,9 @@ Pseudo code::
            e. 물리 step, 실행 시간, observation을 기록한다.
 
        env.check_done(belief)가 GOAL DONE 또는 PLAN FAILURE를 반환하거나,
-       물리 행동과 QueryAction을 합친 전체 action 수가 max_step에 도달하면
-       episode를 종료한다.
+       물리 행동과 QueryAction을 합친 전체 decision 수가 max_step에 도달하면
+       episode를 종료한다. 결과의 plan length(`steps`)에는 물리 행동만
+       기록하고, 전체 decision 수는 `total_actions`에 별도로 기록한다.
 
     4. 성공 여부, 종료 이유, 물리 행동 수, 질문 수, 누적 reward, timing,
        전체 decision 순서와 최종 belief knowledge를 결과 로그로 저장한다.
@@ -64,6 +71,10 @@ from main import build_action_schema_summary, print_step_timing
 from scripts.baseline.targeted_query_pomdp.belief_update import BeliefManager
 from scripts.baseline.targeted_query_pomdp.planner import QueryAsActionPOMCPPlanner
 from scripts.baseline.targeted_query_pomdp.query_actions import QueryAction
+from scripts.baseline.targeted_query_pomdp.rw import (
+    DEFAULT_FAILURE_PENALTY,
+    DEFAULT_QUERY_COST,
+)
 from utils.arguments import parse_args
 from utils.logger import logger_exp
 
@@ -81,8 +92,12 @@ def query_action_oracle_facts(env) -> set[str]:
 
 def parse_baseline_args():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--query-cost", type=float, default=1.0)
-    parser.add_argument("--failure-penalty", type=float, default=10.0)
+    parser.add_argument("--query-cost", type=float, default=DEFAULT_QUERY_COST)
+    parser.add_argument(
+        "--failure-penalty",
+        type=float,
+        default=DEFAULT_FAILURE_PENALTY,
+    )
     parser.add_argument("--answer-accuracy", type=float, default=1.0)
     baseline, remaining = parser.parse_known_args()
     original = sys.argv
@@ -218,7 +233,7 @@ def main() -> None:
                 "confidence_after": confidence_after,
                 "baseline": "Query-as-Action (QaA)",
             })
-            cumulative_reward -= action.cost
+            cumulative_reward += planner.qaa_reward_model.query_reward(action)
             print(
                 f"    [Boolean Query] {action.name} -> {bool(answer)}; "
                 f"belief {before_count}->{len(belief.frontier)}, "
@@ -300,6 +315,7 @@ def main() -> None:
             "initial_state": args.initial_state,
             "seed": args.seed,
             "max_step": args.max_step,
+            "max_step_scope": "total_actions_including_queries",
             "n_simulations": args.n_simulations,
             "max_depth": args.max_depth,
             "gamma": args.gamma,
@@ -315,8 +331,11 @@ def main() -> None:
         },
         "success": plan_success,
         "end_reason": end_reason,
-        "steps": decision_index,
-        "physical_steps": len(step_logs),
+        # Keep plan length comparable with the other methods: only physical
+        # task actions count as steps. QueryAction still consumes the separate
+        # total decision budget enforced by decision_index above.
+        "steps": physical_step,
+        "physical_steps": physical_step,
         "total_actions": decision_index,
         "reward": {"cumulated": cumulative_reward},
         "actions": step_logs,

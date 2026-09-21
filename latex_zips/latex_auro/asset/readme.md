@@ -1,12 +1,12 @@
-논문용 표, 집계 데이터, 재현 정보 등을 보관한다.
+# 논문 자산 안내
 
-- `experiments_20260912/README.md`: 현재 완료된 실험과 핵심 결과
-- `experiments_20260912/threshold/`: threshold sweep 표와 원시 집계 행
-- `experiments_20260912/when_what/`: When--What ablation 표와 원시 집계 행
-- `experiments_20260912/provenance/`: paired seed와 분석 스크립트
-- `experiments_20260912/legacy_scale/`: 현재 본문 비교에서 제외한 과거 scale 결과
+현재 실험 그림과 표의 기준 자산은 [`analysis_recent/`](analysis_recent/README.md)에 정리되어 있다.
 
-실험 실행 로그 전체는 용량 때문에 포함하지 않는다. `raw_runs.csv`는 로그에서
-추출한 실행별 통계이고, paired seed CSV는 실행 재현을 위한 기록이다.
-- `experiments_20260916/`: 최신 LaTeX 정리본. Threshold, When--What, 그리고
-  IntroPlan을 포함한 통합 query-baseline 비교 결과를 보존한다.
+- Threshold sweep: 논문 사용 가능
+- When–What–Random 2×2 ablation: 논문 사용 가능
+- Query baseline comparison: 논문 사용 가능, 기존 4조건과 tuned Query-as-Action을 합친 5조건
+- When–What policy ablation: 구현 수정 전 결과이므로 재실험 후 교체 필요
+
+실행 원본의 기준 위치는 `experiments_logs/analysis_recent/`이다. 이 자산 폴더의 `00_raw/`는 Git에서 제외하며, 논문에는 `01_processed/`, `02_graph_data/`, `03_figures/`, `report.md`를 사용한다.
+
+`experiments_20260912/`, `experiments_20260916/` 등 기존 폴더는 과거 정리본이다. 최신 논문 수치는 `analysis_recent/`을 기준으로 한다.

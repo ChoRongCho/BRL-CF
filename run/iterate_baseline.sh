@@ -43,6 +43,8 @@ DRY_RUN="false"         # Validate every seed; no API calls or file changes.
 usage() {
     echo "Usage: $0 [--dry-run] [--resume] [--no-archive] [--iter N] [--baseline NAME]"
     echo 'Select several methods: --baselines "knowno introplan query_action_pomcp"'
+    echo "Query-as-Action overrides: --gamma X --query-cost X --failure-penalty X"
+    echo "Output override: --log-root PATH"
     echo "Edit the settings block in this file for persistent changes."
 }
 while (($#)); do
@@ -52,6 +54,10 @@ while (($#)); do
         --no-archive) ARCHIVE_EXISTING="false"; shift ;;
         --iter|--iteration) ITERATIONS_PER_SCENE="${2:?Missing iteration count}"; shift 2 ;;
         --baseline|--baselines) read -r -a BASELINES <<< "${2:?Missing baseline name}"; shift 2 ;;
+        --gamma) GAMMA="${2:?Missing gamma}"; shift 2 ;;
+        --query-cost) QUERY_COST="${2:?Missing query cost}"; shift 2 ;;
+        --failure-penalty) FAILURE_PENALTY="${2:?Missing failure penalty}"; shift 2 ;;
+        --log-root) LOG_ROOT="${2:?Missing log root}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     esac

@@ -130,7 +130,10 @@ def parse_section_key_values(text: str, section_name: str) -> dict[str, Any]:
         key, value = line.split(":", 1)
         if key.strip() == "total_time":
             values["total_time"] = parse_scalar(value)
-        elif key.strip() in {"success", "steps", "cumulated_reward", "total_questions", "end_reason"}:
+        elif key.strip() in {
+            "success", "steps", "physical_steps", "total_actions",
+            "cumulated_reward", "total_questions", "end_reason",
+        }:
             values[key.strip()] = parse_scalar(value)
     return values
 
@@ -264,7 +267,18 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
     else:
         return None
 
-    steps = int(summary.get("steps", 0) or 0)
+    reported_steps = int(summary.get("steps", 0) or 0)
+    question_count = int(summary.get("total_questions", 0) or 0)
+    if experiment == "query_baseline":
+        # New QaA logs report physical plan length directly. Older logs used
+        # total decisions for `steps`; recover physical actions by removing
+        # the separately logged QueryAction count.
+        steps = int(
+            summary.get("physical_steps", max(0, reported_steps - question_count))
+            or 0
+        )
+    else:
+        steps = reported_steps
     question_steps = parse_question_steps(text)
     scale_metrics = parse_scale_metrics(text)
     return {
@@ -279,7 +293,7 @@ def parse_original_log(path: Path, domain: str, run_id: int) -> dict[str, Any] |
         "success": bool(summary.get("success", False)),
         "planning_length": steps,
         "reward": float(summary.get("cumulated_reward", 0.0) or 0.0),
-        "question_count": int(summary.get("total_questions", 0) or 0),
+        "question_count": question_count,
         "query_step_count": len(question_steps),
         "query_probability_per_step": (len(question_steps) / steps) if steps else "",
         "elapsed_seconds": float(timing.get("total_time", 0.0) or 0.0),

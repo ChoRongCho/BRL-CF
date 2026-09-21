@@ -12,6 +12,7 @@ from scripts.baseline.targeted_query_pomdp.query_actions import (
     build_query_actions,
     fact_is_ambiguous,
 )
+from scripts.baseline.targeted_query_pomdp.rw import QueryAsActionRewardModel
 
 
 class QueryActionTest(unittest.TestCase):
@@ -55,7 +56,10 @@ class QueryActionTest(unittest.TestCase):
 
     def test_hidden_precondition_failure_is_penalized(self):
         planner = object.__new__(QueryAsActionPOMCPPlanner)
-        planner.failure_penalty = 10.0
+        planner.qaa_reward_model = QueryAsActionRewardModel(
+            failure_penalty=10.0,
+            task_reward_model=object(),
+        )
         action = Action(
             name="place_can_bin(robot,waste1,can_bin)",
             preconditions=["can(waste1)"],
@@ -70,6 +74,62 @@ class QueryActionTest(unittest.TestCase):
         self.assertEqual(observation, ("invalid_action", action.name))
         self.assertEqual(reward, -10.0)
         self.assertTrue(terminal)
+
+    def test_query_reward_uses_action_cost(self):
+        reward_model = QueryAsActionRewardModel(
+            failure_penalty=10.0,
+            task_reward_model=object(),
+        )
+        action = QueryAction(
+            name="query_can(waste1)",
+            target_fact="can(waste1)",
+            query_schema="query_can",
+            preconditions=["waste(waste1)"],
+            cost=1.5,
+        )
+
+        self.assertEqual(reward_model.query_reward(action), -1.5)
+
+    def test_tomato_physical_reward_is_local_to_qaa_model(self):
+        reward_model = QueryAsActionRewardModel(
+            domain_name="tomato",
+            goal=State(),
+            failure_penalty=10.0,
+        )
+        state = State(["fresh(tomato1)"])
+        next_state = State([
+            "fresh(tomato1)",
+            "loaded(tomato1,robot)",
+        ])
+
+        reward = reward_model.physical_action_reward(
+            state,
+            Action(name="place(robot,tomato1)"),
+            next_state,
+        )
+
+        self.assertEqual(reward, 10.0)
+
+    def test_waste_physical_reward_includes_goal_bonus(self):
+        goal = State(["in_bin(waste1,plastic_bin)"])
+        reward_model = QueryAsActionRewardModel(
+            domain_name="wastesorting",
+            goal=goal,
+            failure_penalty=10.0,
+        )
+        state = State(["plastic(waste1)"])
+        next_state = State([
+            "plastic(waste1)",
+            "in_bin(waste1,plastic_bin)",
+        ])
+
+        reward = reward_model.physical_action_reward(
+            state,
+            Action(name="place_plastic_bin(robot,waste1,plastic_bin)"),
+            next_state,
+        )
+
+        self.assertEqual(reward, 15.0)
 
     def test_only_impossible_static_groundings_are_removed(self):
         state = State([

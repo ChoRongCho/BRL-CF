@@ -8,6 +8,7 @@ scenes=(1 2 3 4 5)
 
 
 iterations=40
+gamma="${GAMMA:-0.2}"
 # SEED=random: generate one random seed per domain/scene/iteration pair.
 # SEED=N: use N as a reproducible base and derive a distinct seed per pair.
 seed_mode="${SEED:-random}"
@@ -17,11 +18,32 @@ archive_root="experiments_logs/system_log_backup/threshold_$(date +%Y%m%d_%H%M%S
 seed_log_root="${log_root}/threshold_seed_logs"
 seed_log="${seed_log_root}/iterate_th_$(date +%Y%m%d_%H%M%S).csv"
 
+usage() {
+    echo "Usage: $0 [--gamma G]"
+    echo "  --gamma G   POMCP discount factor in [0,1] (default: ${gamma})"
+}
+
+while (($#)); do
+    case "$1" in
+        --gamma) gamma="${2:?Missing value for --gamma}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $1"; usage; exit 1 ;;
+    esac
+done
+
+python3 - "$gamma" <<'PY'
+import sys
+gamma = float(sys.argv[1])
+if not 0.0 <= gamma <= 1.0:
+    raise SystemExit(f"gamma must be between 0 and 1: {gamma}")
+PY
+
 total=$((${#domains[@]} * ${#thresholds[@]} * ${#scenes[@]} * iterations))
 current=0
 
 mkdir -p "$seed_log_root"
-echo "global_index,pair_id,domain,scene,iteration,threshold,seed" > "$seed_log"
+echo "global_index,pair_id,domain,scene,iteration,threshold,gamma,seed" > "$seed_log"
+echo "Gamma: ${gamma}"
 printf "\rProgress: %3d%%" 0
 
 if [[ "$seed_mode" != "random" && ! "$seed_mode" =~ ^[0-9]+$ ]]; then
@@ -68,8 +90,8 @@ for domain_index in "${!domains[@]}"; do
 
             for threshold in "${thresholds[@]}"; do
                 current=$((current + 1))
-                echo "${current},${pair_id},${domain},${scene},${i},${threshold},${paired_seed}" >> "$seed_log"
-                ./run/run_threshold_experiment.sh --domain "$domain" --scene "$scene" --iter 1 --threshold "$threshold" --seed "$paired_seed" >/dev/null
+                echo "${current},${pair_id},${domain},${scene},${i},${threshold},${gamma},${paired_seed}" >> "$seed_log"
+                ./run/run_threshold_experiment.sh --domain "$domain" --scene "$scene" --iter 1 --threshold "$threshold" --gamma "$gamma" --seed "$paired_seed" >/dev/null
                 percent=$((current * 100 / total))
                 printf "\rProgress: %3d%%" "$percent"
             done

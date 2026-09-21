@@ -8,7 +8,7 @@ FIELDS=('questions','steps','seconds','reward')
 def write(path,rows):
  keys=list(dict.fromkeys(k for r in rows for k in r))
  with path.open('w',newline='') as f:
-  w=csv.DictWriter(f,keys);w.writeheader();w.writerows(rows)
+  w=csv.DictWriter(f,keys,lineterminator='\n');w.writeheader();w.writerows(rows)
 
 def wilson(success,n):
  if not n:return '', ''
@@ -86,10 +86,10 @@ def analyze_details(package,config,episodes):
   best=max(overall,key=lambda r:r['success_percent']);fewest=min(overall,key=lambda r:r['questions_mean'])
   lines += ['',f'관측 결과: 전체 최고 성공률은 {best["condition"]} ({best["success_percent"]:.2f}%), 최소 평균 질문은 {fewest["condition"]} ({fewest["questions_mean"]:.3f}회). 이 순위만으로 통계적 우월성이나 인과를 주장하지 않는다.']
  # Show logged parameters per condition instead of concealing differences between reruns.
- lines+=['','## 기록된 설정','','| Condition | gamma | simulations | threshold | 모델 |','|---|---|---|---|---|']
+ lines+=['','## 기록된 설정','','| Condition | gamma | query cost | simulations | threshold | 모델 |','|---|---|---|---|---|---|']
  for c in conditions:
   subset=[r for r in episodes if r['condition']==c]
-  vals=[', '.join(sorted({r.get(k,'') for r in subset if r.get(k,'')!=''})) or '미기록' for k in ['gamma','n_simulations','threshold','model']]
+  vals=[', '.join(sorted({r.get(k,'') for r in subset if r.get(k,'')!=''})) or '미기록' for k in ['gamma','query_cost','n_simulations','threshold','model']]
   lines.append('| '+' | '.join([c]+vals)+' |')
  errors=[r for r in episodes if r['status']!='ok']
  if errors:

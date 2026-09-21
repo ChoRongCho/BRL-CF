@@ -1,8 +1,8 @@
 # Query baseline comparison — 분석 보고서
 
-현재 활성 폴더의 Ours, Query-Action POMCP, KnowNo GPT-4, IntroPlan. 각 방법 실행일이 다름(원본 timestamp 및 parameter 열 참조). 과거 논문 그림을 그대로 복제한 것이 아니라 현재 raw를 재집계한 스냅샷. 다른 버전·모델의 백업은 제외. 원본 파일을 이 실험의 00_raw로 실제 이동함. original_source_file은 이동 전 경로.
+현재 활성 폴더의 Ours, 기존 Query-Action POMCP, KnowNo GPT-4, IntroPlan과 성공률 기준으로 선택한 tuned Query-Action POMCP를 비교한다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이며 tuned 조건은 gamma=0.5/query_cost=0.0이다. 각 방법 실행일이 다르며 원본 timestamp와 parameter 열에 기록한다. 원본 파일은 이 실험의 00_raw로 실제 이동했고 original_source_file은 이동 전 경로다.
 
-실행 슬롯 1,600개, 유효 결과 1,600개. Raw는 `00_raw/`, 각 수치의 출처는 episodes.csv의 raw_source이다.
+실행 슬롯 2,000개, 유효 결과 2,000개. Raw는 `00_raw/`, 각 수치의 출처는 episodes.csv의 raw_source이다.
 
 ## 전체·도메인별 결과
 
@@ -12,14 +12,17 @@
 | all | query_action_pomcp | 218/400 | 54.5 | 1.18 | 13.3 | 1.67 | 0 |
 | all | knowno | 224/400 | 56 | 2.39 | 10.2 | 15.6 | 0 |
 | all | introplan | 219/400 | 54.8 | 3.51 | 9.99 | 41.2 | 0 |
+| all | query_action_pomcp_tuned | 211/400 | 52.8 | 5.97 | 11 | 3.49 | 0 |
 | tomato | ours | 190/200 | 95 | 9 | 14.4 | 1.22 | 0 |
 | tomato | query_action_pomcp | 118/200 | 59 | 1.2 | 16.7 | 1.98 | 0 |
 | tomato | knowno | 110/200 | 55 | 1.71 | 11.3 | 18.2 | 0 |
 | tomato | introplan | 128/200 | 64 | 3.54 | 11.9 | 54.3 | 0 |
+| tomato | query_action_pomcp_tuned | 115/200 | 57.5 | 9.72 | 13.8 | 5.04 | 0 |
 | wastesorting | ours | 200/200 | 100 | 7.83 | 10.3 | 0.806 | 0 |
 | wastesorting | query_action_pomcp | 100/200 | 50 | 1.16 | 9.93 | 1.36 | 0 |
 | wastesorting | knowno | 114/200 | 57 | 3.08 | 8.97 | 13.1 | 0 |
 | wastesorting | introplan | 91/200 | 45.5 | 3.49 | 8.04 | 28.2 | 0 |
+| wastesorting | query_action_pomcp_tuned | 96/200 | 48 | 2.21 | 8.26 | 1.93 | 0 |
 
 ## 장면별 결과
 
@@ -45,6 +48,11 @@
 | tomato | 03 | introplan | 23/40 | 3.35 | 11.6 |
 | tomato | 04 | introplan | 29/40 | 3.85 | 12.6 |
 | tomato | 05 | introplan | 28/40 | 3.4 | 12.5 |
+| tomato | 01 | query_action_pomcp_tuned | 21/40 | 8.93 | 12.8 |
+| tomato | 02 | query_action_pomcp_tuned | 27/40 | 9.68 | 14.8 |
+| tomato | 03 | query_action_pomcp_tuned | 22/40 | 10.1 | 13.6 |
+| tomato | 04 | query_action_pomcp_tuned | 21/40 | 9.88 | 14.4 |
+| tomato | 05 | query_action_pomcp_tuned | 24/40 | 10.1 | 13.5 |
 | wastesorting | 01 | ours | 40/40 | 6.42 | 9.5 |
 | wastesorting | 02 | ours | 40/40 | 7.17 | 10.4 |
 | wastesorting | 03 | ours | 40/40 | 8.03 | 10.5 |
@@ -65,6 +73,11 @@
 | wastesorting | 03 | introplan | 17/40 | 3.35 | 8.03 |
 | wastesorting | 04 | introplan | 12/40 | 3.38 | 6.97 |
 | wastesorting | 05 | introplan | 15/40 | 3.3 | 7.33 |
+| wastesorting | 01 | query_action_pomcp_tuned | 16/40 | 1.27 | 7.22 |
+| wastesorting | 02 | query_action_pomcp_tuned | 20/40 | 2.3 | 8.43 |
+| wastesorting | 03 | query_action_pomcp_tuned | 19/40 | 1.45 | 8.07 |
+| wastesorting | 04 | query_action_pomcp_tuned | 20/40 | 2.12 | 8.3 |
+| wastesorting | 05 | query_action_pomcp_tuned | 21/40 | 3.9 | 9.28 |
 
 ## 동일 scene·seed paired 비교
 
@@ -72,15 +85,18 @@
 
 | Domain | Comparison | 쌍 수 | 기준만 성공 | 상대만 성공 | 성공률 차이(pp) | McNemar p | Holm p | 질문 차이 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| all | query_action_pomcp | 400 | 174 | 2 | 43 | 3.25e-49 | 9.76e-49 | 7.24 |
+| all | query_action_pomcp | 400 | 174 | 2 | 43 | 3.25e-49 | 1.3e-48 | 7.24 |
 | all | knowno | 400 | 170 | 4 | 41.5 | 3.15e-45 | 3.15e-45 | 6.02 |
-| all | introplan | 400 | 175 | 4 | 42.8 | 1.1e-46 | 2.21e-46 | 4.9 |
-| tomato | query_action_pomcp | 200 | 74 | 2 | 36 | 7.75e-20 | 1.55e-19 | 7.8 |
-| tomato | knowno | 200 | 84 | 4 | 40 | 1.58e-20 | 4.74e-20 | 7.29 |
+| all | introplan | 400 | 175 | 4 | 42.8 | 1.1e-46 | 3.31e-46 | 4.9 |
+| all | query_action_pomcp_tuned | 400 | 186 | 7 | 44.8 | 2.93e-46 | 5.87e-46 | 2.45 |
+| tomato | query_action_pomcp | 200 | 74 | 2 | 36 | 7.75e-20 | 2.32e-19 | 7.8 |
+| tomato | knowno | 200 | 84 | 4 | 40 | 1.58e-20 | 6.32e-20 | 7.29 |
 | tomato | introplan | 200 | 66 | 4 | 31 | 1.65e-15 | 1.65e-15 | 5.46 |
+| tomato | query_action_pomcp_tuned | 200 | 82 | 7 | 37.5 | 2.43e-17 | 4.86e-17 | -0.725 |
 | wastesorting | query_action_pomcp | 200 | 100 | 0 | 50 | 1.58e-30 | 3.16e-30 | 6.67 |
 | wastesorting | knowno | 200 | 86 | 0 | 43 | 2.58e-26 | 2.58e-26 | 4.75 |
-| wastesorting | introplan | 200 | 109 | 0 | 54.5 | 3.08e-33 | 9.24e-33 | 4.34 |
+| wastesorting | introplan | 200 | 109 | 0 | 54.5 | 3.08e-33 | 1.23e-32 | 4.34 |
+| wastesorting | query_action_pomcp_tuned | 200 | 104 | 0 | 52 | 9.86e-32 | 2.96e-31 | 5.62 |
 
 ## 해석 및 제한
 
@@ -94,9 +110,10 @@
 
 ## 기록된 설정
 
-| Condition | gamma | simulations | threshold | 모델 |
-|---|---|---|---|---|
-| ours | 0.2 | 100 | 0.8 | 미기록 |
-| query_action_pomcp | 0.2 | 100 | 미기록 | 미기록 |
-| knowno | 미기록 | 미기록 | 미기록 | gpt-4o |
-| introplan | 미기록 | 미기록 | 미기록 | gpt-4o |
+| Condition | gamma | query cost | simulations | threshold | 모델 |
+|---|---|---|---|---|---|
+| ours | 0.2 | 미기록 | 100 | 0.8 | 미기록 |
+| query_action_pomcp | 0.2 | 1.0 | 100 | 미기록 | 미기록 |
+| knowno | 미기록 | 미기록 | 미기록 | 미기록 | gpt-4o |
+| introplan | 미기록 | 미기록 | 미기록 | 미기록 | gpt-4o |
+| query_action_pomcp_tuned | 0.5 | 0.0 | 100 | 미기록 | 미기록 |

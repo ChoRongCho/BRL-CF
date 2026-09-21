@@ -46,7 +46,9 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
         self.actions = self.task_actions + self.query_actions
         self.action_map = {action.name: action for action in self.actions}
         self.answer_accuracy = float(answer_accuracy)
-        self.failure_penalty = float(failure_penalty)
+        self.qaa_reward_model = env.reward_model
+        if self.qaa_reward_model.failure_penalty != float(failure_penalty):
+            raise ValueError("Planner and environment failure penalties differ")
         self._applicable_action_cache.clear()
         self.root_query_names = set()
         self.root_candidate_names = set()
@@ -71,7 +73,7 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
             return (
                 state.copy(),
                 self._sample_query_answer(state, action),
-                -action.cost,
+                self.qaa_reward_model.query_reward(action),
                 False,
             )
         # A policy chooses one action for a belief/history, not a different
@@ -83,12 +85,16 @@ class QueryAsActionPOMCPPlanner(POMCPPlanner):
             return (
                 state.copy(),
                 ("invalid_action", action.name),
-                -self.failure_penalty,
+                self.qaa_reward_model.invalid_action_reward(action),
                 True,
             )
         next_state = self.transition_model.sample_next_state(state, action)
         observation = self.observation_model.sample(next_state, action)
-        reward = self.reward_model.get_reward(state, action, next_state)
+        reward = self.qaa_reward_model.physical_action_reward(
+            state,
+            action,
+            next_state,
+        )
         return next_state, observation, reward, False
 
     def _root_candidates(self, belief):

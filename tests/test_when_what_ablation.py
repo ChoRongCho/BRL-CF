@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from when_what_ablation_main import (
+from scripts.ablation.when_what_random.run_experiment import (
     ABLATION_POLICIES,
     select_question,
     should_start_query,

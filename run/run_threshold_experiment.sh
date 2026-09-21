@@ -3,9 +3,10 @@
 
 set -euo pipefail
 
-# Usage: ./run/run_threshold_experiment.sh [--domain tomato|wastesorting] [--scene N] [--iterations N] [--threshold N] [--seed random|N]
-# Example: ./run/run_threshold_experiment.sh --domain tomato --scene 3 --iterations 10 --threshold 0.8 --seed random
+# Usage: ./run/run_threshold_experiment.sh [--domain tomato|wastesorting] [--scene N] [--iterations N] [--threshold N] [--gamma G] [--seed random|N]
+# Example: ./run/run_threshold_experiment.sh --domain tomato --scene 3 --iterations 10 --threshold 0.8 --gamma 0.2 --seed random
 THRESHOLD="0.8"
+GAMMA="${GAMMA:-0.2}"
 DOMAIN="wastesorting"
 # DOMAIN="tomato"
 SCENE="11"
@@ -14,11 +15,12 @@ MAXSTEP="50"
 SEED="random"
 
 usage() {
-    echo "Usage: $0 [--domain tomato|wastesorting] [--scene N] [--iter N] [--seed random|N]"
+    echo "Usage: $0 [--domain tomato|wastesorting] [--scene N] [--iter N] [--threshold N] [--gamma G] [--seed random|N]"
     echo "  --domain NAME   domain name (default: ${DOMAIN})"
     echo "  --scene N       scene number (default: ${SCENE})"
     echo "  --iteration  repeat count (default: ${ITERATIONS})"
     echo "  --threshold N   confidence threshold (default: ${THRESHOLD})"
+    echo "  --gamma G       POMCP discount factor in [0,1] (default: ${GAMMA})"
     echo "  --seed random|N random per run or fixed integer seed (default: ${SEED})"
 }
 
@@ -38,6 +40,10 @@ while (($#)); do
             ;;
         --threshold)
             THRESHOLD="${2:?Missing value for --threshold}"
+            shift 2
+            ;;
+        --gamma)
+            GAMMA="${2:?Missing value for --gamma}"
             shift 2
             ;;
         --seed)
@@ -65,6 +71,12 @@ if [[ "$SEED" != "random" && ! "$SEED" =~ ^[0-9]+$ ]]; then
     echo "  seed must be a non-negative integer or random."
     exit 1
 fi
+python3 - "$GAMMA" <<'PY'
+import sys
+gamma = float(sys.argv[1])
+if not 0.0 <= gamma <= 1.0:
+    raise SystemExit(f"gamma must be between 0 and 1: {gamma}")
+PY
 
 THRESHOLD_LABEL="${THRESHOLD/./-}"
 scene_id=$(printf "%02d" "$((10#$SCENE))")
@@ -92,7 +104,7 @@ fi
 mkdir -p "$LOG_DIR"
 SEED_LOG="${LOG_DIR}/seeds.csv"
 if [[ ! -f "$SEED_LOG" ]]; then
-    echo "run_index,domain,scene,threshold,seed,log_dir" > "$SEED_LOG"
+    echo "run_index,domain,scene,threshold,gamma,seed,log_dir" > "$SEED_LOG"
 fi
 
 generate_seed() {
@@ -105,8 +117,8 @@ for ((i = 1; i <= ITERATIONS; i++)); do
     else
         seed="$SEED"
     fi
-    echo "[RUN ${i}/${ITERATIONS}] threshold=${THRESHOLD}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
-    echo "${i},${DOMAIN},${scene_id},${THRESHOLD},${seed},${LOG_DIR}" >> "$SEED_LOG"
+    echo "[RUN ${i}/${ITERATIONS}] threshold=${THRESHOLD}, gamma=${GAMMA}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
+    echo "${i},${DOMAIN},${scene_id},${THRESHOLD},${GAMMA},${seed},${LOG_DIR}" >> "$SEED_LOG"
 
     python3 main.py \
         --domain "$DOMAIN" \
@@ -114,6 +126,7 @@ for ((i = 1; i <= ITERATIONS; i++)); do
         --initial_state "$initial_state" \
         --robot_skill "$robot_skill" \
         --threshold "$THRESHOLD" \
+        --gamma "$GAMMA" \
         --seed "$seed" \
         --log_dir "$LOG_DIR" \
         --max_step "$MAXSTEP"

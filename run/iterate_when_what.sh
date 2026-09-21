@@ -10,6 +10,7 @@ SCENES=(1 2 3 4 5)
 
 ITERATIONS="40"
 MAXSTEP="50"
+GAMMA="${GAMMA:-0.2}"
 
 # Use one shared Random-When probability for both domains.
 THRESHOLD="0.8"
@@ -24,6 +25,7 @@ usage() {
     echo "Usage: $0 [options]"
     echo "With no options, values from the configuration block at the top are used."
     echo "  --threshold T     confidence threshold (default: ${THRESHOLD})"
+    echo "  --gamma G         POMCP discount factor in [0,1] (default: ${GAMMA})"
     echo "  --tomato-random-query-prob P      (default: ${TOMATO_RANDOM_QUERY_PROB})"
     echo "  --waste-random-query-prob P       (default: ${WASTE_RANDOM_QUERY_PROB})"
     echo "  --iter N          repetitions per domain/condition/scene (default: ${ITERATIONS})"
@@ -35,6 +37,7 @@ usage() {
 while (($#)); do
     case "$1" in
         --threshold) THRESHOLD="${2:?Missing value for --threshold}"; shift 2 ;;
+        --gamma) GAMMA="${2:?Missing value for --gamma}"; shift 2 ;;
         --tomato-random-query-prob) TOMATO_RANDOM_QUERY_PROB="${2:?Missing value for --tomato-random-query-prob}"; shift 2 ;;
         --waste-random-query-prob) WASTE_RANDOM_QUERY_PROB="${2:?Missing value for --waste-random-query-prob}"; shift 2 ;;
         --iter|--iteration) ITERATIONS="${2:?Missing value for $1}"; shift 2 ;;
@@ -51,12 +54,15 @@ if ! [[ "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$MAXSTEP" =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
-python3 - "$THRESHOLD" "$TOMATO_RANDOM_QUERY_PROB" "$WASTE_RANDOM_QUERY_PROB" <<'PY'
+python3 - "$THRESHOLD" "$TOMATO_RANDOM_QUERY_PROB" "$WASTE_RANDOM_QUERY_PROB" "$GAMMA" <<'PY'
 import sys
 for name, value in zip(("threshold", "tomato probability", "waste probability"), sys.argv[1:]):
     number = float(value)
     if not 0.0 <= number <= 1.0:
         raise SystemExit(f"{name} must be between 0 and 1: {value}")
+gamma = float(sys.argv[4])
+if not 0.0 <= gamma <= 1.0:
+    raise SystemExit(f"gamma must be between 0 and 1: {gamma}")
 PY
 
 total=$((${#DOMAINS[@]} * ${#CONDITIONS[@]} * ${#SCENES[@]} * ITERATIONS))
@@ -88,8 +94,9 @@ fi
 seed_log_dir="${LOG_ROOT}/when_what_seed_logs"
 mkdir -p "$seed_log_dir"
 seed_log="${seed_log_dir}/iterate_when_what_${timestamp}.csv"
-echo "domain,condition,scene,iteration,seed,threshold,random_query_prob" > "$seed_log"
+echo "domain,condition,scene,iteration,seed,threshold,random_query_prob,gamma" > "$seed_log"
 
+echo "Gamma: ${GAMMA}"
 printf "\rProgress: %3d%%" 0
 for domain in "${DOMAINS[@]}"; do
     if [[ "$domain" == "tomato" ]]; then
@@ -102,13 +109,14 @@ for domain in "${DOMAINS[@]}"; do
             # Pair all four conditions with the same episode seed.
             seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
             for condition in "${CONDITIONS[@]}"; do
-                echo "${domain},${condition},${scene},${iteration},${seed},${THRESHOLD},${probability}" >> "$seed_log"
+                echo "${domain},${condition},${scene},${iteration},${seed},${THRESHOLD},${probability},${GAMMA}" >> "$seed_log"
                 ./run/run_when_what_ablation.sh \
                     --domain "$domain" \
                     --scene "$scene" \
                     --iter 1 \
                     --condition "$condition" \
                     --threshold "$THRESHOLD" \
+                    --gamma "$GAMMA" \
                     --random-query-prob "$probability" \
                     --max-step "$MAXSTEP" \
                     --seed "$seed" \

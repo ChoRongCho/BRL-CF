@@ -21,6 +21,13 @@ Each observation is Boolean. A query has no physical transition, returns
 the existing Oracle supplies the answer, the particle belief is conditioned on
 that answer, and its posterior MAP state becomes the symbolic knowledge base.
 Query decisions do not increment the environment's physical-step counter.
+The reported plan length (`steps`) therefore counts only physical task
+actions. `total_actions` counts physical actions and queries together, and the
+`MAX_STEP` termination guard uses this total so repeated queries cannot bypass
+the episode budget.
+
+Query costs, invalid physical-action penalties, and delegation to the shared
+domain task reward are defined in `rw.py`.
 
 At every POMCP history node, symbolically applicable physical actions and
 questions whose facts still have both true and false hypotheses share one

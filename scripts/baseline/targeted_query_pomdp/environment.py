@@ -10,9 +10,9 @@ from models.state import State, get_state, get_types
 from models.action import Action, Grounding, ActionSchema, get_actions
 from models.observation import ObservationModel, Observation
 from models.transition import TransitionModel
-from models.reward import RewardModel
 from models.belief import Belief
 from shared.env_setting import load_env_setting
+from .rw import QueryAsActionRewardModel
 
 class Environment:
     def __init__(self, args):
@@ -84,10 +84,11 @@ class Environment:
             settings=self.env_setting.get("observation", {}),
         )
         
-        # Reward Model TODO
-        self.reward_model = RewardModel(
-            self.domain_name,
-            self.goal,
+        # One QaA reward model is shared by execution and POMCP search.
+        self.reward_model = QueryAsActionRewardModel(
+            domain_name=self.domain_name,
+            goal=self.goal,
+            failure_penalty=self.args.query_as_action.failure_penalty,
         )
         
         # reset
@@ -198,7 +199,7 @@ class Environment:
         self._apply_action(action)
         # _ = self.build_state(runtime_facts=self.state.facts, build_type="certain")
         
-        reward = self.reward_model.get_reward(
+        reward = self.reward_model.physical_action_reward(
             prev_true_state,
             action,
             self.true_state,

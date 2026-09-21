@@ -2,6 +2,20 @@
 
 set -euo pipefail
 
+python_is_compatible() {
+    "$1" -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' >/dev/null 2>&1
+}
+if [[ -n "${PYTHON:-}" ]] && python_is_compatible "$PYTHON"; then
+    PYTHON_BIN="$PYTHON"
+elif python_is_compatible python3; then
+    PYTHON_BIN="python3"
+elif [[ -x /home/fr/miniconda3/envs/brl/bin/python ]] && python_is_compatible /home/fr/miniconda3/envs/brl/bin/python; then
+    PYTHON_BIN="/home/fr/miniconda3/envs/brl/bin/python"
+else
+    echo "Python 3.10 or newer is required." >&2
+    exit 1
+fi
+
 DOMAIN="tomato"
 SCENE="1"
 ITERATIONS="1"
@@ -67,7 +81,7 @@ if [[ -n "$N_SIMULATIONS" && ! "$N_SIMULATIONS" =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
-python3 - "$THRESHOLD" "$RANDOM_QUERY_PROB" <<'PY'
+"$PYTHON_BIN" - "$THRESHOLD" "$RANDOM_QUERY_PROB" <<'PY'
 import sys
 for name, value in (("threshold", sys.argv[1]), ("random-query-prob", sys.argv[2])):
     number = float(value)
@@ -106,7 +120,7 @@ for ((run_index = 1; run_index <= ITERATIONS; run_index++)); do
     planner_args=()
     [[ -z "$N_SIMULATIONS" ]] || planner_args+=(--n_simulations "$N_SIMULATIONS")
     [[ -z "$GAMMA" ]] || planner_args+=(--gamma "$GAMMA")
-    python3 when_what_ablation_main.py \
+    "$PYTHON_BIN" -m scripts.ablation.when_what_random.run_experiment \
         --ablation-condition "$CONDITION" \
         --domain "$DOMAIN" \
         --domain_rule "$domain_rule" \

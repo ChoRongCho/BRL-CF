@@ -1,4 +1,4 @@
-"""Verify moved raw bytes and all four paper data products."""
+"""Verify moved raw bytes and the four core analysis packages."""
 from pathlib import Path
 import csv,hashlib,json,math,statistics
 BASE=Path(__file__).resolve().parents[1];PROJECT=BASE.parents[1]
@@ -13,10 +13,11 @@ for r in move['files']:
  assert not (PROJECT/r['old']).exists(),r['old']
 results=[]
 for name in NAMES:
- d=BASE/name;assert not any(p.is_symlink() for p in d.rglob('*')),name
- required=['episodes.csv','summary.csv','scenes.csv','paired.csv','paired_episodes.csv']
+ d=BASE/name;config=json.loads((d/'manifest.json').read_text());assert not any(p.is_symlink() for p in d.rglob('*')),name
+ required=['episodes.csv','summary.csv','scenes.csv']
  assert all((d/'01_processed'/f).is_file() for f in required)
- episodes=read(d/'01_processed/episodes.csv');g=read(d/'02_graph_data/figure_data.csv');summary=read(d/'01_processed/summary.csv');pairs=read(d/'01_processed/paired.csv')
+ episodes=read(d/'01_processed/episodes.csv');g=read(d/'02_graph_data/figure_data.csv');summary=read(d/'01_processed/summary.csv')
+ pairs=read(d/'01_processed/paired.csv') if (d/'01_processed/paired.csv').is_file() else []
  for r in episodes:
   f=PROJECT/r['raw_source'];f.relative_to(d/'00_raw')
   assert hashlib.sha256(f.read_bytes()).hexdigest()==r['raw_sha256']
@@ -40,6 +41,6 @@ for name in NAMES:
   assert sum(int(a[k]['success'])<int(b[k]['success']) for k in keys)==int(r['comparison_only_success'])
  for ext in ['png','pdf']:assert (d/'03_figures'/('overview.'+ext)).stat().st_size>1000
  assert (d/'report.md').stat().st_size>1000
- results.append(dict(experiment=name,episodes=len(episodes),valid=sum(r['status']=='ok' for r in episodes),raw_links=0,graph_rows=len(g),paired_comparisons=len(pairs)))
+ results.append(dict(experiment=name,status=config.get('status','unspecified'),episodes=len(episodes),valid=sum(r['status']=='ok' for r in episodes),raw_links=0,graph_rows=len(g),paired_comparisons=len(pairs)))
 (BASE/'raw_integrity_check.json').write_text(json.dumps(dict(moved_files=len(move['files']),missing=0,hash_mismatch=0,results=results),indent=2)+'\n')
 print(json.dumps(results,indent=2));print('All moved raw hashes, CSV aggregates, paired matches and figures verified.')

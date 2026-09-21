@@ -4,3 +4,4 @@ import subprocess
 import sys
 package=Path(__file__).resolve().parents[1]
 subprocess.run([sys.executable, str(package.parent/"scripts/pipeline.py"), "--package", package.name, "--stage", "2"], check=True)
+subprocess.run([sys.executable, str(package/"scripts/write_report.py")], check=True)
