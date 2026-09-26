@@ -1,0 +1,898 @@
+====== Multi-step Waste Sorting IntroPlan-BRL ======
+Run metadata:
+{
+  "argv": [
+    "/home/fr/brl/02_BRL_POMDP_CODE/scripts/baseline/introplan/run_experiment.py",
+    "--settings",
+    "/home/fr/brl/02_BRL_POMDP_CODE/llm_setting.json",
+    "--env-setting",
+    "/home/fr/brl/02_BRL_POMDP_CODE/scripts/domain/wastesorting/env_setting.yaml",
+    "--prompt-version",
+    "v2",
+    "--qhat",
+    "0.9615342162270937",
+    "--temperature",
+    "5.0",
+    "--max-steps",
+    "50",
+    "--seed",
+    "1312241461",
+    "--log-file",
+    "/home/fr/brl/02_BRL_POMDP_CODE/experiments_logs/system_log/wastesorting/scene_03_step50/when_introplan/introplan_wastesorting_scene03_iter20_seed1312241461.txt",
+    "--verbose",
+    "--auto-answer",
+    "--labels",
+    "waste1:plastic,waste2:plastic,waste3:paper,waste4:general",
+    "--occlusions",
+    "waste4:waste3"
+  ],
+  "baseline": "IntroPlan-BRL",
+  "env_setting": "/home/fr/brl/02_BRL_POMDP_CODE/scripts/domain/wastesorting/env_setting.yaml",
+  "expert": "exact_oracle",
+  "model": "gpt-4o",
+  "prompt_version": "v2",
+  "seed": 1312241461
+}
+Instruction: Discard all waste.
+Prompt version: v2
+Initial objects: waste1, waste2, waste3, waste4
+Available bins: general bin, plastic bin, paper bin, can bin
+True labels: waste1: plastic, waste2: plastic, waste3: paper, waste4: general
+Detect success probability: (0.94, 1.0)
+Detect label error probability: 0.15
+Action failure probabilities: pick=0.1, place=0.1
+qhat: 0.9615342162270937
+Detailed log file: /home/fr/brl/02_BRL_POMDP_CODE/experiments_logs/system_log/wastesorting/scene_03_step50/when_introplan/introplan_wastesorting_scene03_iter20_seed1312241461.txt
+Step 1 start:
+{
+  "action_history": [],
+  "held_object": null,
+  "observed_attributes": {},
+  "occlusions": {
+    "waste4": "waste3"
+  },
+  "placed_objects": {},
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste3",
+    "waste4"
+  ]
+}
+
+====== Step 1 generation prompt ======
+We: You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+Action roles:
+- detect: observe waste attributes for objects on the counter.
+- pick <object>: pick one observed object from the counter with an empty hand.
+- place <object> into <bin>: place the held object into the bin matching the observed attribute.
+
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: detect, pick <object>, place <object> into <bin>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has not observed the waste types yet. The robot is not holding any waste object.
+We: The robot has not completed any actions yet.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) detect
+B) pick waste1
+C) place waste1 into can bin
+D) pick waste2
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste1: paper, waste2: general. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) pick waste1
+B) pick waste2
+C) detect
+D) place waste1 into paper bin
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste2: general, waste3: plastic, waste4: can. The robot is holding waste2.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste2.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) place waste2 into general bin
+B) place waste2 into can bin
+C) pick waste3
+D) detect
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has not observed the waste types yet. The robot is not holding any waste object.
+We: The robot has not completed any actions yet.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+Step 1 generation:
+{
+  "elapsed_sec": 0.8968955469317734,
+  "raw_text": "A) detect  \nB) pick waste1  \nC) pick waste3  \nD) detect",
+  "usage": {
+    "completion_tokens": 19,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": null
+    },
+    "prompt_tokens": 733,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": null,
+      "text_tokens": null
+    },
+    "total_tokens": 752
+  }
+}
+
+====== Step 1 scoring prompt ======
+You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has not observed the waste types yet. The robot is not holding any waste object.
+We: The robot has not completed any actions yet.
+We: What should the robot do next?
+You:
+A) an option not listed here
+B) pick waste3
+C) detect
+D) detect
+E) pick waste1
+We: Which option is correct? Answer with a single capital letter.
+You:
+Step 1 scoring:
+{
+  "elapsed_sec": 2.6188055742532015,
+  "text": "C",
+  "usage": {
+    "completion_tokens": 159,
+    "prompt_tokens": 856,
+    "total_tokens": 1015
+  }
+}
+Step 1 decision data:
+{
+  "add_mc_prefix": "A",
+  "combined_option_scores": {
+    "A": 0.04676398057860365,
+    "B": 0.20249967079426082,
+    "C": 0.688784139899109,
+    "D": 0.06195220872802679
+  },
+  "option_logprobs": {
+    "A": -12.428723335266113,
+    "B": -5.100598335266113,
+    "C": -0.006848457269370556,
+    "D": -7.397473335266113,
+    "E": -11.022473335266113
+  },
+  "options": [
+    "an option not listed here",
+    "pick waste3",
+    "detect",
+    "pick waste1"
+  ],
+  "prediction_set": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "scores": [
+    0.04676398057860365,
+    0.20249967079426082,
+    0.688784139899109,
+    0.06195220872802679
+  ],
+  "threshold": 0.038465783772906326
+}
+
+====== Step 1 ======
+Remaining objects: waste1, waste2, waste3, waste4
+True waste attributes: waste1: plastic, waste2: plastic, waste3: paper, waste4: general
+Observed waste attributes: None
+Occluded waste objects: waste4 is under waste3 and cannot be detected until waste3 is placed
+Held object: None
+
+Generated options:
+A) an option not listed here
+B) pick waste3
+C) detect
+D) pick waste1
+
+Option scores:
+Option: A 	log prob: -3.062642018144219 	softmax: 0.04676398057860365
+Option: B 	log prob: -1.5970170181442187 	softmax: 0.20249967079426082
+Option: C 	log prob: -0.3728273518318691 	softmax: 0.688784139899109
+Option: D 	log prob: -2.781392018144219 	softmax: 0.06195220872802679
+Prediction set: ['A', 'B', 'C', 'D']
+Oracle selected option C.
+Step 1 oracle answer:
+{
+  "options": [
+    {
+      "action_type": null,
+      "feasible": false,
+      "option": "an option not listed here",
+      "reason": "fallback option",
+      "target": null,
+      "token": "A"
+    },
+    {
+      "action_type": "pick",
+      "feasible": false,
+      "option": "pick waste3",
+      "reason": "invalid pick undetected object: waste3",
+      "target": "waste3",
+      "token": "B"
+    },
+    {
+      "action_type": "detect",
+      "feasible": true,
+      "option": "detect",
+      "reason": "can detect",
+      "target": null,
+      "token": "C"
+    },
+    {
+      "action_type": "pick",
+      "feasible": false,
+      "option": "pick waste1",
+      "reason": "invalid pick undetected object: waste1",
+      "target": "waste1",
+      "token": "D"
+    }
+  ],
+  "rule": "detect visible objects",
+  "selected_token": "C"
+}
+Step 1 query diagnostic:
+{
+  "category": null,
+  "correct_option_available": true,
+  "correct_option_tokens": [
+    "C"
+  ],
+  "help_requested": true,
+  "noopt_recovery": false,
+  "observation_error_present": false,
+  "observation_mismatches": [],
+  "prediction_set": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "selected_token": "C",
+  "step": 1
+}
+Step 1 detect rolls:
+[
+  {
+    "detect_probability": 0.995293831402765,
+    "detect_roll": 0.2960533132898683,
+    "detected": true,
+    "label_error": true,
+    "label_error_roll": 0.017339202092464312,
+    "object": "waste1",
+    "observed_label": "paper",
+    "true_label": "plastic"
+  },
+  {
+    "detect_probability": 0.9465872085242629,
+    "detect_roll": 0.21995884113480169,
+    "detected": true,
+    "label_error": false,
+    "label_error_roll": 0.7877286463083277,
+    "object": "waste2",
+    "observed_label": "plastic",
+    "true_label": "plastic"
+  },
+  {
+    "detect_probability": 0.9888466169282963,
+    "detect_roll": 0.3397529380853588,
+    "detected": true,
+    "label_error": true,
+    "label_error_roll": 0.13803983318871216,
+    "object": "waste3",
+    "observed_label": "can",
+    "true_label": "paper"
+  }
+]
+Selected/Executed (oracle, option C): detect -> Detect result: waste1: paper, waste2: plastic, waste3: can
+Step 1 end:
+{
+  "action_history": [
+    "detect"
+  ],
+  "held_object": null,
+  "observed_attributes": {
+    "waste1": "paper",
+    "waste2": "plastic",
+    "waste3": "can"
+  },
+  "placed_objects": {},
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste3",
+    "waste4"
+  ],
+  "step_elapsed_sec": 3.5169280716218054
+}
+Step 2 start:
+{
+  "action_history": [
+    "detect"
+  ],
+  "held_object": null,
+  "observed_attributes": {
+    "waste1": "paper",
+    "waste2": "plastic",
+    "waste3": "can"
+  },
+  "occlusions": {
+    "waste4": "waste3"
+  },
+  "placed_objects": {},
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste3",
+    "waste4"
+  ]
+}
+
+====== Step 2 generation prompt ======
+We: You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+Action roles:
+- detect: observe waste attributes for objects on the counter.
+- pick <object>: pick one observed object from the counter with an empty hand.
+- place <object> into <bin>: place the held object into the bin matching the observed attribute.
+
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: detect, pick <object>, place <object> into <bin>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has not observed the waste types yet. The robot is not holding any waste object.
+We: The robot has not completed any actions yet.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) detect
+B) pick waste1
+C) place waste1 into can bin
+D) pick waste2
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste1: paper, waste2: general. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) pick waste1
+B) pick waste2
+C) detect
+D) place waste1 into paper bin
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste2: general, waste3: plastic, waste4: can. The robot is holding waste2.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste2.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) place waste2 into general bin
+B) place waste2 into can bin
+C) pick waste3
+D) detect
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has observed these waste types: waste1: paper, waste2: plastic, waste3: can. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+Step 2 generation:
+{
+  "elapsed_sec": 0.6476595839485526,
+  "raw_text": "A) pick waste1  \nB) pick waste2  \nC) pick waste3  \nD) detect",
+  "usage": {
+    "completion_tokens": 22,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": null
+    },
+    "prompt_tokens": 752,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": null,
+      "text_tokens": null
+    },
+    "total_tokens": 774
+  }
+}
+
+====== Step 2 scoring prompt ======
+You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has observed these waste types: waste1: paper, waste2: plastic, waste3: can. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect.
+We: What should the robot do next?
+You:
+A) pick waste2
+B) detect
+C) pick waste1
+D) pick waste3
+E) an option not listed here
+We: Which option is correct? Answer with a single capital letter.
+You:
+Step 2 scoring:
+{
+  "elapsed_sec": 2.6464868700131774,
+  "text": "D",
+  "usage": {
+    "completion_tokens": 176,
+    "prompt_tokens": 912,
+    "total_tokens": 1088
+  }
+}
+Step 2 decision data:
+{
+  "add_mc_prefix": "E",
+  "combined_option_scores": {
+    "A": 0.026523622380181897,
+    "B": 0.019405096669620002,
+    "C": 0.027195071077480638,
+    "D": 0.903395933945061,
+    "E": 0.023480275927656714
+  },
+  "option_logprobs": {
+    "A": -17.640628814697266,
+    "B": -19.203128814697266,
+    "C": -17.515628814697266,
+    "D": -2.935296834039036e-06,
+    "E": -18.250003814697266
+  },
+  "options": [
+    "pick waste2",
+    "detect",
+    "pick waste1",
+    "pick waste3",
+    "an option not listed here"
+  ],
+  "prediction_set": [
+    "D"
+  ],
+  "scores": [
+    0.026523622380181897,
+    0.019405096669620002,
+    0.027195071077480638,
+    0.903395933945061,
+    0.023480275927656714
+  ],
+  "threshold": 0.038465783772906326
+}
+
+====== Step 2 ======
+Remaining objects: waste1, waste2, waste3, waste4
+True waste attributes: waste1: plastic, waste2: plastic, waste3: paper, waste4: general
+Observed waste attributes: waste1: paper, waste2: plastic, waste3: can
+Occluded waste objects: waste4 is under waste3 and cannot be detected until waste3 is placed
+Held object: None
+
+Generated options:
+A) pick waste2
+B) detect
+C) pick waste1
+D) pick waste3
+E) an option not listed here
+
+Option scores:
+Option: A 	log prob: -3.6297195324875124 	softmax: 0.026523622380181897
+Option: B 	log prob: -3.9422195324875124 	softmax: 0.019405096669620002
+Option: C 	log prob: -3.6047195324875125 	softmax: 0.027195071077480638
+Option: D 	log prob: -0.1015943566074262 	softmax: 0.903395933945061
+Option: E 	log prob: -3.7515945324875126 	softmax: 0.023480275927656714
+Prediction set: ['D']
+Step 2 pick roll:
+{
+  "failed": false,
+  "failure_roll": 0.12840470321577246,
+  "object": "waste3"
+}
+Selected/Executed (prediction set, option D): pick waste3 -> Executed: pick waste3
+Step 2 end:
+{
+  "action_history": [
+    "detect",
+    "pick waste3"
+  ],
+  "held_object": "waste3",
+  "observed_attributes": {
+    "waste1": "paper",
+    "waste2": "plastic",
+    "waste3": "can"
+  },
+  "placed_objects": {},
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste3",
+    "waste4"
+  ],
+  "step_elapsed_sec": 3.294764847960323
+}
+Step 3 start:
+{
+  "action_history": [
+    "detect",
+    "pick waste3"
+  ],
+  "held_object": "waste3",
+  "observed_attributes": {
+    "waste1": "paper",
+    "waste2": "plastic",
+    "waste3": "can"
+  },
+  "occlusions": {
+    "waste4": "waste3"
+  },
+  "placed_objects": {},
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste3",
+    "waste4"
+  ]
+}
+
+====== Step 3 generation prompt ======
+We: You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+Action roles:
+- detect: observe waste attributes for objects on the counter.
+- pick <object>: pick one observed object from the counter with an empty hand.
+- place <object> into <bin>: place the held object into the bin matching the observed attribute.
+
+Output rules:
+- Each option must be exactly one allowed action from the action roles.
+- Use only these action formats: detect, pick <object>, place <object> into <bin>.
+- Do not generate descriptive phrases, retries, requests for assistance, system checks, or any action outside these formats.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has not observed the waste types yet. The robot is not holding any waste object.
+We: The robot has not completed any actions yet.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) detect
+B) pick waste1
+C) place waste1 into can bin
+D) pick waste2
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste1: paper, waste2: general. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) pick waste1
+B) pick waste2
+C) detect
+D) place waste1 into paper bin
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has observed these waste types: waste2: general, waste3: plastic, waste4: can. The robot is holding waste2.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste2.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) place waste2 into general bin
+B) place waste2 into can bin
+C) pick waste3
+D) detect
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has observed these waste types: waste1: paper, waste2: plastic, waste3: can. The robot is holding waste3.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste3.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+Step 3 generation:
+{
+  "elapsed_sec": 0.8905755621381104,
+  "raw_text": "A) place waste3 into can bin  \nB) place waste3 into paper bin  \nC) place waste3 into plastic bin  \nD) detect",
+  "usage": {
+    "completion_tokens": 30,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0,
+      "text_tokens": null
+    },
+    "prompt_tokens": 757,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": null,
+      "text_tokens": null
+    },
+    "total_tokens": 787
+  }
+}
+
+====== Step 3 scoring prompt ======
+You are a robot operating in a waste sorting station. You are in front of a counter. There are four bins: a general bin, a plastic bin, a paper bin, and a can bin.
+
+We: The task is: Discard all waste.
+We: The waste objects still on the counter are waste1, waste2, waste3, waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The occluded waste objects are waste4 is under waste3 and cannot be detected until waste3 is placed.
+We: The robot has observed these waste types: waste1: paper, waste2: plastic, waste3: can. The robot is holding waste3.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste3.
+We: What should the robot do next?
+You:
+A) detect
+B) place waste3 into plastic bin
+C) place waste3 into paper bin
+D) place waste3 into can bin
+E) an option not listed here
+We: Which option is correct? Answer with a single capital letter.
+You:
+Step 3 scoring:
+{
+  "elapsed_sec": 2.265661394689232,
+  "text": "D",
+  "usage": {
+    "completion_tokens": 102,
+    "prompt_tokens": 850,
+    "total_tokens": 952
+  }
+}
+Step 3 decision data:
+{
+  "add_mc_prefix": "E",
+  "combined_option_scores": {
+    "A": 0.011648222753740115,
+    "B": 0.01121950313277114,
+    "C": 0.01454181969223316,
+    "D": 0.9487578476442196,
+    "E": 0.013832606777036103
+  },
+  "option_logprobs": {
+    "A": -22.00000762939453,
+    "B": -22.18750762939453,
+    "C": -20.89063262939453,
+    "D": -7.703443770878948e-06,
+    "E": -21.14063262939453
+  },
+  "options": [
+    "detect",
+    "place waste3 into plastic bin",
+    "place waste3 into paper bin",
+    "place waste3 into can bin",
+    "an option not listed here"
+  ],
+  "prediction_set": [
+    "D"
+  ],
+  "scores": [
+    0.011648222753740115,
+    0.01121950313277114,
+    0.01454181969223316,
+    0.9487578476442196,
+    0.013832606777036103
+  ],
+  "threshold": 0.038465783772906326
+}
+
+====== Step 3 ======
+Remaining objects: waste1, waste2, waste3, waste4
+True waste attributes: waste1: plastic, waste2: plastic, waste3: paper, waste4: general
+Observed waste attributes: waste1: paper, waste2: plastic, waste3: can
+Occluded waste objects: waste4 is under waste3 and cannot be detected until waste3 is placed
+Held object: waste3
+
+Generated options:
+A) detect
+B) place waste3 into plastic bin
+C) place waste3 into paper bin
+D) place waste3 into can bin
+E) an option not listed here
+
+Option scores:
+Option: A 	log prob: -4.452601663934899 	softmax: 0.011648222753740115
+Option: B 	log prob: -4.490101663934898 	softmax: 0.01121950313277114
+Option: C 	log prob: -4.230726663934899 	softmax: 0.01454181969223316
+Option: D 	log prob: -0.052601678744746805 	softmax: 0.9487578476442196
+Option: E 	log prob: -4.280726663934899 	softmax: 0.013832606777036103
+Prediction set: ['D']
+Step 3 place roll:
+{
+  "failed": false,
+  "failure_roll": 0.8065827418344597,
+  "object": "waste3",
+  "target_bin": "can bin"
+}
+Selected/Executed (prediction set, option D): place waste3 into can bin -> Executed: place waste3 into can bin
+Step 3 end:
+{
+  "action_history": [
+    "detect",
+    "pick waste3",
+    "place waste3 into can bin"
+  ],
+  "held_object": null,
+  "observed_attributes": {
+    "waste1": "paper",
+    "waste2": "plastic"
+  },
+  "placed_objects": {
+    "waste3": "can bin"
+  },
+  "remaining_objects": [
+    "waste1",
+    "waste2",
+    "waste4"
+  ],
+  "step_elapsed_sec": 3.1567534739151597
+}
+Step 3 failure diagnostic:
+{
+  "category": "when_missed_query_dead_end",
+  "dead_end_reason": "PLAN FAILURE: true paper waste waste3 was placed into can bin.",
+  "help_requested": false,
+  "observation_error_present": true,
+  "observation_mismatches": [
+    {
+      "fact": "waste_type",
+      "object": "waste1",
+      "observed": "paper",
+      "true": "plastic"
+    },
+    {
+      "fact": "waste_type",
+      "object": "waste3",
+      "observed": "can",
+      "true": "paper"
+    }
+  ],
+  "selected_action": "place waste3 into can bin",
+  "selected_token": "D",
+  "step": 3
+}
+PLAN FAILURE: true paper waste waste3 was placed into can bin.
+
+====== Final Plan ======
+1. detect
+2. pick waste3
+3. place waste3 into can bin
+Unsorted objects: waste1, waste2, waste4
+Token usage totals:
+{
+  "generation": 2313,
+  "overall": 5368,
+  "scoring": 3055
+}
+Total elapsed seconds: 9.971331994049251
+Summary:
+{
+  "action_failure_count": 0,
+  "autonomous_action_count": 2,
+  "average_candidate_count": 4.666666666666667,
+  "average_candidate_count_when_asked": 4.0,
+  "average_prediction_set_size": 2.0,
+  "average_prediction_set_size_when_asked": 4.0,
+  "failure_mode_counts": {
+    "what_missing_correct_option_after_observation_error": 0,
+    "when_missed_query_dead_end": 1,
+    "when_what_missing_correct_option_without_observation_error": 0
+  },
+  "failure_mode_events": [
+    {
+      "category": "when_missed_query_dead_end",
+      "dead_end_reason": "PLAN FAILURE: true paper waste waste3 was placed into can bin.",
+      "help_requested": false,
+      "observation_error_present": true,
+      "observation_mismatches": [
+        {
+          "fact": "waste_type",
+          "object": "waste1",
+          "observed": "paper",
+          "true": "plastic"
+        },
+        {
+          "fact": "waste_type",
+          "object": "waste3",
+          "observed": "can",
+          "true": "paper"
+        }
+      ],
+      "selected_action": "place waste3 into can bin",
+      "selected_token": "D",
+      "step": 3
+    }
+  ],
+  "fallback_in_prediction_count": 1,
+  "held_object": null,
+  "noopt_recovery_count": 0,
+  "placed_objects": {
+    "waste3": "can bin"
+  },
+  "planning_iterations": 3,
+  "planning_length": 3,
+  "question_count": 1,
+  "stop_reason": "PLAN FAILURE: true paper waste waste3 was placed into can bin.",
+  "success": false,
+  "terminal_failure_category": "when_missed_query_dead_end",
+  "token_usage": {
+    "generation": 2313,
+    "overall": 5368,
+    "scoring": 3055
+  },
+  "total_elapsed_seconds": 9.971331994049251,
+  "unsorted_objects": [
+    "waste1",
+    "waste2",
+    "waste4"
+  ]
+}
+
+====== Summary ======
+Success: False
+Stop reason: PLAN FAILURE: true paper waste waste3 was placed into can bin.
+Planning length: 3
+Planning iterations: 3
+Question count: 1
+Average candidate count when asked: 4.0
+Average prediction set size when asked: 4.0
+Autonomous action count: 2
+Fallback in prediction count: 1
+NoOpt recovery count: 0
+Action failure count: 0
+Terminal failure category: when_missed_query_dead_end
+Failure mode counts: {'when_missed_query_dead_end': 1, 'what_missing_correct_option_after_observation_error': 0, 'when_what_missing_correct_option_without_observation_error': 0}

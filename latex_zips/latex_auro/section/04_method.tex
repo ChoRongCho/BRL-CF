@@ -13,30 +13,39 @@
 \SetKwFunction{QuerySource}{QUERY}
 \SetKwFunction{FilterBelief}{FILTER}
 
-\section{Belief-Guided State Verification}~\label{method:system_architecture}
-The proposed method uses a belief over symbolic successor states to coordinate two feedback decisions: when additional information is necessary and what state information should be requested. After each robot action and observation, the method constructs a weighted set of reachable symbolic worlds. Belief confidence determines whether execution can continue without external information. If confidence is insufficient, the method selects a predicate fact according to its expected reduction in belief entropy, queries an external source, and removes worlds inconsistent with the answer. The robot then commits to the most probable remaining state and retains responsibility for subsequent action selection.
+\section{Method}~\label{method:method}
+The central idea is to use uncertainty in the current symbolic state to decide both when to request external information and what information to request. After each action and observation, we construct a weighted belief over reachable symbolic successor states and measure its confidence using normalized entropy. If the confidence falls below a predefined threshold, we query the symbolic fact expected to yield the largest reduction in belief entropy. 
 
-\subsection{Method Overview}~\label{method:overview}
-Fig.~\ref{fig:pm} shows the execution loop. Let $s_t^{K}$ denote the symbolic state currently committed for planning. The POMCP planner selects an applicable robot action $a_t$, which is executed to obtain observation $o_{t+1}$. The transition and observation models induce a posterior belief $\mathcal{B}_{t+1}$ over reachable successor states. The method then applies the following sequence:
+\subsection{Planning and Querying}~\label{method:overview}\label{method:planning}
+% Fig.~\ref{fig:pm} summarizes the online planning loop. 
+In the symbolic representation introduced in Sec.~\ref{preliminaries:STRIPS}, each state is a subset of the atom set $\mathcal{F}$, yielding up to $2^{|\mathcal{F}|}$ possible states. Maintaining an exact belief over this entire state space is therefore impractical during online execution. At the same time, action preconditions and effects must be evaluated against a consistent symbolic state. We address both requirements by maintaining a committed knowledge state $s_t^{K}$ in the KB as the reference state for planning and execution. POMCP selects an action $a_t\in\mathcal{A}$ applicable to this state, denoted by $a_t\llbracket s_t^{K}\rrbracket$. After executing $a_t$ and receiving observation $o_{t+1}$, we construct the posterior belief $\mathcal{B}_{t+1}$ only over the symbolic successors reachable from $(s_t^{K},a_t)$. This local belief preserves uncertainty relevant to the current action without tracking the full symbolic state space, while keeping subsequent planning consistent with the symbolic knowledge maintained in the KB.
+
+The planner first evaluates whether $\mathcal{B}_{t+1}$ is sufficiently confident. If its confidence is below the threshold $\tau$, a query loop begins. At each iteration, the planner selects a symbolic fact $c^*$ according to its expected reduction in belief entropy, receives its truth value, and removes states inconsistent with the answer. The weights of the remaining states are renormalized, and the confidence is evaluated again. The loop terminates when the confidence reaches $\tau$ or no differentiating fact remains.
+
+After the query loop, the most probable remaining state is committed as
 \[
-s_t^{K}
-\xrightarrow[\text{execute}]{a_t}
-\mathcal{B}_{t+1}
-\xrightarrow[\text{when}]{\mathrm{Conf}}
-\xrightarrow[\text{what}]{\text{expected entropy}}
-\widehat{s}_{t+1}^{K}.
+s_{t+1}^{K}=\arg\max_{s^k\in\mathcal{B}_{t+1}} w_k.
 \]
-The middle two operations are the feedback policy studied in this paper. If no query is triggered, or after the query loop terminates, the maximum a posteriori world becomes the committed state $\widehat{s}_{t+1}^{K}$ for the next planning step.
+The next POMCP search starts from the refined belief and the committed state $s_{t+1}^{K}$.
 
 \begin{figure}[t]
 \captionsetup{skip=0pt}
 \centering
 \includegraphics[width=0.98\linewidth]{figures/fig_overview.pdf}
-\caption{Belief-guided state-verification loop. A robot action and observation produce a weighted frontier of reachable symbolic worlds. Belief confidence determines when to request external information, and expected posterior entropy determines which predicate fact to verify. The answer refines the belief before the robot selects its subsequent action.}
+\caption{Online planning with belief-guided state verification. After executing an action and receiving an observation, the planner constructs a weighted belief over reachable symbolic states. Belief confidence determines whether to enter the query loop, and expected entropy reduction determines which symbolic fact to verify. The refined belief is then used in the next planning step.}
 \label{fig:pm}
 \end{figure}
 
-\subsection{Reachable Symbolic Belief}~\label{method:belief_rep}
+\label{method:PM}
+We use POMCP~\cite{silver2010monte} to select robot actions from the current belief. The search retains the standard simulation and value-update structure, but restricts both tree expansion and rollout to actions whose symbolic preconditions hold in the sampled state. Given state $s$, the planner therefore explores
+\[
+\mathcal{A}(s)=\{a\in\mathcal{A}\mid \mathrm{pre}(a)\subseteq s\}
+\]
+rather than the full action set. The generative model samples $(s',o,r)$ from the same domain transition and observation models used to construct the explicit frontier. This avoids evaluating symbolically infeasible actions while preserving stochastic search over reachable outcomes.
+
+After an action, observation, and any external feedback have been incorporated, the search tree is pruned using the executed action and the committed successor state. The subsequent search therefore begins from the state estimate produced by the full sensing-and-verification loop. Detailed search, simulation, and rollout pseudocode is provided in Appendix~\ref{appx:algorithms}; these routines support action selection but are not the feedback policy studied in the main experiments.
+
+\label{method:belief_rep}
 The state representation combines symbolic facts with numeric fluents. Facts encode task conditions that affect action applicability, such as $\texttt{ripe}(\text{tomato}_1)$ or an object's waste category. Numeric fluents encode quantities used by robot skills, such as object poses and distances. The feedback policy reasons over uncertainty in symbolic facts; numeric values are updated from sensing without expanding the symbolic hypothesis set.
 
 Rather than maintaining a global belief over every logically possible world, the method constructs a local \emph{frontier} after each executed action. Given committed state $s_t^{K}$ and action $a_t$, the transition model returns the symbolic successors with nonzero probability:
@@ -71,7 +80,7 @@ If every unnormalized weight is zero, the implementation falls back to a uniform
 \end{equation}
 This explicit weighted frontier is used for confidence estimation and query selection. POMCP separately maintains sampled states in its search tree for action-value estimation; both components use the same symbolic transition and observation models.
 
-\subsection{When to Query: Belief Confidence}~\label{method:uncertainty}
+\label{method:uncertainty}
 The timing policy asks whether the posterior belief is sufficiently concentrated to continue execution. Its entropy is
 \[
 \mathcal{H}(\mathcal{B}_{t+1})
@@ -94,7 +103,7 @@ Given threshold $\tau\in[0,1]$, the robot initiates state verification when
 \end{equation}
 Thus, $\tau$ controls the empirical trade-off between acting with unresolved state ambiguity and acquiring additional information. The policy is deliberately based on uncertainty in the current symbolic state, rather than confidence in a generated action label. Its effect on task success is evaluated by varying $\tau$ and by comparing uncertainty-based timing with dense, absent, and random feedback schedules.
 
-\subsection{What to Query: Expected Entropy Reduction}~\label{method:query_selection}
+\label{method:query_selection}
 Once a query is triggered, the method selects a symbolic fact that distinguishes the remaining worlds. Let $\mathcal{C}(\mathcal{B})$ contain every fact that holds in at least one, but not all, frontier states:
 \[
 \mathcal{C}(\mathcal{B})
@@ -134,7 +143,6 @@ P(\neg c)\mathcal{H}(\mathcal{B}_{c}^{-})
 \end{equation}
 Equivalently, Eq.~\ref{eq:select_hypo} maximizes one-step information gain because the current belief entropy is fixed across candidates. The criterion is recomputed after every answer, so successive questions adapt to the remaining worlds. The content-selection experiments test whether this targeted choice reduces the number of queries relative to selecting a differentiating fact at random.
 
-\subsection{Feedback Update and Online Execution}~\label{method:planning}
 The selected predicate is converted into a binary state-verification query. For example, $c^*=\texttt{ripe}(\text{tomato}_1)$ produces the question \emph{Is tomato 1 ripe?} The answer $y\in\{\texttt{true},\texttt{false}\}$ filters the belief:
 \begin{equation}
 \mathcal{B}
@@ -186,43 +194,26 @@ $\mathcal{B}\gets\{(s_0^{K},1)\}$; $t\gets0$; $\pi\gets()$\\
 \KwRet $\pi$
 \end{algorithm}
 
+\subsection{System Implementation}~\label{method:modules}
 \begin{figure*}[t!]
 \captionsetup{skip=0pt}
 \centering
 \includegraphics[width=0.95\linewidth]{figures/fig_dataflow.pdf}
-\caption{System realization of the belief-guided state-verification method. The KB shares task facts and action models across planning, sensing, and feedback. The PM retains action selection, while the FM and UI acquire external evidence about a selected symbolic fact.}
+\caption{System implementation of the belief-guided state-verification method. The KB shares task facts and action models across planning, sensing, and feedback. The PM retains action selection, while the FM and UI acquire external evidence about a selected symbolic fact.}
 \label{fig:data_flow}
 \end{figure*}
 
-\subsection{Integration with Symbolic POMCP}~\label{method:PM}
-We use POMCP~\cite{silver2010monte} to select robot actions from the current belief. The search retains the standard simulation and value-update structure, but restricts both tree expansion and rollout to actions whose symbolic preconditions hold in the sampled state. Given state $s$, the planner therefore explores
-\[
-\mathcal{A}(s)=\{a\in\mathcal{A}\mid \mathrm{pre}(a)\subseteq s\}
-\]
-rather than the full action set. The generative model samples $(s',o,r)$ from the same domain transition and observation models used to construct the explicit frontier. This avoids evaluating symbolically infeasible actions while preserving stochastic search over reachable outcomes.
-
-After an action, observation, and any external feedback have been incorporated, the search tree is pruned using the executed action and the committed successor state. The subsequent search therefore begins from the state estimate produced by the full sensing-and-verification loop. Detailed search, simulation, and rollout pseudocode is provided in Appendix~\ref{appx:algorithms}; these routines support action selection but are not the feedback policy studied in the main experiments.
-
-\subsection{System Realization}~\label{method:modules}
 The method is realized through the modules shown in Fig.~\ref{fig:data_flow}. The Knowledge Base (KB) provides the shared symbolic state and action model. The Planning Manager (PM) performs POMCP search, constructs and updates the reachable frontier, and invokes the feedback policy. Sensing and Perception (SP) supplies observations and numeric state estimates. The Feedback Manager (FM) formats the selected predicate and incorporates the response, while the User Interface (UI) presents state-verification questions during human interaction.
 
-\subsubsection{Knowledge Representation and Perception}~\label{method:KB}
+\label{method:KB}
 The KB partitions information into domain knowledge $\mathcal{I}^{D}$, static structured information $\mathcal{I}^{S}$, and local information $\mathcal{I}^{L}$ obtained during execution:
 \[
 \mathcal{KB}=\mathcal{I}^{D}\sqcup\mathcal{I}^{S}\sqcup\mathcal{I}^{L}.
 \]
 Domain knowledge contains action schemas and task rules. Static information includes invariant facts and fixed map or robot parameters. Local information contains perceptual facts and numeric fluents that are updated during execution. SP maps raw sensor input to these task-level observations. For example, RGB-D sensing can update object pose and ripeness estimates, while the symbolic observation likelihood determines how those observations weight the frontier states.
 
-\subsubsection{Robot Action Execution}~\label{method:action_execution}
+\label{method:action_execution}
 Each symbolic action is associated with an executable robot skill. Actions such as $\texttt{navigate}(\text{robot},l_1,l_2)$ and $\texttt{pick}(\text{robot},\text{tomato}_1)$ specify task-level intentions, while an off-the-shelf motion planner such as MoveIt~\cite{chitta2012moveit} uses numeric fluents from the KB to generate low-level motion. This separation allows the feedback policy to operate on task-level facts without depending on a particular motion-planning implementation.
 
-\subsubsection{Feedback Interface}~\label{method:FM}
-The FM maps the selected predicate to a predefined question template and converts the response to a Boolean value. During human interaction, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options, as shown in Fig.~\ref{fig:FM_UI}. The interface exposes the state fact being verified but does not ask the user to choose the robot's next action.
-
-\begin{figure}[H]
-\captionsetup{skip=0pt}
-\centering
-\includegraphics[width=\linewidth]{figures/fig_interface.pdf}
-\caption{State-verification interface. The queried object and response options provide evidence for filtering the symbolic belief.}
-\label{fig:FM_UI}
-\end{figure}
+\label{method:FM}
+The FM maps the selected predicate to a predefined question template and converts the response to a Boolean value. During human interaction, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options. The interface exposes the state fact being verified but does not ask the user to choose the robot's next action.
