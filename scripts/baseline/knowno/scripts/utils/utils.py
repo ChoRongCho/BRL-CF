@@ -501,6 +501,9 @@ def execute_waste_action(
         if matched_object is None:
             console("Selected object is not in the current state. Stopping to avoid compounding error.")
             return held_object, None, 0, f"invalid pick unavailable object: {action_arg}"
+        if matched_object not in observed_attributes:
+            console("Selected object has not been detected. Detect it before picking.")
+            return held_object, None, 0, f"invalid pick undetected object: {matched_object}"
         if matched_object not in visible_objects(remaining_objects, occlusions):
             blocker = occlusions.get(matched_object)
             console(f"Selected object is occluded by {blocker}. Place the blocker before picking it.")

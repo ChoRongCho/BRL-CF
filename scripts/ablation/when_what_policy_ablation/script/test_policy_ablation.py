@@ -3,25 +3,14 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from scripts.ablation.when_what_policy_ablation.script.calibrate_state_cp import (
-    evaluate,
-    finite_sample_qhat,
-)
-from scripts.ablation.when_what_policy_ablation.script.calibration_truth import (
-    build_calibration_truth_facts,
-)
-from scripts.ablation.when_what_policy_ablation.script.cp_when import (
-    StateCPWhenEvaluator,
-    aggregate_state_probabilities,
-    ambiguous_facts,
-    calibration_nonconformity,
-)
+from scripts.ablation.when_what_policy_ablation.script.cp_when import _current_facts
 from scripts.ablation.when_what_policy_ablation.script.policies import (
     BeliefThresholdWhen,
-    ConformalSetInformationGainWhat,
+    ConformalActionAmbiguityWhen,
     InformationGainWhat,
     QueryValueWhat,
     QueryValueWhen,
+    build_policy_bundle,
     cp_trigger,
 )
 from scripts.ablation.when_what_policy_ablation.script.policy_types import PolicyContext
@@ -95,6 +84,26 @@ class FakeValueEvaluator:
         )
 
 
+class FakeCPResult:
+    def __init__(self, prediction_set, fallback_token="E"):
+        self.prediction_set = prediction_set
+        self.fallback_token = fallback_token
+
+    def as_dict(self):
+        return {
+            "prediction_set": self.prediction_set,
+            "fallback_token": self.fallback_token,
+        }
+
+
+class FakeCPEvaluator:
+    def __init__(self, prediction_set, fallback_token="E"):
+        self.result = FakeCPResult(prediction_set, fallback_token)
+
+    def evaluate(self, policy_context):
+        return self.result
+
+
 def context(belief=None):
     return PolicyContext(
         belief=belief or FakeBelief(), feedback_manager=FakeManager(), env=None,
@@ -103,90 +112,35 @@ def context(belief=None):
 
 
 class PolicyAblationTest(unittest.TestCase):
-    def test_calibration_truth_resolves_complete_belief_state(self):
+    def test_cp_trigger_uses_action_set_and_fallback(self):
+        self.assertEqual(cp_trigger([], "E"), (True, "empty"))
+        self.assertEqual(cp_trigger(["A", "B"], "E"), (True, "multiple"))
+        self.assertEqual(cp_trigger(["E"], "E"), (True, "contains_noopt"))
+        self.assertEqual(cp_trigger(["A"], "E"), (False, "singleton_action"))
+
+    def test_cp_when_uses_action_ambiguity_only_as_trigger(self):
+        decision = ConformalActionAmbiguityWhen(
+            FakeCPEvaluator(["A", "B"])
+        ).should_start(context())
+        self.assertTrue(decision.start)
+        self.assertEqual(decision.policy, "cp_action_ambiguity")
+        self.assertEqual(decision.reason, "multiple")
+
+    def test_cp_when_keeps_ours_eig_as_what_policy(self):
+        bundle = build_policy_bundle(
+            "cp_when", threshold=0.8,
+            cp_evaluator=FakeCPEvaluator(["A", "B"]),
+        )
+        self.assertIsInstance(bundle.when, ConformalActionAmbiguityWhen)
+        self.assertIsInstance(bundle.what, InformationGainWhat)
+
+    def test_action_cp_reads_current_posterior_map(self):
         belief = FakeBelief(
-            [
-                FakeState(["can(waste1)", "detected(waste1)"]),
-                FakeState([]),
-            ],
-            [0.6, 0.4],
+            [FakeState(["old"]), FakeState(["new"])],
+            [0.1, 0.9],
         )
-        truth = build_calibration_truth_facts(
-            belief=belief,
-            candidate_facts=[
-                "can(waste1)", "detected(waste1)",
-            ],
-            oracle_answer=lambda fact: fact == "can(waste1)",
-        )
-        self.assertIn("can(waste1)", truth.facts)
-        self.assertIn("detected(waste1)", truth.facts)
-        self.assertEqual(truth.resolution, "unique_full_state")
-
-    def test_finite_sample_qhat_uses_knowno_rank(self):
-        scores = [index / 100.0 for index in range(100)]
-        qhat, rank = finite_sample_qhat(scores, 0.95)
-        self.assertEqual(rank, 96)
-        self.assertEqual(qhat, 0.95)
-
-    def test_zero_mass_truth_is_reported_separately(self):
-        record = {
-            "hypotheses": [
-                {"signature": ["p(a)"], "probability": 0.6},
-                {"signature": [], "probability": 0.4},
-            ],
-            "true_signature": ["missing"],
-            "p_true": 0.0,
-            "nonconformity_score": 1.0,
-        }
-        metrics = evaluate([record], qhat=1.0)
-        self.assertEqual(metrics["empirical_coverage"], 1.0)
-        self.assertEqual(metrics["truth_in_prediction_set_rate"], 0.0)
-        self.assertEqual(metrics["truth_in_belief_support_rate"], 0.0)
-        self.assertEqual(metrics["truth_outside_belief_support_rate"], 1.0)
-
-    def test_cp_trigger_uses_state_set_cardinality(self):
-        self.assertEqual(cp_trigger([]), (False, "empty"))
-        self.assertEqual(cp_trigger(["s1", "s2"]), (True, "multiple"))
-        self.assertEqual(cp_trigger(["s1"]), (False, "singleton_state"))
-
-    def test_equivalent_particles_are_merged(self):
-        first = FakeState(["a", "b"])
-        duplicate = FakeState(["b", "a"])
-        other = FakeState(["c"])
-        belief = FakeBelief([first, duplicate, other], [0.2, 0.3, 0.5])
-        probabilities = sorted(aggregate_state_probabilities(belief).values())
-        self.assertEqual(probabilities, [0.5, 0.5])
-
-    def test_state_cp_uses_complete_belief_state(self):
-        belief = FakeBelief(
-            [FakeState(["detected(w1)", "can(w1)"]), FakeState([])],
-            [0.5, 0.5],
-        )
-        self.assertEqual(
-            ambiguous_facts(belief), ["can(w1)", "detected(w1)"]
-        )
-
-    def test_cp_what_runs_eig_inside_prediction_set(self):
-        belief = FakeBelief(
-            [FakeState(["a"]), FakeState([]), FakeState(["b"])],
-            [0.45, 0.40, 0.15],
-        )
-        evaluator = StateCPWhenEvaluator(qhat=0.6)
-        what = ConformalSetInformationGainWhat(evaluator, InformationGainWhat())
-        decision = what.select_fact(context(belief))
-        self.assertIsNotNone(decision)
-        self.assertEqual(decision.fact, "a")
-        self.assertEqual(decision.diagnostics["cp_prediction_set_size"], 2)
-        self.assertEqual(decision.diagnostics["restricted_particle_count"], 2)
-
-    def test_state_cp_prediction_set_and_calibration_score(self):
-        true_state = FakeState(["true"])
-        belief = FakeBelief([true_state, FakeState(["false"])], [0.7, 0.3])
-        result = StateCPWhenEvaluator(qhat=0.4).evaluate(context(belief))
-        self.assertEqual(len(result.prediction_set), 1)
-        self.assertAlmostEqual(
-            calibration_nonconformity(belief, true_state), 0.3
-        )
+        belief.knowledge = FakeState(["stale"])
+        self.assertEqual(list(_current_facts(context(belief))), ["new"])
 
     def test_threshold_when(self):
         decision = BeliefThresholdWhen(0.8).should_start(context())

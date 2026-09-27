@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run State-CP When with Ours EIG What."""
+"""Run KnowNo action-CP When with Ours EIG What."""
 
 from pathlib import Path
 import sys

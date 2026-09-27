@@ -1,6 +1,6 @@
 # Query baseline comparison — 분석 보고서
 
-Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이다. 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다. 두 Query-Action 모두 failure_penalty=10.0, answer_accuracy=1.0이다. 각 방법 실행일과 파라미터는 원본 로그와 episodes.csv에 기록했다.
+Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. Waste KnowNo와 IntroPlan은 2026-09-28 수정된 v2 prompt로 각각 재보정하고 재실행했다 (KnowNo qhat=0.960193292448771, IntroPlan qhat=0.9742783904140572, score temperature=5.0, target coverage=95%). Tomato와 나머지 세 조건의 로그는 유지했다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이고, 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다.
 
 실행 슬롯 2,000개, 유효 결과 2,000개. Raw는 `00_raw/`, 각 수치의 출처는 episodes.csv의 raw_source이다.
 
@@ -10,8 +10,8 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 |---|---|---:|---:|---:|---:|---:|---:|
 | all | ours | 390/400 | 97.5 | 8.41 | 12.4 | 1.01 | 0 |
 | all | query_action_pomcp | 218/400 | 54.5 | 1.18 | 13.3 | 1.67 | 0 |
-| all | knowno | 224/400 | 56 | 2.39 | 10.2 | 15.6 | 0 |
-| all | introplan | 219/400 | 54.8 | 3.51 | 9.99 | 41.2 | 0 |
+| all | knowno | 227/400 | 56.8 | 3.16 | 10.2 | 15 | 0 |
+| all | introplan | 235/400 | 58.8 | 3.95 | 10.4 | 41.3 | 0 |
 | all | query_action_pomcp_selected | 289/400 | 72.2 | 16.9 | 12.7 | 7.6 | 0 |
 | tomato | ours | 190/200 | 95 | 9 | 14.4 | 1.22 | 0 |
 | tomato | query_action_pomcp | 118/200 | 59 | 1.2 | 16.7 | 1.98 | 0 |
@@ -20,8 +20,8 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 | tomato | query_action_pomcp_selected | 115/200 | 57.5 | 9.72 | 13.8 | 5.04 | 0 |
 | wastesorting | ours | 200/200 | 100 | 7.83 | 10.3 | 0.806 | 0 |
 | wastesorting | query_action_pomcp | 100/200 | 50 | 1.16 | 9.93 | 1.36 | 0 |
-| wastesorting | knowno | 114/200 | 57 | 3.08 | 8.97 | 13.1 | 0 |
-| wastesorting | introplan | 91/200 | 45.5 | 3.49 | 8.04 | 28.2 | 0 |
+| wastesorting | knowno | 117/200 | 58.5 | 4.61 | 9.07 | 11.7 | 0 |
+| wastesorting | introplan | 107/200 | 53.5 | 4.36 | 8.88 | 28.2 | 0 |
 | wastesorting | query_action_pomcp_selected | 174/200 | 87 | 24 | 11.5 | 10.2 | 0 |
 
 ## 장면별 결과
@@ -63,16 +63,16 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 | wastesorting | 03 | query_action_pomcp | 22/40 | 1.05 | 10.2 |
 | wastesorting | 04 | query_action_pomcp | 23/40 | 1.45 | 11 |
 | wastesorting | 05 | query_action_pomcp | 19/40 | 1.43 | 10 |
-| wastesorting | 01 | knowno | 25/40 | 2.55 | 8.72 |
-| wastesorting | 02 | knowno | 26/40 | 3.98 | 9.8 |
-| wastesorting | 03 | knowno | 20/40 | 3 | 8.47 |
-| wastesorting | 04 | knowno | 19/40 | 2.9 | 8.82 |
-| wastesorting | 05 | knowno | 24/40 | 2.95 | 9.05 |
-| wastesorting | 01 | introplan | 22/40 | 3.75 | 8.38 |
-| wastesorting | 02 | introplan | 25/40 | 3.67 | 9.53 |
-| wastesorting | 03 | introplan | 17/40 | 3.35 | 8.03 |
-| wastesorting | 04 | introplan | 12/40 | 3.38 | 6.97 |
-| wastesorting | 05 | introplan | 15/40 | 3.3 | 7.33 |
+| wastesorting | 01 | knowno | 25/40 | 4.58 | 9 |
+| wastesorting | 02 | knowno | 27/40 | 4.95 | 9.82 |
+| wastesorting | 03 | knowno | 22/40 | 4.5 | 8.78 |
+| wastesorting | 04 | knowno | 22/40 | 4.62 | 8.95 |
+| wastesorting | 05 | knowno | 21/40 | 4.4 | 8.82 |
+| wastesorting | 01 | introplan | 22/40 | 4.15 | 8.45 |
+| wastesorting | 02 | introplan | 25/40 | 5.1 | 9.57 |
+| wastesorting | 03 | introplan | 20/40 | 4.3 | 8.55 |
+| wastesorting | 04 | introplan | 20/40 | 4.2 | 9 |
+| wastesorting | 05 | introplan | 20/40 | 4.05 | 8.8 |
 | wastesorting | 01 | query_action_pomcp_selected | 40/40 | 22.1 | 11.2 |
 | wastesorting | 02 | query_action_pomcp_selected | 36/40 | 25.1 | 11.9 |
 | wastesorting | 03 | query_action_pomcp_selected | 34/40 | 24.5 | 11.5 |
@@ -86,16 +86,16 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 | Domain | Comparison | 쌍 수 | 기준만 성공 | 상대만 성공 | 성공률 차이(pp) | McNemar p | Holm p | 질문 차이 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | all | query_action_pomcp | 400 | 174 | 2 | 43 | 3.25e-49 | 1.3e-48 | 7.24 |
-| all | knowno | 400 | 170 | 4 | 41.5 | 3.15e-45 | 6.31e-45 | 6.02 |
-| all | introplan | 400 | 175 | 4 | 42.8 | 1.1e-46 | 3.31e-46 | 4.9 |
+| all | knowno | 400 | 167 | 4 | 40.8 | 2.35e-44 | 7.06e-44 | 5.25 |
+| all | introplan | 400 | 159 | 4 | 38.8 | 4.97e-42 | 9.94e-42 | 4.47 |
 | all | query_action_pomcp_selected | 400 | 108 | 7 | 25.2 | 2.25e-24 | 2.25e-24 | -8.45 |
 | tomato | query_action_pomcp | 200 | 74 | 2 | 36 | 7.75e-20 | 2.32e-19 | 7.8 |
 | tomato | knowno | 200 | 84 | 4 | 40 | 1.58e-20 | 6.32e-20 | 7.29 |
 | tomato | introplan | 200 | 66 | 4 | 31 | 1.65e-15 | 1.65e-15 | 5.46 |
 | tomato | query_action_pomcp_selected | 200 | 82 | 7 | 37.5 | 2.43e-17 | 4.86e-17 | -0.725 |
-| wastesorting | query_action_pomcp | 200 | 100 | 0 | 50 | 1.58e-30 | 4.73e-30 | 6.67 |
-| wastesorting | knowno | 200 | 86 | 0 | 43 | 2.58e-26 | 5.17e-26 | 4.75 |
-| wastesorting | introplan | 200 | 109 | 0 | 54.5 | 3.08e-33 | 1.23e-32 | 4.34 |
+| wastesorting | query_action_pomcp | 200 | 100 | 0 | 50 | 1.58e-30 | 6.31e-30 | 6.67 |
+| wastesorting | knowno | 200 | 83 | 0 | 41.5 | 2.07e-25 | 4.14e-25 | 3.22 |
+| wastesorting | introplan | 200 | 93 | 0 | 46.5 | 2.02e-28 | 6.06e-28 | 3.47 |
 | wastesorting | query_action_pomcp_selected | 200 | 26 | 0 | 13 | 2.98e-08 | 2.98e-08 | -16.2 |
 
 ## 해석 및 제한
@@ -115,6 +115,6 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 |---|---|---|---|---|---|
 | ours | 0.2 | 미기록 | 100 | 0.8 | 미기록 |
 | query_action_pomcp | 0.2 | 1.0 | 100 | 미기록 | 미기록 |
-| knowno | 미기록 | 미기록 | 미기록 | 미기록 | gpt-4o |
-| introplan | 미기록 | 미기록 | 미기록 | 미기록 | gpt-4o |
+| knowno | 미기록 | 미기록 | 미기록 | 0.8404, 0.960193292448771 | gpt-4o |
+| introplan | 미기록 | 미기록 | 미기록 | 0.9742783904140572, 0.9809474992495626 | gpt-4o |
 | query_action_pomcp_selected | 0.5, 0.9 | 0.0 | 100 | 미기록 | 미기록 |

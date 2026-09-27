@@ -2,11 +2,11 @@
 
 ## 상태
 
-**paper_ready** — 기존 4조건과 tuned Query-as-Action을 합친 5조건 baseline 비교.
+**paper_ready** — 기존 4조건과 Query-Action (Tomato γ=0.5, Waste γ=0.9, cq=0) 400회를 합친 5조건 baseline 비교.
 
-현재 활성 폴더의 Ours, 기존 Query-Action POMCP, KnowNo GPT-4, IntroPlan과 성공률 기준으로 선택한 tuned Query-Action POMCP를 비교한다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이며 tuned 조건은 gamma=0.5/query_cost=0.0이다. 각 방법 실행일이 다르며 원본 timestamp와 parameter 열에 기록한다. 원본 파일은 이 실험의 00_raw로 실제 이동했고 original_source_file은 이동 전 경로다.
+Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이다. 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다. 두 Query-Action 모두 failure_penalty=10.0, answer_accuracy=1.0이다. 각 방법 실행일과 파라미터는 원본 로그와 episodes.csv에 기록했다.
 
-실행 로그 2000건. 파일명에서 확인된 실행일: 2026-09-19, 2026-09-20, 2026-09-21.
+실행 로그 2000건. 파일명에서 확인된 실행일: 2026-09-19, 2026-09-20, 2026-09-22.
 
 ## 파일 구조
 
@@ -21,7 +21,7 @@
 
 정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 성공률은 유효 결과 기준으로 계산하며 오류 건수는 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음. 기존 논문 그림의 오차막대/필터와 같다고 가정하지 말 것.
 
-원본 파라미터: `{"gamma": ["0.2", "0.5"], "n_simulations": ["100"], "query_cost": ["0.0", "1.0"], "failure_penalty": ["10.0"], "answer_accuracy": ["1.0"], "threshold": ["0.8"]}`
+원본 파라미터: `{"gamma": ["0.2", "0.5", "0.9"], "n_simulations": ["100"], "query_cost": ["0.0", "1.0"], "failure_penalty": ["10.0"], "answer_accuracy": ["1.0"], "threshold": ["0.8"]}`
 
 | Domain | Condition | Status | n |
 |---|---|---|---:|
@@ -29,12 +29,12 @@
 | tomato | knowno | ok | 200 |
 | tomato | ours | ok | 200 |
 | tomato | query_action_pomcp | ok | 200 |
-| tomato | query_action_pomcp_tuned | ok | 200 |
+| tomato | query_action_pomcp_selected | ok | 200 |
 | wastesorting | introplan | ok | 200 |
 | wastesorting | knowno | ok | 200 |
 | wastesorting | ours | ok | 200 |
 | wastesorting | query_action_pomcp | ok | 200 |
-| wastesorting | query_action_pomcp_tuned | ok | 200 |
+| wastesorting | query_action_pomcp_selected | ok | 200 |
 
 ## 재생성
 

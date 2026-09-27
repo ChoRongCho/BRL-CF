@@ -7,7 +7,6 @@ and query-action value evaluator. It does not modify their source code.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import random
@@ -29,7 +28,7 @@ from planners.pomcp import POMCPPlanner
 from utils.arguments import parse_args
 from utils.logger import logger_exp
 
-from scripts.ablation.when_what_policy_ablation.script.cp_when import StateCPWhenEvaluator
+from scripts.ablation.when_what_policy_ablation.script.cp_when import KnowNoCPWhenEvaluator
 from scripts.ablation.when_what_policy_ablation.script.policies import build_policy_bundle
 from scripts.ablation.when_what_policy_ablation.script.query_episode import run_query_episode
 from scripts.ablation.when_what_policy_ablation.script.value_evaluator import QueryValueEvaluator
@@ -43,8 +42,14 @@ def parse_policy_args(condition: str):
     parser.add_argument("--query-cost", type=float, default=1.0)
     parser.add_argument("--failure-penalty", type=float, default=10.0)
     parser.add_argument("--answer-accuracy", type=float, default=1.0)
-    parser.add_argument("--state-qhat", type=float)
-    parser.add_argument("--state-calibration", default="")
+    parser.add_argument("--score-temperature", type=float, default=5.0)
+    parser.add_argument("--tomato-qhat", type=float, default=0.8404)
+    parser.add_argument("--waste-qhat", type=float, default=0.8704)
+    parser.add_argument(
+        "--llm-settings",
+        default=str(PROJECT_ROOT / "llm_setting.json"),
+    )
+    parser.add_argument("--api-key", default="")
     policy, remaining = parser.parse_known_args()
     original = sys.argv
     try:
@@ -61,22 +66,11 @@ def parse_policy_args(condition: str):
         parser.error("query cost and failure penalty must be non-negative")
     if not 0.5 <= policy.answer_accuracy <= 1.0:
         parser.error("answer accuracy must be in [0.5, 1.0]")
-    if policy.state_qhat is not None and policy.state_calibration:
-        parser.error("use either --state-qhat or --state-calibration, not both")
-    if condition == "cp_when" and policy.state_qhat is None and not policy.state_calibration:
-        parser.error(
-            "01_cp_when.py requires --state-calibration or a calibrated --state-qhat"
-        )
-    if policy.state_calibration:
-        calibration_path = Path(policy.state_calibration).expanduser().resolve()
-        try:
-            calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
-            policy.state_qhat = float(calibration["qhats"][args.domain])
-        except (OSError, KeyError, TypeError, ValueError) as error:
-            parser.error(f"invalid state calibration file: {error}")
-        policy.state_calibration = str(calibration_path)
-    if policy.state_qhat is not None and not 0 <= policy.state_qhat <= 1:
-        parser.error("state qhat must be in [0, 1]")
+    if policy.score_temperature <= 0:
+        parser.error("score temperature must be positive")
+    for qhat in (policy.tomato_qhat, policy.waste_qhat):
+        if not 0 <= qhat <= 1:
+            parser.error("qhat must be in [0, 1]")
     args.policy_condition = condition
     args.policy = policy
     return args
@@ -86,7 +80,18 @@ def build_bundle(args, env):
     cp_evaluator = None
     value_evaluator = None
     if args.policy_condition == "cp_when":
-        cp_evaluator = StateCPWhenEvaluator(qhat=args.policy.state_qhat)
+        qhat = (
+            args.policy.tomato_qhat
+            if args.domain == "tomato"
+            else args.policy.waste_qhat
+        )
+        cp_evaluator = KnowNoCPWhenEvaluator(
+            domain=args.domain,
+            qhat=qhat,
+            score_temperature=args.policy.score_temperature,
+            settings_path=args.policy.llm_settings,
+            api_key=args.policy.api_key,
+        )
     if args.policy_condition in {"value_when", "value_what"}:
         value_evaluator = QueryValueEvaluator(
             args=args,
@@ -246,11 +251,11 @@ def main(condition: str) -> int:
             "query_cost": args.policy.query_cost,
             "failure_penalty": args.policy.failure_penalty,
             "answer_accuracy": args.policy.answer_accuracy,
-            "state_qhat": args.policy.state_qhat,
-            "state_calibration": args.policy.state_calibration,
-            "state_calibration_sha256": hashlib.sha256(
-                Path(args.policy.state_calibration).read_bytes()
-            ).hexdigest() if args.policy.state_calibration else "",
+            "cp_representation": "action_prediction_set",
+            "score_temperature": args.policy.score_temperature,
+            "tomato_qhat": args.policy.tomato_qhat,
+            "waste_qhat": args.policy.waste_qhat,
+            "llm_settings": args.policy.llm_settings,
         },
         "success": plan_success,
         "end_reason": end_reason,

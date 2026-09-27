@@ -48,6 +48,7 @@ from wastesorting_utils import (
     build_waste_score_prompt,
     initialize_hidden_attributes,
     parse_waste_action,
+    waste_calibration_score_background,
 )
 def parse_args():
     parser = argparse.ArgumentParser(description="Run multi-step KnowNo planning for waste sorting.")
@@ -344,7 +345,7 @@ def main(call_llm=call_llm, baseline_name="KnowNo") -> None:
             args.num_test,
             args.target_success,
             domain_name="waste",
-            background=WASTE_BACKGROUND,
+            background=waste_calibration_score_background(args.prompt_version),
             generation_prompt_builder=build_waste_calibration_prompt,
         )
         

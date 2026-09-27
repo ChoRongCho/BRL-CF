@@ -68,8 +68,13 @@ def stage2(package):
   for order,condition in enumerate(config['conditions']):
    attempted=[r for r in episodes if r['domain']==domain and r['condition']==condition]
    for metric,(field,label,success_only) in METRICS.items():
-    valid=[r for r in attempted if r['status']=='ok' and (not success_only or r['success']=='1') and r[field]!='']
-    values=[float(r[field]) for r in valid];n=len(values)
+    if metric=='success' and config.get('count_execution_errors_as_failure',False):
+     valid=attempted
+     values=[float(r['success']) if r['status']=='ok' and r['success']!='' else 0.0 for r in attempted]
+    else:
+     valid=[r for r in attempted if r['status']=='ok' and (not success_only or r['success']=='1') and r[field]!='']
+     values=[float(r[field]) for r in valid]
+    n=len(values)
     value=lower=upper=minus=plus=sd=''; error='95% Wilson CI' if metric=='success' else 'mean +/- 1 SE'
     if n:
      value=statistics.mean(values);sd=statistics.stdev(values) if n>1 else ''
@@ -141,7 +146,7 @@ def docs(package):
  '- `01_processed/summary.csv`, `scenes.csv`: 전체·장면별 집계. `paired.csv`, `paired_episodes.csv`는 해당 분석에서 paired 비교를 생성한 경우에만 존재. 상세 해석은 `report.md`.',
  '- `02_graph_data/figure_data.csv`: 그림의 각 점/막대, 평균/비율, 표본 수, 오차막대 수치. 그래프는 이 CSV를 직접 읽음.',
  '- `03_figures/overview.png`, `.pdf`: 성공률·질문·행동·시간 비교. 개별 지표 그림도 제공.',
- '', '## 집계 기준','','정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 성공률은 유효 결과 기준으로 계산하며 오류 건수는 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음. 기존 논문 그림의 오차막대/필터와 같다고 가정하지 말 것.',
+ '', '## 집계 기준','',('정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 이 패키지는 실행 오류도 성공률에서 실패로 집계하며 오류 건수를 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음.' if c.get('count_execution_errors_as_failure') else '정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 성공률은 유효 결과 기준으로 계산하며 오류 건수는 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음. 기존 논문 그림의 오차막대/필터와 같다고 가정하지 말 것.'),
  '', '원본 파라미터: `'+json.dumps(params,ensure_ascii=False)+'`','',
  '| Domain | Condition | Status | n |','|---|---|---|---:|']
  lines += ['| '+' | '.join([*k,str(n)])+' |' for k,n in sorted(groups.items())]

@@ -40,9 +40,11 @@ MAX_NODE_PARTICLES="8000"
 QUERY_COST="1.0"
 FAILURE_PENALTY="10.0"
 ANSWER_ACCURACY="1.0"
-STATE_QHAT="${STATE_QHAT:-}"
-DEFAULT_STATE_CALIBRATION="$PROJECT_ROOT/scripts/ablation/when_what_policy_ablation/dataset/state_cp_qhat.json"
-STATE_CALIBRATION="${STATE_CALIBRATION:-}"
+SCORE_TEMPERATURE="${SCORE_TEMPERATURE:-5.0}"
+TOMATO_QHAT="${TOMATO_QHAT:-0.8404}"
+WASTE_QHAT="${WASTE_QHAT:-0.8704}"
+LLM_SETTINGS="${LLM_SETTINGS:-$PROJECT_ROOT/llm_setting.json}"
+API_KEY="${API_KEY:-}"
 LOG_DIR=""
 DRY_RUN="false"
 
@@ -63,8 +65,11 @@ while (($#)); do
     --threshold) THRESHOLD="${2:?Missing threshold}"; shift 2 ;;
     --n-simulations) N_SIMULATIONS="${2:?Missing simulations}"; shift 2 ;;
     --gamma) GAMMA="${2:?Missing gamma}"; shift 2 ;;
-    --state-qhat) STATE_QHAT="${2:?Missing state qhat}"; shift 2 ;;
-    --state-calibration) STATE_CALIBRATION="${2:?Missing calibration file}"; shift 2 ;;
+    --score-temperature) SCORE_TEMPERATURE="${2:?Missing score temperature}"; shift 2 ;;
+    --tomato-qhat) TOMATO_QHAT="${2:?Missing tomato qhat}"; shift 2 ;;
+    --waste-qhat) WASTE_QHAT="${2:?Missing waste qhat}"; shift 2 ;;
+    --llm-settings) LLM_SETTINGS="${2:?Missing LLM settings path}"; shift 2 ;;
+    --api-key) API_KEY="${2:?Missing API key}"; shift 2 ;;
     --dry-run) DRY_RUN="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -95,10 +100,6 @@ case "$CONDITION" in
   value_what) ENTRYPOINT="$PROJECT_ROOT/scripts/ablation/when_what_policy_ablation/03_value_what.py" ;;
 esac
 
-if [[ "$CONDITION" == "cp_when" && -z "$STATE_QHAT" && -z "$STATE_CALIBRATION" && -f "$DEFAULT_STATE_CALIBRATION" ]]; then
-  STATE_CALIBRATION="$DEFAULT_STATE_CALIBRATION"
-fi
-
 command=("$PYTHON_BIN" "$ENTRYPOINT"
   --domain "$DOMAIN"
   --domain_rule "$domain_rule"
@@ -123,12 +124,13 @@ command=("$PYTHON_BIN" "$ENTRYPOINT"
   --log_dir "$LOG_DIR")
 
 if [[ "$CONDITION" == "cp_when" ]]; then
-  if [[ -n "$STATE_QHAT" ]]; then
-    command+=(--state-qhat "$STATE_QHAT")
-  fi
-  if [[ -n "$STATE_CALIBRATION" ]]; then
-    command+=(--state-calibration "$STATE_CALIBRATION")
-  fi
+  command+=(
+    --score-temperature "$SCORE_TEMPERATURE"
+    --tomato-qhat "$TOMATO_QHAT"
+    --waste-qhat "$WASTE_QHAT"
+    --llm-settings "$LLM_SETTINGS"
+  )
+  if [[ -n "$API_KEY" ]]; then command+=(--api-key "$API_KEY"); fi
 fi
 
 cd "$PROJECT_ROOT"

@@ -91,7 +91,7 @@ We: {_history_sentence(history_text)}
 
 def _waste_observation_sentence(observed_text: str) -> str:
     if observed_text.strip() == "None":
-        return "The robot has not observed the waste types yet."
+        return "The robot has not observed the types of the waste objects currently on the counter."
     return f"The robot has observed these waste types: {observed_text}."
 
 
@@ -113,7 +113,6 @@ def _waste_scene_text(
 We: The task is: {instruction}
 We: The waste objects still on the counter are {_items_text(remaining_objects)}.
 We: The available bins are {_items_text(available_bins)}.
-We: The occluded waste objects are {occlusion_text}.
 We: {_waste_observation_sentence(observed_text)} {held_sentence}
 We: {_history_sentence(history_text)}
 """.strip()
@@ -241,6 +240,36 @@ A) place waste2 into general bin
 B) place waste2 into can bin
 C) pick waste3
 D) detect
+
+We: The task is: Discard all waste.
+We: The only waste object still on the counter is waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has not observed the type of waste4. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste1; 3. place waste1 into can bin; 4. pick waste2; 5. place waste2 into paper bin; 6. pick waste3; 7. place waste3 into general bin.
+We: What should the robot do next? Answer with four options labeled A), B), C), and D).
+You:
+A) detect
+B) pick waste4
+C) place waste4 into general bin
+D) place waste4 into plastic bin
+""".strip()
+
+
+WASTE_SCORING_FEW_SHOT = """
+We: The task is: Discard all waste.
+We: The only waste object still on the counter is waste4.
+We: The available bins are general bin, plastic bin, paper bin, can bin.
+We: The robot has not observed the type of waste4. The robot is not holding any waste object.
+We: So far, the robot has completed these actions: 1. detect; 2. pick waste1; 3. place waste1 into can bin; 4. pick waste2; 5. place waste2 into paper bin; 6. pick waste3; 7. place waste3 into general bin.
+We: What should the robot do next?
+You:
+A) pick waste4
+B) place waste4 into general bin
+C) detect
+D) place waste4 into plastic bin
+We: Which option is correct? Answer with a single capital letter.
+You:
+C
 """.strip()
 
 
@@ -313,8 +342,11 @@ We: {WASTE_BACKGROUND}
 
 {WASTE_ACTION_ROLES}
 
+{WASTE_ACTION_OUTPUT_RULES}
+
+{WASTE_GENERATION_FEW_SHOT}
+
 {context}
-You:
 """.strip()
 
 
@@ -354,6 +386,8 @@ def build_waste_score_prompt_text(
 ) -> str:
     return f"""
 {WASTE_BACKGROUND}
+
+{WASTE_SCORING_FEW_SHOT}
 
 {_waste_scene_text(instruction, remaining_objects, observed_text, held_text, history_text, available_bins, occlusion_text)}
 We: What should the robot do next?

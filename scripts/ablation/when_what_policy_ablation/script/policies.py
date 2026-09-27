@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from copy import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from .policy_types import PolicyContext, WhatDecision, WhenDecision
-from .cp_when import state_key
 
 
 class BeliefThresholdWhen:
@@ -57,8 +55,8 @@ class InformationGainWhat:
         )
 
 
-class ConformalStateAmbiguityWhen:
-    name = "cp_state_ambiguity"
+class ConformalActionAmbiguityWhen:
+    name = "cp_action_ambiguity"
 
     def __init__(self, evaluator: Any):
         self.evaluator = evaluator
@@ -66,56 +64,13 @@ class ConformalStateAmbiguityWhen:
     def should_start(self, context: PolicyContext) -> WhenDecision:
         result = self.evaluator.evaluate(context)
         prediction_set = result.prediction_set
-        start, reason = cp_trigger(prediction_set)
+        start, reason = cp_trigger(prediction_set, result.fallback_token)
         return WhenDecision(
             start=start,
             policy=self.name,
             score=None,
             reason=reason,
             diagnostics=result.as_dict(),
-        )
-
-
-class ConformalSetInformationGainWhat:
-    """Run Ours EIG only over particles represented in the current CP set."""
-
-    name = "information_gain_within_cp_set"
-
-    def __init__(self, evaluator: Any, information_policy: InformationGainWhat):
-        self.evaluator = evaluator
-        self.information_policy = information_policy
-
-    def select_fact(self, context: PolicyContext) -> WhatDecision | None:
-        result = self.evaluator.evaluate(context)
-        allowed = set(result.prediction_keys)
-        selected = [
-            index
-            for index, state in enumerate(context.belief.frontier)
-            if state_key(state, result.candidate_facts) in allowed
-        ]
-        if not selected:
-            return None
-
-        restricted_belief = copy(context.belief)
-        restricted_belief.frontier = [context.belief.frontier[index] for index in selected]
-        restricted_belief.frontier_weights = [
-            context.belief.frontier_weights[index] for index in selected
-        ]
-        restricted_context = replace(context, belief=restricted_belief)
-        decision = self.information_policy.select_fact(restricted_context)
-        if decision is None:
-            return None
-        diagnostics = dict(decision.diagnostics)
-        diagnostics.update({
-            "cp_prediction_set": result.prediction_set,
-            "cp_prediction_set_size": len(result.prediction_set),
-            "restricted_particle_count": len(selected),
-        })
-        return WhatDecision(
-            fact=decision.fact,
-            policy=self.name,
-            score=decision.score,
-            diagnostics=diagnostics,
         )
 
 
@@ -189,12 +144,16 @@ class QueryValueWhat:
         )
 
 
-def cp_trigger(prediction_set: list[str]) -> tuple[bool, str]:
+def cp_trigger(
+    prediction_set: list[str], fallback_token: str
+) -> tuple[bool, str]:
     if not prediction_set:
-        return False, "empty"
-    if len(prediction_set) > 1:
+        return True, "empty"
+    if fallback_token in prediction_set:
+        return True, "contains_noopt"
+    if len(prediction_set) != 1:
         return True, "multiple"
-    return False, "singleton_state"
+    return False, "singleton_action"
 
 
 @dataclass(frozen=True)
@@ -214,8 +173,8 @@ def build_policy_bundle(condition, *, threshold, cp_evaluator=None, value_evalua
             raise ValueError("cp_when requires a CP evaluator")
         return PolicyBundle(
             condition,
-            ConformalStateAmbiguityWhen(cp_evaluator),
-            ConformalSetInformationGainWhat(cp_evaluator, information),
+            ConformalActionAmbiguityWhen(cp_evaluator),
+            information,
         )
     if condition == "value_when":
         if value_evaluator is None:

@@ -100,10 +100,41 @@ def initialize_hidden_attributes(objects: list[str], label_text: str) -> dict[st
 
 
 def build_waste_calibration_prompt(record: dict) -> str:
-    if record.get("mc_gen_prompt"):
-        return record["mc_gen_prompt"]
+    context = "\n".join(
+        line for line in record["context"].splitlines()
+        if "occluded waste objects" not in line.lower()
+    )
     version = record.get("prompt_version", "v2")
-    return prompt_module(version).build_waste_calibration_prompt_text(record["context"])
+    return prompt_module(version).build_waste_calibration_prompt_text(context)
+
+
+def waste_calibration_score_background(version: str = "v2") -> str:
+    module = prompt_module(version)
+    return f"{WASTE_BACKGROUND}\n\n{module.WASTE_SCORING_FEW_SHOT}"
+
+
+def build_waste_calibration_score_prompt(record: dict) -> str:
+    """Render a calibration score prompt in the deployed Waste v2 format."""
+    version = record.get("prompt_version", "v2")
+    module = prompt_module(version)
+    context = "\n".join(
+        line for line in record["context"].splitlines()
+        if "occluded waste objects" not in line.lower()
+    )
+    context = context.replace(
+        "We: What should the robot do next? Answer with four options labeled A), B), C), and D).\nYou:",
+        "We: What should the robot do next?\nYou:",
+    )
+    return f"""
+{WASTE_BACKGROUND}
+
+{module.WASTE_SCORING_FEW_SHOT}
+
+{context}
+{record['mc_gen_full']}
+We: Which option is correct? Answer with a single capital letter.
+You:
+""".strip()
 
 
 def build_waste_generation_prompt(

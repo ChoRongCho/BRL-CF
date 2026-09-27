@@ -170,6 +170,29 @@ class KnowNoNoOptRecoveryTests(unittest.TestCase):
         self.assertEqual(failures, 0)
         self.assertIsNone(error)
 
+    def test_waste_execution_rejects_undetected_pick(self):
+        logger = StubLogger()
+        held, result, failures, error = execute_waste_action(
+            "pick",
+            "waste4",
+            args=SimpleNamespace(pick_failure_prob=0.0),
+            step=1,
+            remaining_objects=["waste4"],
+            hidden_attributes={"waste4": "can"},
+            observed_attributes={},
+            held_object=None,
+            placed_objects={},
+            occlusions={},
+            action_history=[],
+            console=logger.console,
+            log_json=logger.json,
+        )
+
+        self.assertIsNone(held)
+        self.assertIsNone(result)
+        self.assertEqual(failures, 0)
+        self.assertEqual(error, "invalid pick undetected object: waste4")
+
     def test_oracle_generates_action_only_when_noopt_is_the_correct_answer(self):
         common = dict(
             options=["detect stem_02", "pick tomato4", "an option not listed here"],

@@ -4,7 +4,7 @@
 
 1. KnowNo
 2. Query-as-Action POMCP
-3. `01_cp_when.py`: State-CP When + Ours EIG What
+3. `01_cp_when.py`: Action-CP When + Ours EIG What
 4. `02_value_when.py`: Query-value When + Ours EIG What
 5. `03_value_what.py`: Ours confidence When + Query-value What
 
@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|
 | KnowNo | LLM이 생성한 행동 선택지와 CP prediction set | 행동 prediction set이 singleton이 아니거나 fallback이 포함될 때 | prediction set 안의 행동 선택 | 다음에 실행할 행동 option | 질문 결과로 그 step의 물리 행동을 고름 |
 | Query-as-Action POMCP | 물리 행동과 Boolean QueryAction을 합친 POMCP action space | 별도 trigger 없음. POMCP가 query의 Q-value를 가장 높게 평가할 때 | 가장 높은 Q-value를 가진 QueryAction의 target fact | Boolean state fact의 참/거짓 | 질문 자체가 물리 행동과 경쟁하는 한 decision |
-| `01_cp_when.py` | BRL physical POMCP + belief-state CP | belief 상태 prediction set에 상태가 2개 이상일 때 | CP set 내부에서 EIG가 가장 큰 Boolean state fact | 선택된 fact의 참/거짓 | 물리 행동 실행 및 belief update 후 별도 질의 |
+| `01_cp_when.py` | BRL physical POMCP + KnowNo action CP | action prediction set이 singleton이 아니거나 fallback이 포함될 때 | 전체 belief에서 EIG가 가장 큰 Boolean state fact | 선택된 fact의 참/거짓 | Action CP는 trigger로만 쓰고 물리 행동 실행 후 별도 질의 |
 | `02_value_when.py` | BRL physical POMCP + 보조 QaA value evaluator | 최고 query Q가 최선의 physical Q보다 클 때 | 별도로 계산한 Ours EIG fact 한 개 | 선택된 fact의 참/거짓 | QaA는 trigger 계산에만 쓰고 실제 action은 실행하지 않음 |
 | `03_value_what.py` | BRL physical POMCP + 보조 QaA value evaluator | Ours의 entropy confidence가 threshold보다 낮을 때 | 모든 ambiguous fact 중 query Q가 가장 큰 fact | 선택된 fact의 참/거짓 | QaA는 질문 선택에만 쓰고 실제 action은 실행하지 않음 |
 
@@ -418,110 +418,79 @@ evaluator로 재사용한다. 이 evaluator는 root Q-value만 계산하며 acti
 
 ---
 
-## 3. `01_cp_when.py`: State-CP When + Ours EIG What
+## 3. `01_cp_when.py`: Action-CP When + Ours EIG What
 
 ### 목적
 
-KnowNo의 CP 기반 ambiguity trigger를 action 후보가 아니라 **현재 belief-state
-distribution**에 적용한다. What은 Ours EIG로 고정한다. 따라서 이 조건은 질문
-내용을 통제하고 When만 CP 방식으로 바꾼 실험이다.
+What을 Ours EIG로 고정하고, 질문을 시작하는 시점만 KnowNo의 action
+prediction-set ambiguity로 바꾼다. 이 조건은 KnowNo가 제안한 행동을 실행하거나
+사람에게 행동을 고르게 하지 않는다. Action CP 결과는 Boolean state-fact 질문을
+시작할지 정하는 trigger로만 사용한다.
 
-### State-CP hypothesis 표현
+### Action-CP calibration과 scoring
 
-```text
-1. 현재 frontier에서 truth value가 particle마다 달라지는 모든 symbolic fact를
-   모은다. detected/observed/scanned도 particle 간 값이 다르면 포함한다.
-2. 각 particle을 그 fact들의 joint truth assignment로 투영한다.
-3. 같은 assignment를 가진 particle의 weight를 합친다.
-
-   hypothesis = tuple(f for f in ambiguous_facts if particle.has_fact(f))
-   p(hypothesis) = sum of weights of matching particles
-```
-
-따라서 prediction class는 action이나 질문 하나의 답이 아니라, 현재 belief가
-표현하는 ambiguous state의 joint hypothesis다. 질문 내용은 별도로 Ours EIG가
-선택한다.
-
-### State-CP calibration
-
-현재 calibration pipeline은 query가 없는 held-out physical POMCP episode를
-사용한다.
+KnowNo baseline과 같은 domain별 calibration과 scoring을 사용한다.
 
 ```text
-1. domain별 5개 scene에서 독립 seed episode를 실행한다.
-2. physical action과 observation으로 belief를 갱신한다.
-3. ambiguous posterior가 나온 context 중 episode당 하나만 sampling한다.
-4. 기존 action-context-aware domain oracle로 외부 세계의 task fact를 판정한다.
-   그 oracle assignment와 일치하는 belief hypothesis가 유일할 때, 해당
-   hypothesis의 bookkeeping fact까지 포함한 complete joint assignment를 정답으로
-   사용한다. 0개가 일치하면 out-of-support로 기록하고, 2개 이상이면 임의로
-   고르지 않고 calibration 오류로 처리한다. posterior를 만든 observation 자체를
-   calibration 정답으로 재사용하지 않는다.
-5. belief가 그 true assignment에 부여한 확률 p_true를 구한다.
-6. nonconformity score = 1 - p_true로 저장한다.
-7. domain별 record를 calibration 100개, held-out test 25개로 나눈다.
-8. target coverage가 0.95일 때 다음 finite-sample rank를 사용한다.
-
-   rank = ceil((n_calibration + 1) * 0.95)
-   qhat = rank번째로 작은 nonconformity score
+Tomato:       qhat = 0.8404
+WasteSorting: qhat = 0.8704
+Temperature:  5.0
+cutoff:       1 - qhat
 ```
 
-현재 생성된 값은 다음과 같다.
-
-```text
-Tomato:       qhat = 0.9525166622817275
-WasteSorting: qhat = 0.9825743983857564
-```
-
-held-out 25개에서 empirical coverage는 두 domain 모두 1.0이었다. 평균 set
-크기는 Tomato 1.96, Waste Sorting 1.48이었고 query trigger rate는 각각 0.40,
-0.16이었다. 전체 250개 record에서 true assignment의 belief mass가 0인 경우는
-없었다.
+각 physical action과 observation으로 belief를 갱신한 뒤, 현재 MAP symbolic
+knowledge, 남은 객체, 관측 속성, 보유 객체, 행동 이력을 KnowNo prompt에 넣는다.
+LLM은 다음 로봇 행동 후보와 `an option not listed here`를 만들고, 별도 scoring
+prompt가 각 option의 확률을 계산한다. 확률이 cutoff 이상인 option들이 action CP
+prediction set을 이룬다. 이때 CP class는 belief state가 아니라 **다음 행동
+option**이다.
 
 ### runtime When
 
 ```text
-cutoff = 1 - qhat
-prediction_set = {
-    joint_state_hypothesis h | belief_probability(h) >= cutoff
-}
-
-if prediction_set size <= 1:
-    질문하지 않음
-else if prediction_set size >= 2:
+if action_prediction_set is empty:
     질문 시작
+else if fallback option is in action_prediction_set:
+    질문 시작
+else if action_prediction_set size != 1:
+    질문 시작
+else:
+    질문하지 않음
 ```
 
-prediction set은 action set이 아니라 belief의 joint state hypothesis set이다.
+이는 KnowNo의 help trigger와 같다. 빈 set과 fallback singleton도 로봇이 실행할
+명확한 행동을 얻지 못한 경우이므로 질문한다.
 
 ### runtime What
 
-질문이 필요하면 원래 belief에서 CP prediction set에 속한 particle만 남기고
-weight를 정규화한다. 이 제한된 분포 안에서 현재 ambiguous fact의 EIG를 계산해
-가장 큰 fact 하나를 선택한다. oracle의 Boolean 답으로 원래 posterior를
-filter한 후 joint State-CP prediction set을 다시 계산한다.
+When이 true이면 action option을 묻지 않는다. 현재 전체 belief의 ambiguous
+Boolean state fact 각각에 대해 기대 정보 이득(EIG)을 계산하고, EIG가 가장 큰
+fact 하나를 선택한다. oracle의 Boolean 답으로 belief particle을 filter한 뒤
+Action CP When을 다시 평가한다. 따라서 비교에서 바뀌는 요소는 When이고,
+What은 Ours와 동일하다.
 
 ### 단일 episode pseudo code
 
 ```text
 initialize physical POMCP and belief
-load domain-specific calibrated qhat
+load KnowNo action-CP qhat and score temperature
 
 while task is active:
     physical_action = physical_planner.search(belief)
     execute physical_action
     belief = update(belief, action, observation)
+    sync symbolic knowledge to posterior MAP state
 
     asked = empty set
     while True:
-        aggregate particle weights by joint ambiguous-state assignment
-        cp_set = {h if p(h) >= 1-qhat}
+        options = LLM_generate_action_options(current context)
+        scores = LLM_score_action_options(options)
+        cp_set = {option if score(option) >= 1-qhat}
 
-        if len(cp_set) <= 1:
+        if cp_set is one non-fallback action:
             break
 
-        cp_belief = normalize(particles represented by cp_set)
-        fact = argmax over unasked ambiguous facts of EIG(fact | cp_belief)
+        fact = argmax over unasked ambiguous facts of EIG(fact | belief)
         if no fact:
             break
 
@@ -538,17 +507,14 @@ while task is active:
 
 ### reward, step과 로그
 
-- physical POMCP와 실제 episode reward에는 physical action만 들어간다.
+- Physical POMCP와 실제 episode reward에는 physical action만 들어간다.
 - CP 질문에는 별도 query reward/cost를 적용하지 않는다.
-- `steps`는 physical action 수다.
+- `steps`와 `max_step`은 physical action 기준이다.
 - 질문은 `total_questions`와 step별 `query_count`로 따로 기록한다.
-- 질문은 `max_step`을 직접 소비하지 않는다.
-- prediction set, qhat, cutoff, candidate facts와 joint hypothesis probabilities를
+- 생성 option, prediction set, fallback, option score, qhat 판단 근거를
   `policy_trace.json`에 기록한다.
 
 ---
-
-## 4. `02_value_when.py`: Query-value When + Ours EIG What
 
 ### 목적
 
@@ -714,7 +680,7 @@ while task is active:
 
 ## 해석할 때 지켜야 할 핵심 구분
 
-### KnowNo와 `01_cp_when.py`의 CP 대상은 다르다
+### KnowNo와 `01_cp_when.py`는 같은 Action CP를 서로 다르게 사용한다
 
 ```text
 KnowNo:
@@ -722,13 +688,14 @@ KnowNo:
     set size가 모호하면 행동 선택을 요청
 
 01_cp_when.py:
-    class = belief가 표현하는 complete joint state hypothesis
-    joint-state CP set에 state가 2개 이상이면 질문
-    질문 내용 = CP set 내부에서 Ours EIG가 선택한 state fact
+    class = KnowNo와 같은 LLM 다음 행동 option
+    action CP set이 모호하면 질문 phase를 시작
+    질문 내용 = 전체 belief에서 Ours EIG가 선택한 Boolean state fact
 ```
 
-두 방법은 CP threshold라는 형식만 공유한다. prediction set의 의미와 사람이
-답하는 대상은 서로 다르다.
+두 방법은 같은 action ambiguity trigger를 공유한다. KnowNo는 사람에게 행동
+option을 고르게 하지만, CP-When ablation은 action set을 When에만 쓰고 실제
+질문 내용은 Ours EIG가 고른 state fact로 유지한다.
 
 ### Query-as-Action baseline과 Value ablation의 QaA 사용 범위는 다르다
 
@@ -781,10 +748,10 @@ Query-as-Action baseline:
   - `scripts/ablation/when_what_policy_ablation/03_value_what.py`
 - shared When/What policies:
   - `scripts/ablation/when_what_policy_ablation/script/policies.py`
-- State-CP implementation and calibration:
+- Action-CP trigger implementation:
   - `scripts/ablation/when_what_policy_ablation/script/cp_when.py`
-  - `scripts/ablation/when_what_policy_ablation/script/collect_state_cp_dataset.py`
-  - `scripts/ablation/when_what_policy_ablation/script/calibrate_state_cp.py`
+- Archived belief-state CP experiment:
+  - `scripts/ablation/when_what_policy_ablation/belief_state_cp_archive/`
 - auxiliary query-value evaluator:
   - `scripts/ablation/when_what_policy_ablation/script/value_evaluator.py`
 - shared query loop and experiment runner:

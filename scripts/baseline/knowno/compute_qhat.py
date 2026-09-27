@@ -23,7 +23,11 @@ from scripts.calibration import (  # noqa: E402
 from scripts.llm import configure_openai  # noqa: E402
 from scripts.prompt import temperature_scaling  # noqa: E402
 from tomato_utils import TOMATO_BACKGROUND, build_tomato_calibration_prompt  # noqa: E402
-from wastesorting_utils import WASTE_BACKGROUND, build_waste_calibration_prompt  # noqa: E402
+from wastesorting_utils import (  # noqa: E402
+    WASTE_BACKGROUND,
+    build_waste_calibration_prompt,
+    build_waste_calibration_score_prompt,
+)
 
 
 DOMAIN_CONFIG = {
@@ -60,6 +64,11 @@ def parse_args() -> argparse.Namespace:
         "--score-with-llm",
         action="store_true",
         help="Call the LLM to fill top-token logprobs before computing qhat.",
+    )
+    parser.add_argument(
+        "--regenerate-options",
+        action="store_true",
+        help="Regenerate A-D options with the current generation prompt before scoring.",
     )
     parser.add_argument(
         "--scored-json",
@@ -202,8 +211,11 @@ def main() -> None:
                 records,
                 config["background"],
                 config["builder"],
-                generate=False,
+                generate=args.regenerate_options,
             )
+            if args.domain in {"waste", "wastesorting"}:
+                for record in records:
+                    record["mc_score_prompt"] = build_waste_calibration_score_prompt(record)
             score_calibration_choices(records)
         elif not all("top_tokens" in record and "top_logprobs" in record for record in records):
             raise ValueError(

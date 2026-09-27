@@ -33,15 +33,10 @@ export WW_LOG_ROOT="${WW_LOG_ROOT:-experiments_logs/when_what_policy_ablation}"
 export WW_RUN_ROOT="${WW_RUN_ROOT:-}"
 export WW_DRY_RUN="${WW_DRY_RUN:-false}"
 export WW_RESUME="${WW_RESUME:-false}"
-export WW_TOMATO_STATE_QHAT="${WW_TOMATO_STATE_QHAT:-}"
-export WW_WASTE_STATE_QHAT="${WW_WASTE_STATE_QHAT:-}"
-DEFAULT_STATE_CALIBRATION="$PROJECT_ROOT/scripts/ablation/when_what_policy_ablation/dataset/state_cp_qhat.json"
-if [[ -f "$DEFAULT_STATE_CALIBRATION" ]]; then
-  export WW_STATE_CALIBRATION="${WW_STATE_CALIBRATION:-$DEFAULT_STATE_CALIBRATION}"
-else
-  export WW_STATE_CALIBRATION="${WW_STATE_CALIBRATION:-}"
-fi
-export STATE_CALIBRATION="$WW_STATE_CALIBRATION"
+export WW_TOMATO_QHAT="${WW_TOMATO_QHAT:-0.8404}"
+export WW_WASTE_QHAT="${WW_WASTE_QHAT:-0.8704}"
+export WW_SCORE_TEMPERATURE="${WW_SCORE_TEMPERATURE:-5.0}"
+export WW_LLM_SETTINGS="${WW_LLM_SETTINGS:-$PROJECT_ROOT/llm_setting.json}"
 
 while (($#)); do
   case "$1" in

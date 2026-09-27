@@ -2,9 +2,9 @@
 
 ## 상태
 
-**paper_ready** — 기존 4조건과 Query-Action (Tomato γ=0.5, Waste γ=0.9, cq=0) 400회를 합친 5조건 baseline 비교.
+**paper_ready** — Waste KnowNo·IntroPlan 재보정/재실행 결과를 반영한 5조건 baseline 비교.
 
-Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이다. 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다. 두 Query-Action 모두 failure_penalty=10.0, answer_accuracy=1.0이다. 각 방법 실행일과 파라미터는 원본 로그와 episodes.csv에 기록했다.
+Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. Waste KnowNo와 IntroPlan은 2026-09-28 수정된 v2 prompt로 각각 재보정하고 재실행했다 (KnowNo qhat=0.960193292448771, IntroPlan qhat=0.9742783904140572, score temperature=5.0, target coverage=95%). Tomato와 나머지 세 조건의 로그는 유지했다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이고, 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다.
 
 실행 로그 2000건. 파일명에서 확인된 실행일: 2026-09-19, 2026-09-20, 2026-09-22.
 
@@ -21,7 +21,7 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 
 정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 성공률은 유효 결과 기준으로 계산하며 오류 건수는 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음. 기존 논문 그림의 오차막대/필터와 같다고 가정하지 말 것.
 
-원본 파라미터: `{"gamma": ["0.2", "0.5", "0.9"], "n_simulations": ["100"], "query_cost": ["0.0", "1.0"], "failure_penalty": ["10.0"], "answer_accuracy": ["1.0"], "threshold": ["0.8"]}`
+원본 파라미터: `{"gamma": ["0.2", "0.5", "0.9"], "n_simulations": ["100"], "query_cost": ["0.0", "1.0"], "failure_penalty": ["10.0"], "answer_accuracy": ["1.0"], "threshold": ["0.8", "0.8404", "0.960193292448771", "0.9742783904140572", "0.9809474992495626"]}`
 
 | Domain | Condition | Status | n |
 |---|---|---|---:|

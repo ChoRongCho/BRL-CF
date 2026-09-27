@@ -1,12 +1,12 @@
-# When–What ablation (gamma = 0.2)
+# When–What–Random ablation (gamma=0.2, n_simulations=100)
 
 ## 상태
 
-**paper_ready** — Gamma 0.2의 When–What–Random 2×2 ablation. 논문용 최신 결과.
+**paper_ready** — Gamma 0.2, n_simulations 100의 When–What–Random 2×2 ablation. 논문용 최신 결과.
 
-2026-09-21에 gamma=0.2로 다시 실행한 When–What ablation. 두 도메인, 장면 1–5, 조건별 400회로 총 1,600회이며 동일 domain/scene/iteration의 네 조건은 같은 seed를 사용했다.
+2026-09-22 재실행한 When–What–Random 2×2 ablation. gamma=0.2, n_simulations=100이며 두 도메인, 장면 1–5, 조건별 400회로 총 1,600회다. 동일 domain/scene/iteration의 네 조건은 같은 seed를 사용했다. 원본 로그는 00_raw로 실제 이동했고 직전 n_simulations=200 패키지는 experiments_logs/analysis_archive/when_what_original_nsim200_20260921에 보관했다.
 
-실행 로그 1600건. 파일명에서 확인된 실행일: 2026-09-21.
+실행 로그 1600건. 파일명에서 확인된 실행일: 2026-09-22.
 
 ## 파일 구조
 
@@ -21,7 +21,7 @@
 
 정상 종료한 과제 실패도 평균에 포함. success-only 지표만 성공 실행으로 제한. 성공률은 유효 결과 기준으로 계산하며 오류 건수는 별도 표기. 시간은 각 로그의 시간 정의를 따르며 실제 사람 응답 시간으로 해석하지 않음. 기존 논문 그림의 오차막대/필터와 같다고 가정하지 말 것.
 
-원본 파라미터: `{"gamma": ["0.2"], "n_simulations": ["200"], "query_cost": [], "failure_penalty": [], "answer_accuracy": [], "threshold": ["0.8"]}`
+원본 파라미터: `{"gamma": ["0.2"], "n_simulations": ["100"], "query_cost": [], "failure_penalty": [], "answer_accuracy": [], "threshold": ["0.8"]}`
 
 | Domain | Condition | Status | n |
 |---|---|---|---:|

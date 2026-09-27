@@ -1,4 +1,5 @@
 # Status
 
-- Status: **paper_ready**
-- Gamma 0.2의 When–What–Random 2×2 ablation. 논문용 최신 결과.
+**paper_ready**
+
+2026-09-22 재실행 결과. `gamma=0.2`, `n_simulations=100`, 1,600/1,600 valid.

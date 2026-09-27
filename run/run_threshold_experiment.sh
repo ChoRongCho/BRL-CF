@@ -13,14 +13,16 @@ SCENE="11"
 ITERATIONS="1"
 MAXSTEP="50"
 SEED="random"
+N_SIMULATIONS="${N_SIMULATIONS:-100}"
 
 usage() {
-    echo "Usage: $0 [--domain tomato|wastesorting] [--scene N] [--iter N] [--threshold N] [--gamma G] [--seed random|N]"
+    echo "Usage: $0 [--domain tomato|wastesorting] [--scene N] [--iter N] [--threshold N] [--gamma G] [--n-simulations N] [--seed random|N]"
     echo "  --domain NAME   domain name (default: ${DOMAIN})"
     echo "  --scene N       scene number (default: ${SCENE})"
     echo "  --iteration  repeat count (default: ${ITERATIONS})"
     echo "  --threshold N   confidence threshold (default: ${THRESHOLD})"
     echo "  --gamma G       POMCP discount factor in [0,1] (default: ${GAMMA})"
+    echo "  --n-simulations N POMCP simulations per planning step (default: ${N_SIMULATIONS})"
     echo "  --seed random|N random per run or fixed integer seed (default: ${SEED})"
 }
 
@@ -46,6 +48,10 @@ while (($#)); do
             GAMMA="${2:?Missing value for --gamma}"
             shift 2
             ;;
+        --n-simulations)
+            N_SIMULATIONS="${2:?Missing value for --n-simulations}"
+            shift 2
+            ;;
         --seed)
             SEED="${2:?Missing value for --seed}"
             shift 2
@@ -61,9 +67,9 @@ while (($#)); do
     esac
 done
 
-if ! [[ "$SCENE" =~ ^[0-9]+$ && "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
+if ! [[ "$SCENE" =~ ^[0-9]+$ && "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$N_SIMULATIONS" =~ ^[1-9][0-9]*$ ]]; then
     usage
-    echo "  scene and iterations must be positive integers."
+    echo "  scene, iterations, and n-simulations must be positive integers."
     exit 1
 fi
 if [[ "$SEED" != "random" && ! "$SEED" =~ ^[0-9]+$ ]]; then
@@ -104,7 +110,7 @@ fi
 mkdir -p "$LOG_DIR"
 SEED_LOG="${LOG_DIR}/seeds.csv"
 if [[ ! -f "$SEED_LOG" ]]; then
-    echo "run_index,domain,scene,threshold,gamma,seed,log_dir" > "$SEED_LOG"
+    echo "run_index,domain,scene,threshold,gamma,n_simulations,seed,log_dir" > "$SEED_LOG"
 fi
 
 generate_seed() {
@@ -117,8 +123,8 @@ for ((i = 1; i <= ITERATIONS; i++)); do
     else
         seed="$SEED"
     fi
-    echo "[RUN ${i}/${ITERATIONS}] threshold=${THRESHOLD}, gamma=${GAMMA}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
-    echo "${i},${DOMAIN},${scene_id},${THRESHOLD},${GAMMA},${seed},${LOG_DIR}" >> "$SEED_LOG"
+    echo "[RUN ${i}/${ITERATIONS}] threshold=${THRESHOLD}, gamma=${GAMMA}, n_simulations=${N_SIMULATIONS}, scene=${scene_id}, seed=${seed}, log_dir=${LOG_DIR}"
+    echo "${i},${DOMAIN},${scene_id},${THRESHOLD},${GAMMA},${N_SIMULATIONS},${seed},${LOG_DIR}" >> "$SEED_LOG"
 
     python3 main.py \
         --domain "$DOMAIN" \
@@ -127,6 +133,7 @@ for ((i = 1; i <= ITERATIONS; i++)); do
         --robot_skill "$robot_skill" \
         --threshold "$THRESHOLD" \
         --gamma "$GAMMA" \
+        --n_simulations "$N_SIMULATIONS" \
         --seed "$seed" \
         --log_dir "$LOG_DIR" \
         --max_step "$MAXSTEP"

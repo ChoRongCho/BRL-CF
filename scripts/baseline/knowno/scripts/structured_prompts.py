@@ -185,6 +185,34 @@ A) place waste2 into general bin
 B) place waste2 into can bin
 C) pick waste3
 D) detect
+
+We: Example state:
+Objects still on the counter: waste4
+Observed waste attributes: None
+Object currently held by the robot: None
+Actions already completed: detect, pick waste1, place waste1 into can bin, pick waste2, place waste2 into paper bin, pick waste3, place waste3 into general bin
+You:
+A) detect
+B) pick waste4
+C) place waste4 into general bin
+D) place waste4 into plastic bin
+""".strip()
+
+WASTE_SCORING_FEW_SHOT = """
+We: Example state:
+Objects still on the counter: waste4
+Observed waste attributes: None
+Object currently held by the robot: None
+Actions already completed: detect, pick waste1, place waste1 into can bin, pick waste2, place waste2 into paper bin, pick waste3, place waste3 into general bin
+We: What should the robot do next?
+You:
+A) pick waste4
+B) place waste4 into general bin
+C) detect
+D) place waste4 into plastic bin
+We: Which option is correct? Answer with a single capital letter from A, B, C, or D.
+You:
+C
 """.strip()
 
 def build_tomato_calibration_prompt_text(context: str) -> str:
@@ -273,8 +301,11 @@ We: {WASTE_BACKGROUND}
 
 {WASTE_ACTION_ROLES}
 
+{WASTE_ACTION_OUTPUT_RULES}
+
+{WASTE_GENERATION_FEW_SHOT}
+
 {context}
-You:
 """.strip()
 
 
@@ -299,7 +330,6 @@ We: {WASTE_BACKGROUND}
 We: Overall instruction: {instruction}
 We: Objects still on the counter: {", ".join(remaining_objects) if remaining_objects else "None"}
 We: Available bins: {", ".join(available_bins)}
-We: Occluded waste objects: {occlusion_text}
 We: Observed waste attributes: {observed_text}
 We: Object currently held by the robot: {held_text}
 We: Actions already completed:
@@ -322,10 +352,11 @@ def build_waste_score_prompt_text(
     return f"""
 {WASTE_BACKGROUND}
 
+{WASTE_SCORING_FEW_SHOT}
+
 We: Overall instruction: {instruction}
 We: Objects still on the counter: {", ".join(remaining_objects) if remaining_objects else "None"}
 We: Available bins: {", ".join(available_bins)}
-We: Occluded waste objects: {occlusion_text}
 We: Observed waste attributes: {observed_text}
 We: Object currently held by the robot: {held_text}
 We: Actions already completed:

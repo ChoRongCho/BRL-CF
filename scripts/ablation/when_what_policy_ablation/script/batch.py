@@ -70,25 +70,16 @@ def main():
         raise ValueError(f"Invalid domains: {domains}")
     if iterations < 1 or not scenes or min(scenes) < 1:
         raise ValueError("Iterations and scenes must be positive")
-    state_qhats = {
-        "tomato": env("TOMATO_STATE_QHAT", "").strip(),
-        "wastesorting": env("WASTE_STATE_QHAT", "").strip(),
-    }
-    state_calibration = env("STATE_CALIBRATION", "").strip()
-    if state_calibration:
-        state_calibration = str(absolute(state_calibration))
-        if not Path(state_calibration).is_file():
-            raise ValueError(f"State calibration file not found: {state_calibration}")
-    missing_qhats = [
-        domain for domain in domains
-        if "cp_when" in conditions and not state_qhats[domain] and not state_calibration
-    ]
-    if missing_qhats:
-        raise ValueError(
-            "CP-When requires WW_STATE_CALIBRATION or domain qhats via "
-            "WW_TOMATO_STATE_QHAT and WW_WASTE_STATE_QHAT; missing: "
-            + ", ".join(missing_qhats)
-        )
+    tomato_qhat = float(env("TOMATO_QHAT", "0.8404"))
+    waste_qhat = float(env("WASTE_QHAT", "0.8704"))
+    score_temperature = float(env("SCORE_TEMPERATURE", "5.0"))
+    llm_settings = str(absolute(env("LLM_SETTINGS", "llm_setting.json")))
+    if not 0 <= tomato_qhat <= 1 or not 0 <= waste_qhat <= 1:
+        raise ValueError("Action CP qhats must be in [0, 1]")
+    if score_temperature <= 0:
+        raise ValueError("Action CP score temperature must be positive")
+    if "cp_when" in conditions and not Path(llm_settings).is_file():
+        raise ValueError(f"LLM settings file not found: {llm_settings}")
 
     seed_path = absolute(env(
         "PAIRED_SEED_LOG",
@@ -132,10 +123,12 @@ def main():
                 "--seed", str(seed), "--dry-run",
             ]
             if condition == "cp_when":
-                if state_calibration:
-                    command.extend(["--state-calibration", state_calibration])
-                else:
-                    command.extend(["--state-qhat", state_qhats[domain]])
+                command.extend([
+                    "--tomato-qhat", str(tomato_qhat),
+                    "--waste-qhat", str(waste_qhat),
+                    "--score-temperature", str(score_temperature),
+                    "--llm-settings", llm_settings,
+                ])
             subprocess.run(command, cwd=ROOT, check=True)
         print("Dry run validated paired seeds and representative commands.")
         return 0
@@ -152,15 +145,11 @@ def main():
         "iterations": iterations,
         "paired_seed_log": str(seed_path),
         "paired_seed_sha256": hashlib.sha256(seed_path.read_bytes()).hexdigest(),
-        "state_qhats": {
-            domain: float(value) if value else None
-            for domain, value in state_qhats.items()
-        },
-        "state_calibration": state_calibration or None,
-        "state_calibration_sha256": (
-            hashlib.sha256(Path(state_calibration).read_bytes()).hexdigest()
-            if state_calibration else None
-        ),
+        "cp_representation": "action_prediction_set",
+        "tomato_qhat": tomato_qhat,
+        "waste_qhat": waste_qhat,
+        "score_temperature": score_temperature,
+        "llm_settings": llm_settings,
     }
     manifest_path = run_root / "manifest.json"
     if resume:
@@ -191,10 +180,12 @@ def main():
                     "--seed", str(seed), "--log-dir", str(log_dir),
                 ]
                 if condition == "cp_when":
-                    if state_calibration:
-                        command.extend(["--state-calibration", state_calibration])
-                    else:
-                        command.extend(["--state-qhat", state_qhats[domain]])
+                    command.extend([
+                        "--tomato-qhat", str(tomato_qhat),
+                        "--waste-qhat", str(waste_qhat),
+                        "--score-temperature", str(score_temperature),
+                        "--llm-settings", llm_settings,
+                    ])
                 result = subprocess.run(
                     command, cwd=ROOT, stdout=output, stderr=subprocess.STDOUT
                 )

@@ -85,7 +85,12 @@ def main():
     configs = {}
     qhats = {'knowno': {'tomato': setting('KNOWNO_TOMATO_QHAT', '.8404'), 'wastesorting': setting('KNOWNO_WASTE_QHAT', '.8704')},
              'introplan': {'tomato': setting('INTROPLAN_TOMATO_QHAT', '.9809474992495626'), 'wastesorting': setting('INTROPLAN_WASTE_QHAT', '.9615342162270937')}}
-    query_defaults = dict(N_SIMULATIONS='100', MAX_DEPTH='20', GAMMA='.2', UCB_C='1.0', EPSILON='.005',
+    shared_gamma = setting('GAMMA', '.2')
+    query_gammas = {
+        'tomato': setting('TOMATO_GAMMA', shared_gamma),
+        'wastesorting': setting('WASTE_GAMMA', shared_gamma),
+    }
+    query_defaults = dict(N_SIMULATIONS='100', MAX_DEPTH='20', UCB_C='1.0', EPSILON='.005',
                           MAX_PARTICLES='250', MAX_BELIEF_PARTICLES='8000', MAX_NODE_PARTICLES='8000',
                           QUERY_COST='1.0', FAILURE_PENALTY='10.0', ANSWER_ACCURACY='1.0')
     for baseline in baselines:
@@ -97,7 +102,9 @@ def main():
                 if int(config[k]) < 1: raise ValueError(f'{k} must be positive')
             for k in set(query_defaults) - set(integer_keys):
                 if not math.isfinite(float(config[k])) or float(config[k]) < 0: raise ValueError(f'Invalid {k}')
-            if not 0 < float(config['GAMMA']) <= 1 or not 0 <= float(config['ANSWER_ACCURACY']) <= 1:
+            if (any(not math.isfinite(float(value)) or not 0 < float(value) <= 1
+                    for value in query_gammas.values())
+                    or not 0 <= float(config['ANSWER_ACCURACY']) <= 1):
                 raise ValueError('Invalid gamma or answer accuracy')
         else:
             config.update(PROMPT_VERSION=setting('PROMPT_VERSION', 'v2'), SCORE_TEMPERATURE=setting('SCORE_TEMPERATURE', '5.0'))
@@ -115,6 +122,13 @@ def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     plans = [(b, *row) for b in baselines for row in rows]
     print(f'Baselines: {baselines}\nDomains: {domains}; scenes: {scenes}\nRepetitions per baseline/domain/scene: {repetitions}\nTotal episodes: {len(plans)}', flush=True)
+    if 'query_action_pomcp' in baselines:
+        print(
+            'Query-as-Action gamma: '
+            f'tomato={query_gammas["tomato"]}, '
+            f'wastesorting={query_gammas["wastesorting"]}',
+            flush=True,
+        )
     def episode_dir(b, d, s):
         return log_root / d / f'scene_{s:02}_step{steps}' / folders[b]
     if archive and not dry_run:
@@ -128,7 +142,7 @@ def main():
                         shutil.move(str(path), str(destination))
     seed_log = log_root / 'baseline_seed_logs' / f'iterate_baseline_{timestamp}.csv'
     fields = ['global_index', 'baseline', 'domain', 'scene', 'iteration', 'seed', 'max_steps', 'env_setting', 'env_setting_sha256', 'prompt_version', 'qhat', 'temperature',
-              'top_k', 'n_simulations', 'max_depth', 'query_cost', 'failure_penalty', 'answer_accuracy', 'expert', 'status', 'log_path']
+              'top_k', 'n_simulations', 'max_depth', 'gamma', 'query_cost', 'failure_penalty', 'answer_accuracy', 'expert', 'status', 'log_path']
     if not dry_run:
         seed_log.parent.mkdir(parents=True, exist_ok=True)
         with seed_log.open('w', newline='') as f: csv.writer(f).writerow(fields)
@@ -139,12 +153,15 @@ def main():
             for domain in domains
         }
         seed_log.with_suffix('.json').write_text(json.dumps(dict(configs=configs, qhats=qhats, baselines=baselines,
+            query_action_gamma_by_domain=query_gammas,
             domains=domains, scenes=scenes, repetitions=repetitions, paired_seed_log=str(seed_path),
             paired_seed_sha256=hashlib.sha256(seed_path.read_bytes()).hexdigest(),
             env_setting_sha256=env_setting_hashes), indent=2))
     failed = skipped = 0
     for index, (baseline, domain, scene, iteration, seed) in enumerate(plans, 1):
         config = dict(configs[baseline])
+        if baseline == 'query_action_pomcp':
+            config['GAMMA'] = query_gammas[domain]
         env_setting = ROOT / 'scripts/domain' / domain / 'env_setting.yaml'
         config['ENV_SETTING'] = str(env_setting)
         config['env_setting_sha256'] = hashlib.sha256(env_setting.read_bytes()).hexdigest()
@@ -187,7 +204,7 @@ def main():
             csv.writer(f).writerow([index, baseline, domain, f'{scene:02}', iteration, seed, steps,
                 config['ENV_SETTING'], config['env_setting_sha256'],
                 config.get('PROMPT_VERSION',''), config.get('QHAT',''), config.get('SCORE_TEMPERATURE',''), config.get('TOP_K',''),
-                config.get('N_SIMULATIONS',''), config.get('MAX_DEPTH',''), config.get('QUERY_COST',''),
+                config.get('N_SIMULATIONS',''), config.get('MAX_DEPTH',''), config.get('GAMMA',''), config.get('QUERY_COST',''),
                 config.get('FAILURE_PENALTY',''), config.get('ANSWER_ACCURACY',''), 'exact_oracle', status, str(log_path)])
         print(f'\rProgress: {index}/{len(plans)} {baseline} ({status})', end='', flush=True)
     print(f'\nDry run checked {len(plans)} paired runs; no API calls or file changes.' if dry_run else

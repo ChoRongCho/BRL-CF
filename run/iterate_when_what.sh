@@ -11,6 +11,7 @@ SCENES=(1 2 3 4 5)
 ITERATIONS="40"
 MAXSTEP="50"
 GAMMA="${GAMMA:-0.2}"
+N_SIMULATIONS="${N_SIMULATIONS:-100}"
 
 # Use one shared Random-When probability for both domains.
 THRESHOLD="0.8"
@@ -26,6 +27,7 @@ usage() {
     echo "With no options, values from the configuration block at the top are used."
     echo "  --threshold T     confidence threshold (default: ${THRESHOLD})"
     echo "  --gamma G         POMCP discount factor in [0,1] (default: ${GAMMA})"
+    echo "  --n-simulations N POMCP simulations per planning step (default: ${N_SIMULATIONS})"
     echo "  --tomato-random-query-prob P      (default: ${TOMATO_RANDOM_QUERY_PROB})"
     echo "  --waste-random-query-prob P       (default: ${WASTE_RANDOM_QUERY_PROB})"
     echo "  --iter N          repetitions per domain/condition/scene (default: ${ITERATIONS})"
@@ -38,6 +40,7 @@ while (($#)); do
     case "$1" in
         --threshold) THRESHOLD="${2:?Missing value for --threshold}"; shift 2 ;;
         --gamma) GAMMA="${2:?Missing value for --gamma}"; shift 2 ;;
+        --n-simulations) N_SIMULATIONS="${2:?Missing value for --n-simulations}"; shift 2 ;;
         --tomato-random-query-prob) TOMATO_RANDOM_QUERY_PROB="${2:?Missing value for --tomato-random-query-prob}"; shift 2 ;;
         --waste-random-query-prob) WASTE_RANDOM_QUERY_PROB="${2:?Missing value for --waste-random-query-prob}"; shift 2 ;;
         --iter|--iteration) ITERATIONS="${2:?Missing value for $1}"; shift 2 ;;
@@ -49,8 +52,8 @@ while (($#)); do
     esac
 done
 
-if ! [[ "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$MAXSTEP" =~ ^[1-9][0-9]*$ ]]; then
-    echo "iterations and max-step must be positive integers."
+if ! [[ "$ITERATIONS" =~ ^[1-9][0-9]*$ && "$MAXSTEP" =~ ^[1-9][0-9]*$ && "$N_SIMULATIONS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "iterations, max-step, and n-simulations must be positive integers."
     exit 1
 fi
 
@@ -94,9 +97,10 @@ fi
 seed_log_dir="${LOG_ROOT}/when_what_seed_logs"
 mkdir -p "$seed_log_dir"
 seed_log="${seed_log_dir}/iterate_when_what_${timestamp}.csv"
-echo "domain,condition,scene,iteration,seed,threshold,random_query_prob,gamma" > "$seed_log"
+echo "domain,condition,scene,iteration,seed,threshold,random_query_prob,gamma,n_simulations" > "$seed_log"
 
 echo "Gamma: ${GAMMA}"
+echo "N simulations: ${N_SIMULATIONS}"
 printf "\rProgress: %3d%%" 0
 for domain in "${DOMAINS[@]}"; do
     if [[ "$domain" == "tomato" ]]; then
@@ -109,7 +113,7 @@ for domain in "${DOMAINS[@]}"; do
             # Pair all four conditions with the same episode seed.
             seed=$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')
             for condition in "${CONDITIONS[@]}"; do
-                echo "${domain},${condition},${scene},${iteration},${seed},${THRESHOLD},${probability},${GAMMA}" >> "$seed_log"
+                echo "${domain},${condition},${scene},${iteration},${seed},${THRESHOLD},${probability},${GAMMA},${N_SIMULATIONS}" >> "$seed_log"
                 ./run/run_when_what_ablation.sh \
                     --domain "$domain" \
                     --scene "$scene" \
@@ -117,6 +121,7 @@ for domain in "${DOMAINS[@]}"; do
                     --condition "$condition" \
                     --threshold "$THRESHOLD" \
                     --gamma "$GAMMA" \
+                    --n-simulations "$N_SIMULATIONS" \
                     --random-query-prob "$probability" \
                     --max-step "$MAXSTEP" \
                     --seed "$seed" \
