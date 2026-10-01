@@ -83,8 +83,8 @@ def main():
                 if not (ROOT / 'scripts/domain' / domain / filename).is_file():
                     raise ValueError(f'Missing domain file: {domain}/{filename}')
     configs = {}
-    qhats = {'knowno': {'tomato': setting('KNOWNO_TOMATO_QHAT', '.8404'), 'wastesorting': setting('KNOWNO_WASTE_QHAT', '.8704')},
-             'introplan': {'tomato': setting('INTROPLAN_TOMATO_QHAT', '.9809474992495626'), 'wastesorting': setting('INTROPLAN_WASTE_QHAT', '.9615342162270937')}}
+    qhats = {'knowno': {'tomato': setting('KNOWNO_TOMATO_QHAT', '.9011194251944138'), 'wastesorting': setting('KNOWNO_WASTE_QHAT', '.845165078859924')},
+             'introplan': {'tomato': setting('INTROPLAN_TOMATO_QHAT', '.9855517605160237'), 'wastesorting': setting('INTROPLAN_WASTE_QHAT', '.980493087109584')}}
     shared_gamma = setting('GAMMA', '.2')
     query_gammas = {
         'tomato': setting('TOMATO_GAMMA', shared_gamma),
@@ -107,8 +107,26 @@ def main():
                     or not 0 <= float(config['ANSWER_ACCURACY']) <= 1):
                 raise ValueError('Invalid gamma or answer accuracy')
         else:
-            config.update(PROMPT_VERSION=setting('PROMPT_VERSION', 'v2'), SCORE_TEMPERATURE=setting('SCORE_TEMPERATURE', '5.0'))
-            if config['PROMPT_VERSION'] not in ('v1', 'v2') or not math.isfinite(float(config['SCORE_TEMPERATURE'])) or float(config['SCORE_TEMPERATURE']) <= 0:
+            if baseline == 'knowno':
+                prompt_versions = {
+                    'tomato': setting('KNOWNO_TOMATO_PROMPT_VERSION', 'v1'),
+                    'wastesorting': setting('KNOWNO_WASTE_PROMPT_VERSION', 'v1'),
+                }
+            else:
+                prompt_versions = {
+                    'tomato': setting('INTROPLAN_TOMATO_PROMPT_VERSION', 'v1'),
+                    'wastesorting': setting('INTROPLAN_WASTE_PROMPT_VERSION', 'v1'),
+                }
+            config.update(
+                prompt_version_by_domain=prompt_versions,
+                GENERATION_TEMPERATURE=setting('GENERATION_TEMPERATURE', '0.0'),
+                SCORE_TEMPERATURE=setting('SCORE_TEMPERATURE', '5.0'),
+            )
+            if (any(version not in ('v1', 'v2') for version in prompt_versions.values())
+                    or not math.isfinite(float(config['GENERATION_TEMPERATURE']))
+                    or float(config['GENERATION_TEMPERATURE']) < 0
+                    or not math.isfinite(float(config['SCORE_TEMPERATURE']))
+                    or float(config['SCORE_TEMPERATURE']) <= 0):
                 raise ValueError('Invalid prompt version or score temperature')
             if any(not 0 <= float(q) <= 1 for q in qhats[baseline].values()): raise ValueError('Invalid qhat')
             config['settings_sha256'] = hashlib.sha256((ROOT / 'llm_setting.json').read_bytes()).hexdigest()
@@ -141,7 +159,7 @@ def main():
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(path), str(destination))
     seed_log = log_root / 'baseline_seed_logs' / f'iterate_baseline_{timestamp}.csv'
-    fields = ['global_index', 'baseline', 'domain', 'scene', 'iteration', 'seed', 'max_steps', 'env_setting', 'env_setting_sha256', 'prompt_version', 'qhat', 'temperature',
+    fields = ['global_index', 'baseline', 'domain', 'scene', 'iteration', 'seed', 'max_steps', 'env_setting', 'env_setting_sha256', 'prompt_version', 'qhat', 'generation_temperature', 'temperature',
               'top_k', 'n_simulations', 'max_depth', 'gamma', 'query_cost', 'failure_penalty', 'answer_accuracy', 'expert', 'status', 'log_path']
     if not dry_run:
         seed_log.parent.mkdir(parents=True, exist_ok=True)
@@ -160,6 +178,8 @@ def main():
     failed = skipped = 0
     for index, (baseline, domain, scene, iteration, seed) in enumerate(plans, 1):
         config = dict(configs[baseline])
+        if baseline in qhats:
+            config['PROMPT_VERSION'] = config['prompt_version_by_domain'][domain]
         if baseline == 'query_action_pomcp':
             config['GAMMA'] = query_gammas[domain]
         env_setting = ROOT / 'scripts/domain' / domain / 'env_setting.yaml'
@@ -182,14 +202,16 @@ def main():
         status = 'complete'
         saved = marker.read_text().strip() if marker.exists() else None
         # Older KnowNo/QaA runners wrote empty completion markers without settings metadata.
-        legacy_complete = saved == '' and baseline != 'introplan' and log_path.exists()
+        legacy_complete = saved == '' and baseline == 'query_action_pomcp' and log_path.exists()
         if baseline == 'introplan' and saved:
             old_config = dict(domains=domains, scenes=scenes, max_steps=steps,
                               qhats={d: float(q) for d, q in qhats['introplan'].items()},
                               temperature=float(config['SCORE_TEMPERATURE']), prompt_version=config['PROMPT_VERSION'],
                               top_k=int(config['TOP_K']), knowledge_sha256=config['knowledge_sha256'],
                               settings_sha256=config['settings_sha256'])
-            legacy_complete = saved == hashlib.sha256(json.dumps(old_config, sort_keys=True).encode()).hexdigest() and log_path.exists()
+            legacy_complete = (float(config['GENERATION_TEMPERATURE']) == 0.0
+                               and saved == hashlib.sha256(json.dumps(old_config, sort_keys=True).encode()).hexdigest()
+                               and log_path.exists())
         if resume and (saved == fingerprint or legacy_complete):
             status = 'skipped'; skipped += 1
         else:
@@ -203,7 +225,7 @@ def main():
         with seed_log.open('a', newline='') as f:
             csv.writer(f).writerow([index, baseline, domain, f'{scene:02}', iteration, seed, steps,
                 config['ENV_SETTING'], config['env_setting_sha256'],
-                config.get('PROMPT_VERSION',''), config.get('QHAT',''), config.get('SCORE_TEMPERATURE',''), config.get('TOP_K',''),
+                config.get('PROMPT_VERSION',''), config.get('QHAT',''), config.get('GENERATION_TEMPERATURE',''), config.get('SCORE_TEMPERATURE',''), config.get('TOP_K',''),
                 config.get('N_SIMULATIONS',''), config.get('MAX_DEPTH',''), config.get('GAMMA',''), config.get('QUERY_COST',''),
                 config.get('FAILURE_PENALTY',''), config.get('ANSWER_ACCURACY',''), 'exact_oracle', status, str(log_path)])
         print(f'\rProgress: {index}/{len(plans)} {baseline} ({status})', end='', flush=True)

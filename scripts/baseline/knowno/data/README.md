@@ -12,12 +12,14 @@
 | `metabot-*` | 원본 Mobile Manipulation 자료. BRL tomato/waste 자료와 별개 |
 
 추출한 필드는 `context`, `mc_gen_prompt`, `true_actions`, `options`, `true_options`이다.
-점수와 모델 응답은 원본 archive에 보존하며, 복구 데이터에 정답을 새로 작성하지 않았다.
-파일 내용은 복구했지만 원래 파일의 바이트나 Git 유실 경위를 복원한 것은 아니다.
+Tomato는 복구된 라벨을 유지한다. Waste는 2026-09-29에 단일 rollout 행동만
+정답으로 둔 오류를 수정했다. 빈손 상태에서는 현재 관측된 남은 쓰레기에 대한
+모든 `pick`을 복수 정답으로 두며, `detect`와 `place` 상태의 라벨은 유지한다.
 
 출처·이전 소규모 파일·검증 결과: [recovery_20260915](../../calibration/recovery_20260915/README.md).
-기존 KnowNo gpt-4o 보정값은 저장된 점수만으로 재계산하여 일치를 확인했다.
-실행값은 기존 반올림 값인 tomato `0.8404`, waste `0.8704`를 유지한다.
+Waste의 기존 단일 정답 보정값은 복수 정답 실험 정의의 최종 보정값으로 사용하지
+않는다. 기존 100개 정적 레코드는 실제 rollout보다 place 상태가 지나치게 적으므로,
+저장된 실제 실행 로그를 이용한 별도 calibration audit 결과를 함께 확인해야 한다.
 
 ```bash
 # 프로젝트 루트에서. 실제 재점수화가 필요할 때만 실행 (API 호출 발생).

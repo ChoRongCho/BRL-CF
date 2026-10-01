@@ -53,6 +53,8 @@ def _start_run(script_path, args, baseline_name, settings, prefix, title):
         "baseline": baseline_name,
         "model": settings.get("model") or settings.get("model_name"),
         "prompt_version": args.prompt_version,
+        "generation_temperature": args.generation_temperature,
+        "score_temperature": args.score_temperature,
         "seed": args.seed,
         "expert": "exact_oracle" if args.auto_answer else "human_input",
         "env_setting": args.env_setting,
@@ -82,6 +84,8 @@ def start_tomato_run(
     console = logger.console
     console("Instruction:", args.instruction)
     console("Prompt version:", args.prompt_version)
+    console("Generation temperature:", args.generation_temperature)
+    console("Score temperature:", args.score_temperature)
     console("Tomatoes:", ", ".join(tomatoes))
     console("Locations:", ", ".join(locations))
     console("True ripeness:", ", ".join(f"{obj}: {hidden_ripeness[obj]}" for obj in sorted(hidden_ripeness)))
@@ -109,6 +113,8 @@ def start_waste_run(script_path, args, baseline_name, settings, remaining_object
     console = logger.console
     console("Instruction:", args.instruction)
     console("Prompt version:", args.prompt_version)
+    console("Generation temperature:", args.generation_temperature)
+    console("Score temperature:", args.score_temperature)
     console("Initial objects:", ", ".join(remaining_objects))
     console("Available bins:", ", ".join(available_bins))
     console("True labels:", ", ".join(f"{obj}: {label}" for obj, label in sorted(hidden_attributes.items())))

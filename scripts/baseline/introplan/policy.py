@@ -26,7 +26,10 @@ def retrieve(prompt, entries, top_k):
 
 
 class IntrospectiveLLM:
-    def __init__(self, call, knowledge_path, domain, trace_path, top_k=3):
+    def __init__(
+        self, call, knowledge_path, domain, trace_path, top_k=3,
+        generation_temperature=0.0,
+    ):
         data = json.loads(Path(knowledge_path).read_text())
         self.entries = data[domain]
         if top_k < 1 or not self.entries:
@@ -38,6 +41,7 @@ class IntrospectiveLLM:
         self.call = call
         self.top_k = top_k
         self.trace_path = Path(trace_path)
+        self.generation_temperature = float(generation_temperature)
 
     def __call__(self, prompt, **kwargs):
         if kwargs.get('logprobs') is None:
@@ -53,7 +57,12 @@ class IntrospectiveLLM:
             + prompt + '\nExplain which options are justified and which need clarification. '
             'Do not invent unobserved facts. Write Explain: followed by your reasoning.'
         )
-        reason_response, explanation = self.call(reason_prompt, max_tokens=512, logit_bias={})
+        reason_response, explanation = self.call(
+            reason_prompt,
+            max_tokens=512,
+            temperature=self.generation_temperature,
+            logit_bias={},
+        )
         # Upstream CP excludes any direct prediction from the explanation.
         explanation = explanation.split('Prediction:')[0].strip()
         final_prompt = (prompt + '\n\nIntrospective explanation:\n' + explanation

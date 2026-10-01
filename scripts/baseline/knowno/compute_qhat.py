@@ -58,6 +58,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-calibration", type=int, default=100)
     parser.add_argument("--num-test", type=int, default=0)
     parser.add_argument("--target-success", type=float, default=0.8)
+    parser.add_argument(
+        "--generation-temperature",
+        type=float,
+        default=0.0,
+        help="Temperature used to generate the A-D action candidates.",
+    )
     parser.add_argument("--temperature", type=float, default=5.0)
     parser.add_argument("--quantile-method", choices=["legacy_higher", "finite_sample"], default="legacy_higher")
     parser.add_argument(
@@ -177,6 +183,7 @@ def write_json(path: str, records: list[dict], qhat: float, q_level: float, args
             {
                 "domain": args.domain,
                 "target_success": args.target_success,
+                "generation_temperature": args.generation_temperature,
                 "temperature": args.temperature,
                 "q_level": q_level,
                 "qhat": qhat,
@@ -212,6 +219,7 @@ def main() -> None:
                 config["background"],
                 config["builder"],
                 generate=args.regenerate_options,
+                generation_temperature=args.generation_temperature,
             )
             if args.domain in {"waste", "wastesorting"}:
                 for record in records:
@@ -235,6 +243,7 @@ def main() -> None:
     print("domain:", args.domain)
     print("num_calibration:", len(records))
     print("target_success:", args.target_success)
+    print("generation_temperature:", args.generation_temperature)
     print("temperature:", args.temperature)
     print("q_level:", q_level)
     print("qhat:", qhat)

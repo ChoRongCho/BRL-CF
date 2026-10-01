@@ -56,9 +56,10 @@ def parse_args():
         default=str(Path(__file__).resolve().parents[4] / "llm_setting.json"),
     )
     parser.add_argument("--instruction", default="Harvest all ripe tomatoes and discard rotten tomatoes.")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v1")
     parser.add_argument("--tomatoes", default="tomato1, tomato2, tomato3, tomato4")
-    parser.add_argument("--qhat", type=float, default=0.8404)
+    parser.add_argument("--qhat", type=float, default=0.9011194251944138)
+    parser.add_argument("--generation-temperature", type=float, default=0.0)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=5.0)
     parser.add_argument("--max-steps", type=int, default=30)
     parser.add_argument("--detect-success-prob", type=float, default=None)
@@ -159,7 +160,12 @@ def plan_tomato_step(
         logger.file_only(generation_prompt)
 
     generation_start = time.perf_counter()
-    generation_response, generation_text = call_llm(generation_prompt, stop_seq=["We:"], logit_bias={})
+    generation_response, generation_text = call_llm(
+        generation_prompt,
+        temperature=args.generation_temperature,
+        stop_seq=["We:"],
+        logit_bias={},
+    )
     generation_usage = generation_response.get("usage")
     total_usage["generation"] += usage_total(generation_usage)
     total_usage["overall"] += usage_total(generation_usage)

@@ -29,8 +29,9 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--settings", default=str(PROJECT_ROOT / "llm_setting.json"))
     parser.add_argument("--env-setting", default="", help="Shared environment setting yaml; defaults by domain.")
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--prompt-version", choices=["v1", "v2"], default="v2")
+    parser.add_argument("--prompt-version", choices=["v1", "v2"], default=None)
     parser.add_argument("--qhat", type=float, default=None)
+    parser.add_argument("--generation-temperature", type=float, default=None)
     parser.add_argument("--score-temperature", "--temperature", dest="score_temperature", type=float, default=None)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -203,8 +204,13 @@ def build_command(args: argparse.Namespace, passthrough: list[str]) -> list[str]
     cmd = [sys.executable, str(planner), "--settings", args.settings]
     append_optional(cmd, "--env-setting", args.env_setting or DOMAIN_DIR / domain / "env_setting.yaml")
     append_optional(cmd, "--api-key", args.api_key)
-    append_optional(cmd, "--prompt-version", args.prompt_version)
+    append_optional(
+        cmd,
+        "--prompt-version",
+        args.prompt_version or "v1",
+    )
     append_optional(cmd, "--qhat", args.qhat)
+    append_optional(cmd, "--generation-temperature", args.generation_temperature)
     append_optional(cmd, "--temperature", args.score_temperature)
     append_optional(cmd, "--max-steps", args.max_steps)
     append_optional(cmd, "--seed", args.seed)

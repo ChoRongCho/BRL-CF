@@ -11,13 +11,17 @@ ITERATIONS_PER_SCENE="40"
 MAX_STEPS="50"
 PAIRED_SEED_LOG="experiments_logs/system_log/when_what_seed_logs/iterate_when_what_20260912_150132.csv"
 
-# KnowNo and IntroPlan (same action oracle).
-PROMPT_VERSION="v2"
+# KnowNo and IntroPlan use the same action oracle but separate prompts.
+KNOWNO_TOMATO_PROMPT_VERSION="v1"
+KNOWNO_WASTE_PROMPT_VERSION="v1"
+INTROPLAN_TOMATO_PROMPT_VERSION="v1"
+INTROPLAN_WASTE_PROMPT_VERSION="v1"
+GENERATION_TEMPERATURE="0.3"
 SCORE_TEMPERATURE="5.0"
-KNOWNO_TOMATO_QHAT="0.8404"
-KNOWNO_WASTE_QHAT="0.8704"
-INTROPLAN_TOMATO_QHAT="0.9809474992495626"
-INTROPLAN_WASTE_QHAT="0.9615342162270937"
+KNOWNO_TOMATO_QHAT="0.9011194251944138"
+KNOWNO_WASTE_QHAT="0.845165078859924"
+INTROPLAN_TOMATO_QHAT="0.9855517605160237"
+INTROPLAN_WASTE_QHAT="0.980493087109584"
 TOP_K="3"
 KNOWLEDGE_FILE="scripts/baseline/introplan/knowledge.json"
 
@@ -47,6 +51,11 @@ usage() {
     echo 'Select several methods: --baselines "knowno introplan query_action_pomcp"'
     echo 'Select domains: --domains "tomato wastesorting"'
     echo "CP overrides: --knowno-waste-qhat X --introplan-waste-qhat X"
+    echo "Prompt overrides: --knowno-tomato-prompt-version v1|v2"
+    echo "                  --knowno-waste-prompt-version v1|v2"
+    echo "                  --introplan-tomato-prompt-version v1|v2"
+    echo "                  --introplan-waste-prompt-version v1|v2"
+    echo "Temperature override: --generation-temperature X"
     echo "Query-as-Action overrides: --gamma X or --tomato-gamma X --waste-gamma X"
     echo "                           --query-cost X --failure-penalty X"
     echo "Output override: --log-root PATH"
@@ -64,6 +73,19 @@ while (($#)); do
         --knowno-waste-qhat) KNOWNO_WASTE_QHAT="${2:?Missing qhat}"; shift 2 ;;
         --introplan-tomato-qhat) INTROPLAN_TOMATO_QHAT="${2:?Missing qhat}"; shift 2 ;;
         --introplan-waste-qhat) INTROPLAN_WASTE_QHAT="${2:?Missing qhat}"; shift 2 ;;
+        --knowno-prompt-version)
+            KNOWNO_TOMATO_PROMPT_VERSION="${2:?Missing prompt version}"
+            KNOWNO_WASTE_PROMPT_VERSION="$KNOWNO_TOMATO_PROMPT_VERSION"
+            shift 2 ;;
+        --knowno-tomato-prompt-version) KNOWNO_TOMATO_PROMPT_VERSION="${2:?Missing prompt version}"; shift 2 ;;
+        --knowno-waste-prompt-version) KNOWNO_WASTE_PROMPT_VERSION="${2:?Missing prompt version}"; shift 2 ;;
+        --introplan-prompt-version)
+            INTROPLAN_TOMATO_PROMPT_VERSION="${2:?Missing prompt version}"
+            INTROPLAN_WASTE_PROMPT_VERSION="$INTROPLAN_TOMATO_PROMPT_VERSION"
+            shift 2 ;;
+        --introplan-tomato-prompt-version) INTROPLAN_TOMATO_PROMPT_VERSION="${2:?Missing prompt version}"; shift 2 ;;
+        --introplan-waste-prompt-version) INTROPLAN_WASTE_PROMPT_VERSION="${2:?Missing prompt version}"; shift 2 ;;
+        --generation-temperature) GENERATION_TEMPERATURE="${2:?Missing generation temperature}"; shift 2 ;;
         --gamma)
             GAMMA="${2:?Missing gamma}"
             TOMATO_GAMMA="$GAMMA"
@@ -81,7 +103,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export BATCH_BASELINES="${BASELINES[*]}" BATCH_DOMAINS="${DOMAINS[*]}" BATCH_SCENES="${SCENES[*]}"
 export BATCH_ITERATIONS="$ITERATIONS_PER_SCENE"
-for name in MAX_STEPS PAIRED_SEED_LOG PROMPT_VERSION SCORE_TEMPERATURE \
+for name in MAX_STEPS PAIRED_SEED_LOG \
+    KNOWNO_TOMATO_PROMPT_VERSION KNOWNO_WASTE_PROMPT_VERSION \
+    INTROPLAN_TOMATO_PROMPT_VERSION INTROPLAN_WASTE_PROMPT_VERSION GENERATION_TEMPERATURE SCORE_TEMPERATURE \
     KNOWNO_TOMATO_QHAT KNOWNO_WASTE_QHAT INTROPLAN_TOMATO_QHAT INTROPLAN_WASTE_QHAT \
     TOP_K KNOWLEDGE_FILE N_SIMULATIONS MAX_DEPTH GAMMA TOMATO_GAMMA WASTE_GAMMA \
     UCB_C EPSILON MAX_PARTICLES \

@@ -1,27 +1,30 @@
 # Query baseline comparison — 분석 보고서
 
-Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적용한 Query-Action을 비교한다. Waste KnowNo와 IntroPlan은 2026-09-28 수정된 v2 prompt로 각각 재보정하고 재실행했다 (KnowNo qhat=0.960193292448771, IntroPlan qhat=0.9742783904140572, score temperature=5.0, target coverage=95%). Tomato와 나머지 세 조건의 로그는 유지했다. 기존 Query-Action은 gamma=0.2/query_cost=1.0이고, 추가 Query-Action은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0이며 n_simulations=100이다.
+도표에서는 Ours, KnowNo, IntroPlan, Query-Action의 4조건을 비교한다. Query-Action (original)은 모든 비교 표·그래프에서 제외하며 원본과 실행별 데이터만 보존한다. KnowNo Tomato는 2026-09-16 집계의 prompt v2 200회(성공률 43.0%, qhat=0.8404)를 유지하고, Waste는 2026-09-30 prompt v1 200회(성공률 48.5%, qhat=0.845165078859924, generation temperature=0.3)를 사용한다. 두 domain 모두 GPT-4o, score temperature=5.0, exact oracle이다. Tomato의 generation temperature는 원본에 기록되지 않아 확정하지 않는다. IntroPlan은 2026-09-30 prompt v1, generation temperature=0.3, score temperature=5.0, exact oracle 재실행 결과를 유지했다(qhat Tomato=0.9855517605160237, Waste=0.980493087109584, top_k=3). Ours와 도표에 남긴 Query-Action 결과는 유지했다. 도표의 Query-Action 설정은 Tomato gamma=0.5, Waste gamma=0.9, query_cost=0.0, n_simulations=100이다. 이 설정은 도표 라벨 대신 별도로 명시한다. 이는 prompt만 바꾼 통제 비교가 아니라 각 배치의 기록된 설정에 따른 결과 비교이다.
 
 실행 슬롯 2,000개, 유효 결과 2,000개. Raw는 `00_raw/`, 각 수치의 출처는 episodes.csv의 raw_source이다.
+
+## 핵심 결과
+
+1. KnowNo (Tomato v2 / Waste v1): all 성공 183/400 (45.75%), episode당 질문 1.86회, 성공 episode당 질문 2.47회.
+2. KnowNo (v2): tomato 성공 86/200 (43.00%), episode당 질문 1.79회, 성공 episode당 질문 2.45회.
+3. KnowNo (v1): wastesorting 성공 97/200 (48.50%), episode당 질문 1.92회, 성공 episode당 질문 2.48회.
 
 ## 전체·도메인별 결과
 
 | Domain | Condition | 성공/유효 | 성공률 % | 질문 평균 | 행동 평균 | 시간 평균(s) | 오류 |
 |---|---|---:|---:|---:|---:|---:|---:|
 | all | ours | 390/400 | 97.5 | 8.41 | 12.4 | 1.01 | 0 |
-| all | query_action_pomcp | 218/400 | 54.5 | 1.18 | 13.3 | 1.67 | 0 |
-| all | knowno | 227/400 | 56.8 | 3.16 | 10.2 | 15 | 0 |
-| all | introplan | 235/400 | 58.8 | 3.95 | 10.4 | 41.3 | 0 |
+| all | knowno | 183/400 | 45.8 | 1.86 | 9.68 | 17 | 0 |
+| all | introplan | 183/400 | 45.8 | 6.28 | 9.96 | 47.7 | 0 |
 | all | query_action_pomcp_selected | 289/400 | 72.2 | 16.9 | 12.7 | 7.6 | 0 |
 | tomato | ours | 190/200 | 95 | 9 | 14.4 | 1.22 | 0 |
-| tomato | query_action_pomcp | 118/200 | 59 | 1.2 | 16.7 | 1.98 | 0 |
-| tomato | knowno | 110/200 | 55 | 1.71 | 11.3 | 18.2 | 0 |
-| tomato | introplan | 128/200 | 64 | 3.54 | 11.9 | 54.3 | 0 |
+| tomato | knowno | 86/200 | 43 | 1.79 | 10.9 | 16.3 | 0 |
+| tomato | introplan | 80/200 | 40 | 6.91 | 10.9 | 57.6 | 0 |
 | tomato | query_action_pomcp_selected | 115/200 | 57.5 | 9.72 | 13.8 | 5.04 | 0 |
 | wastesorting | ours | 200/200 | 100 | 7.83 | 10.3 | 0.806 | 0 |
-| wastesorting | query_action_pomcp | 100/200 | 50 | 1.16 | 9.93 | 1.36 | 0 |
-| wastesorting | knowno | 117/200 | 58.5 | 4.61 | 9.07 | 11.7 | 0 |
-| wastesorting | introplan | 107/200 | 53.5 | 4.36 | 8.88 | 28.2 | 0 |
+| wastesorting | knowno | 97/200 | 48.5 | 1.92 | 8.48 | 17.8 | 0 |
+| wastesorting | introplan | 103/200 | 51.5 | 5.65 | 9.03 | 37.8 | 0 |
 | wastesorting | query_action_pomcp_selected | 174/200 | 87 | 24 | 11.5 | 10.2 | 0 |
 
 ## 장면별 결과
@@ -33,21 +36,16 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 | tomato | 03 | ours | 35/40 | 8.53 | 13.8 |
 | tomato | 04 | ours | 38/40 | 9.75 | 14.7 |
 | tomato | 05 | ours | 39/40 | 9 | 14.8 |
-| tomato | 01 | query_action_pomcp | 28/40 | 1.55 | 18.4 |
-| tomato | 02 | query_action_pomcp | 24/40 | 1.55 | 16.8 |
-| tomato | 03 | query_action_pomcp | 22/40 | 1.23 | 15.4 |
-| tomato | 04 | query_action_pomcp | 23/40 | 0.85 | 17.1 |
-| tomato | 05 | query_action_pomcp | 21/40 | 0.8 | 15.9 |
-| tomato | 01 | knowno | 18/40 | 1.57 | 10.2 |
-| tomato | 02 | knowno | 22/40 | 1.48 | 11.3 |
-| tomato | 03 | knowno | 21/40 | 1.65 | 11.2 |
-| tomato | 04 | knowno | 25/40 | 2.25 | 12 |
-| tomato | 05 | knowno | 24/40 | 1.6 | 11.8 |
-| tomato | 01 | introplan | 23/40 | 3.6 | 11.1 |
-| tomato | 02 | introplan | 25/40 | 3.48 | 11.9 |
-| tomato | 03 | introplan | 23/40 | 3.35 | 11.6 |
-| tomato | 04 | introplan | 29/40 | 3.85 | 12.6 |
-| tomato | 05 | introplan | 28/40 | 3.4 | 12.5 |
+| tomato | 01 | knowno | 19/40 | 1.93 | 10.8 |
+| tomato | 02 | knowno | 15/40 | 1.38 | 10.3 |
+| tomato | 03 | knowno | 20/40 | 1.8 | 11.2 |
+| tomato | 04 | knowno | 17/40 | 2.08 | 10.8 |
+| tomato | 05 | knowno | 15/40 | 1.8 | 11.1 |
+| tomato | 01 | introplan | 14/40 | 5.88 | 9.25 |
+| tomato | 02 | introplan | 15/40 | 7.25 | 11.3 |
+| tomato | 03 | introplan | 13/40 | 7.15 | 10.4 |
+| tomato | 04 | introplan | 22/40 | 7.05 | 11.9 |
+| tomato | 05 | introplan | 16/40 | 7.22 | 11.5 |
 | tomato | 01 | query_action_pomcp_selected | 21/40 | 8.93 | 12.8 |
 | tomato | 02 | query_action_pomcp_selected | 27/40 | 9.68 | 14.8 |
 | tomato | 03 | query_action_pomcp_selected | 22/40 | 10.1 | 13.6 |
@@ -58,21 +56,16 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 | wastesorting | 03 | ours | 40/40 | 8.03 | 10.5 |
 | wastesorting | 04 | ours | 40/40 | 9.03 | 10.6 |
 | wastesorting | 05 | ours | 40/40 | 8.5 | 10.7 |
-| wastesorting | 01 | query_action_pomcp | 14/40 | 0.875 | 8.45 |
-| wastesorting | 02 | query_action_pomcp | 22/40 | 0.975 | 9.97 |
-| wastesorting | 03 | query_action_pomcp | 22/40 | 1.05 | 10.2 |
-| wastesorting | 04 | query_action_pomcp | 23/40 | 1.45 | 11 |
-| wastesorting | 05 | query_action_pomcp | 19/40 | 1.43 | 10 |
-| wastesorting | 01 | knowno | 25/40 | 4.58 | 9 |
-| wastesorting | 02 | knowno | 27/40 | 4.95 | 9.82 |
-| wastesorting | 03 | knowno | 22/40 | 4.5 | 8.78 |
-| wastesorting | 04 | knowno | 22/40 | 4.62 | 8.95 |
-| wastesorting | 05 | knowno | 21/40 | 4.4 | 8.82 |
-| wastesorting | 01 | introplan | 22/40 | 4.15 | 8.45 |
-| wastesorting | 02 | introplan | 25/40 | 5.1 | 9.57 |
-| wastesorting | 03 | introplan | 20/40 | 4.3 | 8.55 |
-| wastesorting | 04 | introplan | 20/40 | 4.2 | 9 |
-| wastesorting | 05 | introplan | 20/40 | 4.05 | 8.8 |
+| wastesorting | 01 | knowno | 21/40 | 2.27 | 8.35 |
+| wastesorting | 02 | knowno | 24/40 | 2.52 | 9.62 |
+| wastesorting | 03 | knowno | 17/40 | 2.02 | 7.78 |
+| wastesorting | 04 | knowno | 19/40 | 1.5 | 8.4 |
+| wastesorting | 05 | knowno | 16/40 | 1.27 | 8.28 |
+| wastesorting | 01 | introplan | 19/40 | 5.42 | 8.65 |
+| wastesorting | 02 | introplan | 24/40 | 6 | 9.47 |
+| wastesorting | 03 | introplan | 20/40 | 5.4 | 8.53 |
+| wastesorting | 04 | introplan | 18/40 | 5.6 | 9.2 |
+| wastesorting | 05 | introplan | 22/40 | 5.83 | 9.3 |
 | wastesorting | 01 | query_action_pomcp_selected | 40/40 | 22.1 | 11.2 |
 | wastesorting | 02 | query_action_pomcp_selected | 36/40 | 25.1 | 11.9 |
 | wastesorting | 03 | query_action_pomcp_selected | 34/40 | 24.5 | 11.5 |
@@ -85,17 +78,14 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 
 | Domain | Comparison | 쌍 수 | 기준만 성공 | 상대만 성공 | 성공률 차이(pp) | McNemar p | Holm p | 질문 차이 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| all | query_action_pomcp | 400 | 174 | 2 | 43 | 3.25e-49 | 1.3e-48 | 7.24 |
-| all | knowno | 400 | 167 | 4 | 40.8 | 2.35e-44 | 7.06e-44 | 5.25 |
-| all | introplan | 400 | 159 | 4 | 38.8 | 4.97e-42 | 9.94e-42 | 4.47 |
+| all | knowno | 400 | 212 | 5 | 51.8 | 3.72e-56 | 7.44e-56 | 6.56 |
+| all | introplan | 400 | 210 | 3 | 51.8 | 2.45e-58 | 7.34e-58 | 2.13 |
 | all | query_action_pomcp_selected | 400 | 108 | 7 | 25.2 | 2.25e-24 | 2.25e-24 | -8.45 |
-| tomato | query_action_pomcp | 200 | 74 | 2 | 36 | 7.75e-20 | 2.32e-19 | 7.8 |
-| tomato | knowno | 200 | 84 | 4 | 40 | 1.58e-20 | 6.32e-20 | 7.29 |
-| tomato | introplan | 200 | 66 | 4 | 31 | 1.65e-15 | 1.65e-15 | 5.46 |
-| tomato | query_action_pomcp_selected | 200 | 82 | 7 | 37.5 | 2.43e-17 | 4.86e-17 | -0.725 |
-| wastesorting | query_action_pomcp | 200 | 100 | 0 | 50 | 1.58e-30 | 6.31e-30 | 6.67 |
-| wastesorting | knowno | 200 | 83 | 0 | 41.5 | 2.07e-25 | 4.14e-25 | 3.22 |
-| wastesorting | introplan | 200 | 93 | 0 | 46.5 | 2.02e-28 | 6.06e-28 | 3.47 |
+| tomato | knowno | 200 | 109 | 5 | 52 | 1.48e-26 | 2.96e-26 | 7.21 |
+| tomato | introplan | 200 | 113 | 3 | 55 | 6.27e-30 | 1.88e-29 | 2.09 |
+| tomato | query_action_pomcp_selected | 200 | 82 | 7 | 37.5 | 2.43e-17 | 2.43e-17 | -0.725 |
+| wastesorting | knowno | 200 | 103 | 0 | 51.5 | 1.97e-31 | 5.92e-31 | 5.91 |
+| wastesorting | introplan | 200 | 97 | 0 | 48.5 | 1.26e-29 | 2.52e-29 | 2.18 |
 | wastesorting | query_action_pomcp_selected | 200 | 26 | 0 | 13 | 2.98e-08 | 2.98e-08 | -16.2 |
 
 ## 해석 및 제한
@@ -107,14 +97,13 @@ Ours, 기존 Query-Action POMCP, KnowNo, IntroPlan과 도메인별 gamma를 적�
 - seed를 맞춰도 정책 경로가 달라진 이후 같은 난수 사건까지 보장하지는 않는다. LLM 비결정성과 서로 다른 실행 날짜·파라미터도 고려해야 한다.
 - 그림은 02_graph_data/figure_data.csv의 값과 오차막대를 직접 읽는다. 원본 오류/결측을 0으로 대체하지 않는다.
 
-관측 결과: 전체 최고 성공률은 ours (97.50%), 최소 평균 질문은 query_action_pomcp (1.175회). 이 순위만으로 통계적 우월성이나 인과를 주장하지 않는다.
+관측 결과: 전체 최고 성공률은 ours (97.50%), 최소 평균 질문은 knowno (1.857회). 이 순위만으로 통계적 우월성이나 인과를 주장하지 않는다.
 
 ## 기록된 설정
 
 | Condition | gamma | query cost | simulations | threshold | 모델 |
 |---|---|---|---|---|---|
 | ours | 0.2 | 미기록 | 100 | 0.8 | 미기록 |
-| query_action_pomcp | 0.2 | 1.0 | 100 | 미기록 | 미기록 |
-| knowno | 미기록 | 미기록 | 미기록 | 0.8404, 0.960193292448771 | gpt-4o |
-| introplan | 미기록 | 미기록 | 미기록 | 0.9742783904140572, 0.9809474992495626 | gpt-4o |
+| knowno | 미기록 | 미기록 | 미기록 | 0.8404, 0.845165078859924 | gpt-4o |
+| introplan | 미기록 | 미기록 | 미기록 | 0.980493087109584, 0.9855517605160237 | gpt-4o |
 | query_action_pomcp_selected | 0.5, 0.9 | 0.0 | 100 | 미기록 | 미기록 |

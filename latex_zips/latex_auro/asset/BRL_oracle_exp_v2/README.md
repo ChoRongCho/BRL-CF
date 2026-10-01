@@ -13,7 +13,7 @@
 | `00_threshold/` | confidence threshold에 따른 task success–query trade-off | 4,400 |
 | `01_when_what_random/` | proposed/random When과 What의 2×2 ablation | 1,600 |
 | `02_when_what_policy_ablation/` | CP/Value 기반 When·What 정책 ablation | 1,600 slots |
-| `03_baseline/` | Ours와 Query-Action, KnowNo, IntroPlan 비교 | 2,000 |
+| `03_baseline/` | Ours와 Query-Action, KnowNo, IntroPlan 비교 (2026-09-30 baseline 재실행 반영) | 2,000 |
 | `legacy/` | 논문 결과에 사용하지 않는 이전 구현의 raw·출처 기록 | — |
 
 `02_when_what_policy_ablation/`은 1,596개 유효 결과와 실행 오류 4개를 포함하며,

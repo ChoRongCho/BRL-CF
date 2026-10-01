@@ -111,11 +111,16 @@ def prepare_calibration_choices(
     generation_prompt_builder: Callable[[dict], str],
     generate: bool,
     print_first: int = 0,
+    generation_temperature: float = 0.0,
 ) -> None:
     for index, record in enumerate(dataset):
         prompt = generation_prompt_builder(record)
         if generate or ("mc_gen_raw" not in record and not record.get("options")):
-            _, raw = call_llm(prompt, logit_bias={})
+            _, raw = call_llm(
+                prompt,
+                temperature=generation_temperature,
+                logit_bias={},
+            )
             raw = raw.strip()
             if index < print_first:
                 print(raw)

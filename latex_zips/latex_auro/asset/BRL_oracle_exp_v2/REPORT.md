@@ -1,6 +1,6 @@
 # 실험 결과 통합 보고서
 
-작성 기준일: 2026-09-23  
+작성 기준일: 2026-09-30  
 상세 파라미터: [`EXPERIMENT_SETTINGS.md`](EXPERIMENT_SETTINGS.md)
 
 ## 1. 보고서 목적
@@ -123,14 +123,20 @@ Value-What은 Ours와 비슷한 성공률을 유지했다. Paired 성공률 차�
 |---|---:|---:|---:|
 | **Ours** | **390/400** | **97.50%** | **8.51** |
 | Query-Action original | 218/400 | 54.50% | 1.22 |
-| KnowNo | 224/400 | 56.00% | 2.91 |
-| IntroPlan | 219/400 | 54.75% | 4.20 |
+| KnowNo | 118/400 | 29.50% | 3.92 |
+| IntroPlan | 183/400 | 45.75% | 7.77 |
 | Query-Action selected | 289/400 | 72.25% | 19.25 |
 
-Ours는 original Query-Action, KnowNo, IntroPlan보다 성공률이 41.5–43.0%p 높다.
-세 baseline은 성공 episode에서도 질문 수가 더 적지만 성공률이 54.5–56.0%에
-머문다. 따라서 이들은 Ours와 동등한 task reliability를 더 적은 질문으로 달성한
-방법이 아니며, 질문 수만으로 더 효율적이라고 판단할 수 없다.
+KnowNo와 IntroPlan은 2026-09-30에 완료한 800회 통합 재실행으로 교체했다. 두
+domain 모두 prompt v1, generation temperature 0.3, score temperature 5.0, exact oracle을
+사용했다. Ours는 KnowNo보다 68.00%p, IntroPlan보다 51.75%p 높은 성공률을
+보였다. Tomato에서는 Ours 95.0%, KnowNo 10.5%, IntroPlan 40.0%였고, Waste에서는
+각각 100.0%, 48.5%, 51.5%였다.
+
+성공 episode당 질문 수는 KnowNo가 3.92회, IntroPlan이 7.77회로 Ours의 8.51회보다
+적지만, 성공률이 크게 낮다. 따라서 낮은 질문 수를 효율성으로 단독 해석할 수 없다.
+실패 로그에서 KnowNo Tomato는 fallback 선택과 미관측 tomato pick이, IntroPlan Tomato는
+손에 든 tomato 없이 scan을 선택한 경우가 주요 조기 실패로 관측됐다.
 
 Domain별 gamma와 zero query cost를 적용한 selected Query-Action은 성공률을 72.25%까지
 높였지만, 성공 episode당 질문이 19.25회로 증가했다. Ours는 이 조건보다 성공률이
@@ -145,8 +151,8 @@ Domain별 gamma와 zero query cost를 적용한 selected Query-Action은 성공�
 2. Proposed When은 질문이 필요한 시점을 식별해 성공률을 약 25%p 높인다.
 3. Proposed What은 성공률을 유지하면서 성공 episode의 질문을 최대 39.4% 줄인다.
 4. CP/value 기반 대체 정책은 높은 성공률과 낮은 질문 수를 동시에 달성하지 못한다.
-5. Ours는 기존 baseline과 tuned Query-Action보다 높은 성공률을 보이며, tuned 조건보다
-   질문 수도 적다.
+5. 통합 재실행에서 Ours는 KnowNo와 IntroPlan보다 51.75–68.00%p 높은 성공률을 보였다.
+6. Ours는 tuned Query-Action보다 높은 성공률을 보이며, tuned 조건보다 질문 수도 적다.
 
 따라서 결과 중심 contribution은 다음처럼 표현할 수 있다.
 

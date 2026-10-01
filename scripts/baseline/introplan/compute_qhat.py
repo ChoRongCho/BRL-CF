@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--settings', default=str(HERE.parents[2] / 'llm_setting.json'))
     parser.add_argument('--knowledge', default=str(HERE / 'knowledge.json'))
     parser.add_argument('--top-k', type=int, default=3)
+    parser.add_argument('--generation-temperature', type=float, default=0.0)
     parser.add_argument('--temperature', type=float, default=5.0)
     parser.add_argument('--target-success', type=float, default=0.8)
     parser.add_argument('--quantile-method', choices=['legacy_higher', 'finite_sample'], default='finite_sample')
@@ -45,7 +46,14 @@ def main():
             record['mc_score_prompt'] = prompt
     if not args.scored_json:
         configure_openai(settings_path=args.settings)
-        policy = IntrospectiveLLM(call_llm, args.knowledge, args.domain, args.output + '.trace.jsonl', args.top_k)
+        policy = IntrospectiveLLM(
+            call_llm,
+            args.knowledge,
+            args.domain,
+            args.output + '.trace.jsonl',
+            args.top_k,
+            generation_temperature=args.generation_temperature,
+        )
         score_calibration_choices(records, logprobs_count=20, llm_call=policy, logit_bias={})
     rows = add_scores(records, args.temperature)
     qhat, q_level = qhat_from_scores(records, args.target_success, method=args.quantile_method)
@@ -53,6 +61,7 @@ def main():
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(dict(qhat=qhat, n=len(records), domain=args.domain,
+                                     generation_temperature=args.generation_temperature,
                                      temperature=args.temperature, target_success=args.target_success,
                                      knowledge=args.knowledge, top_k=args.top_k, records=records,
                                      q_level=q_level, quantile_method=args.quantile_method, baseline='introplan'), indent=2)+'\n')

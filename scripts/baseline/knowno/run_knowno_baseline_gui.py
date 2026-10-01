@@ -26,6 +26,7 @@ ROOT_DUMMY_SETTINGS_PATH = PROJECT_ROOT / "llm_setting_dummy.json"
 
 DEFAULTS = {
     "tomato": {
+        "prompt_version": "v2",
         "qhat": "0.8404",
         "detect_success_prob": "0.85",
         "detect_label_error_prob": "0.05",
@@ -37,6 +38,7 @@ DEFAULTS = {
         "discard_failure_prob": "0.01",
     },
     "wastesorting": {
+        "prompt_version": "v1",
         "qhat": "0.8704",
         "detect_success_prob": "0.9",
         "detect_label_error_prob": "0.2",

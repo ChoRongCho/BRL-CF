@@ -8,7 +8,13 @@ DOMAIN="${DOMAIN:-tomato}"
 SCENE="${SCENE:-01}"
 
 # 사용자 선택: v1(structured), v2(natural language)
-PROMPT_VERSION="${PROMPT_VERSION:-v2}"
+if [[ -z "${PROMPT_VERSION:-}" ]]; then
+  if [[ "${DOMAIN:-tomato}" == "wastesorting" ]]; then
+    PROMPT_VERSION="v1"
+  else
+    PROMPT_VERSION="v2"
+  fi
+fi
 
 MAX_STEPS="${MAX_STEPS:-50}"
 # Optional fixed seed. Leave empty to generate a new random seed on each run.
@@ -16,15 +22,16 @@ SEED="${SEED:-}"
 # Lower temperature keeps option probabilities less flat, so the runner asks
 # only when the model is genuinely uncertain.
 SCORE_TEMPERATURE="${SCORE_TEMPERATURE:-5.0}"
+GENERATION_TEMPERATURE="${GENERATION_TEMPERATURE:-0.0}"
 VERBOSE="${VERBOSE:-false}"
 DRY_RUN="${DRY_RUN:-false}"
 LOG_FILE="${LOG_FILE:-}"
 AUTO_ANSWER="${AUTO_ANSWER:-true}"
 
 if [[ "${DOMAIN}" == "tomato" ]]; then
-  QHAT="${QHAT:-0.8404}"
+  QHAT="${QHAT:-0.9011194251944138}"
 elif [[ "${DOMAIN}" == "wastesorting" || "${DOMAIN}" == "waste" ]]; then
-  QHAT="${QHAT:-0.8704}"
+  QHAT="${QHAT:-0.845165078859924}"
 else
   echo "Unsupported DOMAIN: ${DOMAIN}. Use tomato or wastesorting." >&2
   exit 1
@@ -48,6 +55,7 @@ CMD=(
   --scene "${SCENE}"
   --prompt-version "${PROMPT_VERSION}"
   --qhat "${QHAT}"
+  --generation-temperature "${GENERATION_TEMPERATURE}"
   --temperature "${SCORE_TEMPERATURE}"
   --max-steps "${MAX_STEPS}"
   --seed "${SEED}"

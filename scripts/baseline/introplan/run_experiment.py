@@ -32,8 +32,14 @@ def main():
         args = planner.parse_args()
         if args.run_calibration:
             raise ValueError('Use IntroPlan compute_qhat.py for calibration, then pass --qhat.')
-        policy = IntrospectiveLLM(call_llm, extra.knowledge, extra.worker,
-                                  args.log_file + '.introplan.jsonl', extra.top_k)
+        policy = IntrospectiveLLM(
+            call_llm,
+            extra.knowledge,
+            extra.worker,
+            args.log_file + '.introplan.jsonl',
+            extra.top_k,
+            generation_temperature=args.generation_temperature,
+        )
         planner.main(call_llm=policy, baseline_name='IntroPlan-BRL')
         return
     args, passthrough = parse_args()
@@ -44,8 +50,8 @@ def main():
     if args.run_calibration:
         raise ValueError('Use IntroPlan compute_qhat.py for calibration, then pass --qhat.')
     if args.qhat is None:
-        args.qhat = {'tomato': 0.9809474992495626, 'wastesorting': 0.9615342162270937}[domain]
-        print('[IntroPlan] qhat from recovered 100-record calibration, gpt-4o, T=5, coverage=0.95, legacy_higher.', flush=True)
+        args.qhat = {'tomato': 0.9855517605160237, 'wastesorting': 0.980493087109584}[domain]
+        print('[IntroPlan] qhat from v1, generation T=0.3, score T=5, 100-record calibration, coverage=0.95, legacy_higher.', flush=True)
     if not 0 <= args.qhat <= 1:
         raise ValueError('qhat must be between 0 and 1')
     if args.score_temperature is None:

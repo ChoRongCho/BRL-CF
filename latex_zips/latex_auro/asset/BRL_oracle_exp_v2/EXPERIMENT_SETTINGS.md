@@ -1,6 +1,6 @@
 # 논문 핵심 실험 설정 보고서
 
-작성 기준일: 2026-09-23  
+작성 기준일: 2026-09-30  
 Canonical analysis root: `analysis_recent_v2/`
 
 ## 1. 실험 구성 개요
@@ -205,8 +205,8 @@ Ours를 세 baseline과 비교하고, Query-as-Action의 별도 parameter search
 |---|---|
 | Ours | `gamma=0.2`, threshold `0.8`, `n_simulations=100`, EIG What |
 | Query-Action original | `gamma=0.2`, `query_cost=1.0`, `failure_penalty=10.0`, `answer_accuracy=1.0`, `n_simulations=100` |
-| KnowNo | GPT-4o, prompt v2, score temperature 5.0, Tomato `qhat=0.8404`, Waste `qhat=0.8704` |
-| IntroPlan | GPT-4o, prompt v2, score temperature 5.0, `top_k=3`, Tomato `qhat=0.9809474992495626`, Waste `qhat=0.9615342162270937` |
+| KnowNo | GPT-4o, prompt v1, generation temperature 0.3, score temperature 5.0, Tomato `qhat=0.9011194251944138`, Waste `qhat=0.845165078859924` |
+| IntroPlan | GPT-4o, prompt v1, generation temperature 0.3, score temperature 5.0, `top_k=3`, Tomato `qhat=0.9855517605160237`, Waste `qhat=0.980493087109584` |
 | Query-Action selected | Tomato `gamma=0.5`, Waste `gamma=0.9`, `query_cost=0.0`, `failure_penalty=10.0`, `answer_accuracy=1.0`, `n_simulations=100` |
 
 `n_simulations`는 Ours와 두 Query-Action 조건의 raw log에서 100으로 확인된다. KnowNo와 IntroPlan의 분석 로그에는 이 필드가 기록되지 않으므로 해당 두 조건의 표에는 별도 POMCP simulation 값을 주장하지 않는다.
@@ -226,6 +226,8 @@ Ours를 세 baseline과 비교하고, Query-as-Action의 별도 parameter search
 ### 6.3 실행 수와 완료 상태
 
 - 각 조건은 400회이며 총 2,000/2,000 episode가 valid다.
+- KnowNo와 IntroPlan은 2026-09-30 통합 재실행 800회로 교체했다. Tomato와 Waste 모두
+  prompt v1, generation temperature 0.3, score temperature 5.0, exact oracle로 실행했다.
 - 2026-09-22에 완료한 Query-Action selected 400회는 Tomato `gamma=0.5`, Waste `gamma=0.9`로 실행됐다.
 - Python 3.8로 잘못 시작해 import 전에 실패한 이전 400회는 분석에 포함하지 않았다. Python 3.10 `brl` 환경에서 완료한 400/400 결과만 사용한다.
 - 기존 공통 `gamma=0.5` variant는 `experiments_logs/analysis_archive/query_baselines_pre_domain_gamma_20260920`에 보존하고 논문용 최신 패키지에서 제외했다.
@@ -236,8 +238,8 @@ Ours를 세 baseline과 비교하고, Query-as-Action의 별도 parameter search
 |---|---:|---:|
 | Ours | 97.5% | 8.42 |
 | Query-Action original | 54.5% | 1.18 |
-| KnowNo | 56.0% | 2.39 |
-| IntroPlan | 54.75% | 3.51 |
+| KnowNo | 29.5% | 3.58 |
+| IntroPlan | 45.75% | 6.28 |
 | Query-Action selected | 72.25% | 16.86 |
 
 Query-Action selected의 domain별 결과는 Tomato 57.5%/평균 질문 9.73회, Waste 87.0%/평균 질문 24.0회다. Parameter를 조정한 조건에서도 Ours의 전체 성공률이 더 높고 평균 질문 수는 더 적었다.
