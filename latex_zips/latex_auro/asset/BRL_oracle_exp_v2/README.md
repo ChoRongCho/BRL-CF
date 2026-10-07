@@ -39,3 +39,7 @@
 `episodes.csv`와 `00_raw/`를 사용한다.
 
 `legacy/`는 provenance 보존 전용이며 현재 논문 수치나 그림에 사용하지 않는다.
+
+## 2026-10-05 Value 재실험 반영
+
+최신 Value-When은 20:43 질문 1개 제한 제거 배치 400회이다. Value-What은 19:03 배치 400회를 유지한다. 반복 구조 수정 전 패키지는 `legacy/when_what_policy_ablation_before_threshold_loop/`에 보존한다. 상세 분석은 개별 보고서를 참조한다.

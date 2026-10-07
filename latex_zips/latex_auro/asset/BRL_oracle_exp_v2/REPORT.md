@@ -1,6 +1,6 @@
 # 실험 결과 통합 보고서
 
-작성 기준일: 2026-09-30  
+작성 기준일: 2026-10-05 (Value 정책 재실험 반영)  
 상세 파라미터: [`EXPERIMENT_SETTINGS.md`](EXPERIMENT_SETTINGS.md)
 
 ## 1. 보고서 목적
@@ -88,30 +88,35 @@ episode당 질문이 9.65회에서 7.04회로 감소한다. Proposed When을 고
 query efficiency를 담당하며, 두 결정을 결합해야 높은 성공률과 제한된 질문 비용을
 동시에 얻는다.
 
-## 5. When–What policy ablation
+## 5. When–What policy comparison (Value-When 반복 구조 수정 후)
 
-![When–What policy ablation의 task success](02_when_what_policy_ablation/03_figures/success.png)
+![Task success](02_when_what_policy_ablation/03_figures/success.png)
 
-![When–What policy ablation의 성공 episode 질문 수](02_when_what_policy_ablation/03_figures/questions_success_only.png)
+![성공 실행 질문 수](02_when_what_policy_ablation/03_figures/questions_success_only.png)
 
-Random보다 구조화된 대안인 action conformal prediction과 query-action value를 사용해도
-proposed policy와 같은 trade-off가 나오는지 확인했다.
+Value-When만 2026-10-05 20:43 배치 400회로 교체했다. Value-What은 앞서 완료한 19:03 배치, Ours・CP-When은 기존 참조 결과를 유지한다.
 
-| 조건 | 성공/전체 | 성공률 | 성공 episode당 질문 수 |
-|---|---:|---:|---:|
-| **Ours** | **396/400** | **99.00%** | **8.49** |
-| CP-When | 274/400 | 68.50% | 5.69 |
-| Value-When | 241/400 | 60.25% | 1.28 |
-| Value-What | 393/400 | 98.25% | 12.84 |
+| 조건 | 성공/전체 | 성공률 | 성공 실행 평균 질문 | 전체 평균 질문 |
+|---|---:|---:|---:|---:|
+| ours | 396/400 | 99.00% | 8.49 | 8.49 |
+| cp_when | 274/400 | 68.50% | 5.69 | 4.80 |
+| value_when | 335/400 | 83.75% | 15.41 | 13.87 |
+| value_what | 395/400 | 98.75% | 19.07 | 18.99 |
 
-CP-When과 Value-When은 질문 수가 적지만 성공률이 각각 30.5%p와 38.75%p 낮다.
-이는 질문 수만 최소화한 것이며 유효한 success–query trade-off가 아니다. CP-When의
-4개 parsing 오류를 모두 제외하더라도 약 30%p의 차이는 설명되지 않는다.
+| Value-When domain | 1개 제한 이전 | threshold 반복 이후 |
+|---|---:|---:|
+| Tomato | 65.50% | 68.50% |
+| Waste | 74.50% | 99.00% |
 
-Value-What은 Ours와 비슷한 성공률을 유지했다. Paired 성공률 차이는 0.75%p이고
-통계적으로 유의하지 않았다(`p=0.25`). 그러나 Ours는 Value-What보다 episode당 평균
-**4.35회 적게 질문**했다. 이는 EIG 기반 What의 장점이 성공률 상승보다는 질문 내용의
-정보성을 높여 반복 질문을 줄이는 데 있다는 해석을 지지한다.
+Value-When의 전체 성공률은 70.00% → 83.75%(+13.75%p)이다. 같은 gamma/cost에서 질문 시작 이후 confidence threshold에 따라 여러 번 묻도록 수정한 결과이다. Value 두 조건의 gamma는 Tomato 0.5, Waste 0.9, query_cost=0.0, n_simulations=100이다.
+
+전후 paired exact McNemar p는 전체 1.3821e-13, Tomato 0.17957, Waste 3.5527e-15이다. 전체와 domain 검정은 중복 독립 증거가 아니다.
+
+실제 로그에서 한 step에 여러 번 질문한 경우는 Tomato 276개, Waste 480개이다. step당 최대 질문은 각각 7개, 10개였고 질문 제한 종료는 0건이다.
+
+Ours・CP는 gamma=0.2 참조 결과이며, 보관된 CP는 수정 전 답변마다 CP를 재평가한 구현이다. 현재 수정된 CP 코드의 결과로 해석하지 않는다. 최신 네 조건은 설정 차이가 있어 정책만의 완전한 통제 비교로 주장하지 않는다.
+
+상세 paired 비교와 질문 구조 점검은 [report.md](02_when_what_policy_ablation/report.md), 설정 이력은 [exp_set.md](02_when_what_policy_ablation/exp_set.md)에 있다.
 
 ## 6. Baseline comparison
 
@@ -150,7 +155,7 @@ Domain별 gamma와 zero query cost를 적용한 selected Query-Action은 성공�
 1. 질문을 허용하지 않으면 두 domain에서 성공률이 약 53%에 머문다.
 2. Proposed When은 질문이 필요한 시점을 식별해 성공률을 약 25%p 높인다.
 3. Proposed What은 성공률을 유지하면서 성공 episode의 질문을 최대 39.4% 줄인다.
-4. CP/value 기반 대체 정책은 높은 성공률과 낮은 질문 수를 동시에 달성하지 못한다.
+4. 새 Value-What은 Ours와 비슷한 관측 성공률에서 더 많은 질문을 사용한다. 수정된 Value-When은 83.75% 성공률이다. 설정과 반복 구조 차이 때문에 이 비교에서 정책만의 인과 효과는 분리하지 않는다.
 5. 통합 재실행에서 Ours는 KnowNo와 IntroPlan보다 51.75–68.00%p 높은 성공률을 보였다.
 6. Ours는 tuned Query-Action보다 높은 성공률을 보이며, tuned 조건보다 질문 수도 적다.
 

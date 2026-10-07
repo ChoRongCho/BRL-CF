@@ -1,6 +1,6 @@
 # 논문 핵심 실험 설정 보고서
 
-작성 기준일: 2026-09-30  
+작성 기준일: 2026-10-05 (Value 정책 재실험 반영)  
 Canonical analysis root: `analysis_recent_v2/`
 
 ## 1. 실험 구성 개요
@@ -138,60 +138,36 @@ Random What은 현재 belief의 후보 state 사이에서 값이 달라지는 fa
 - Ours는 When only와 같은 성공률을 유지하면서 평균 질문을 13.92회에서 8.46회로 줄였다.
 - 이 결과는 When이 성공률과 연결되고 What이 질문 효율과 연결된다는 주장을 뒷받침한다.
 
-## 5. Experiment 3: When–What policy ablation
+## 5. Experiment 3: When–What policy comparison
 
-### 5.1 목적
+Value-When은 2026-10-05 20:43 질문 반복 수정 배치 400회, Value-What은 19:03 배치 400회로 구성한다. Ours・CP-When은 기존 각 400회로 유지한다. 정상 결과 1,596개와 CP 오류 4개를 포함한다.
 
-Random 비교를 넘어, Ours의 When 또는 What을 기존 계열의 CP/value 정책으로 교체한다. 교체하지 않는 나머지 요소는 Ours로 유지하여 질문 시점 정책과 질문 내용 정책을 통제해서 비교한다.
+| 조건 | When | What | 반복·종료 | Tomato gamma | Waste gamma | query cost | simulations |
+|---|---|---|---|---:|---:|---:|---:|
+| Ours | confidence < 0.8 | EIG | confidence threshold | 0.2 | 0.2 | 1.0 (value 평가 미사용) | 100 |
+| CP-When | action CP ambiguity | EIG | 답변마다 CP 재평가 | 0.2 | 0.2 | 1.0 (value 평가 미사용) | 100 |
+| Value-When | max Q(query) > max Q(next physical) | EIG | 진입 후 confidence threshold 반복 | 0.5 | 0.9 | 0.0 | 100 |
+| Value-What | confidence < 0.8 | 최고 질문 Q | confidence threshold | 0.5 | 0.9 | 0.0 | 100 |
 
-### 5.2 조건 정의
+공통 max_step=50, max_depth=20, epsilon=0.005, UCB c=1.0이다. Value 평가의 failure_penalty=10.0, answer_accuracy=1.0이며 답변은 auto Oracle이다. CP의 qhat은 Tomato 0.8404, Waste 0.8704, score_temperature=5.0이다.
 
-| Condition | When 정책 | What 정책 | 질문 반복 제한 |
-|---|---|---|---|
-| Ours | belief confidence `< 0.8` | EIG | 표준 query episode 종료 조건 |
-| CP-When | KnowNo action conformal prediction set이 empty, multiple 또는 fallback 포함일 때 시작 | EIG | 표준 query episode 종료 조건 |
-| Value-When | 최고 QueryAction Q-value가 최고 physical-action Q-value보다 클 때 시작 | EIG | 물리 step당 최대 1회 |
-| Value-What | belief confidence `< 0.8` | QueryAction Q-value가 가장 높은 fact | 표준 query episode 종료 조건 |
+Value gamma는 질문 평가와 실제 물리 행동 계획 모두에 적용한다. 가치 평가 simulation 예산은 max(100, root 후보 수+1)로 늘어날 수 있다. query cost 0은 질문 보상을 0으로 만든다.
 
-CP-When은 belief-state class에 대한 CP가 아니다. KnowNo와 같은 **action prediction set**을 질문 시작 trigger로만 사용한다. 질문 내용은 CP가 선택하지 않고 Ours EIG가 선택한다.
+When은 관측으로 belief를 갱신한 다음, 다음 물리 행동 전에 판단한다. 질문 시작을 판단한 최고 Q 질문을 Value-When에서 실제로 그대로 묻는 것은 아니며 What은 EIG이다. Value-What은 root에서 질문 Q끼리 비교하고, 물리 행동 Q와 비교하여 질문을 취소하지 않는다.
 
-Value-When에서 QueryAction은 실행할 질문 내용을 직접 결정하지 않는다. QueryAction value가 physical action value보다 높은지는 질문 시작 trigger로만 사용하고, 실제 한 번의 질문은 EIG로 선택한다. Value-What은 Ours의 threshold timing을 유지하고 질문할 fact만 QueryAction value로 선택한다.
+**참조 결과 제한:** 새 Value-When에는 질문 1개 제한이 없다. CP의 보관된 결과는 수정 전 반복 gate 구현이다. Ours/CP와 Value의 gamma도 달라 네 조건 전체를 정책만의 통제 비교로 해석하지 않는다.
 
-### 5.3 공통 및 전용 파라미터
+| 조건 | 성공률 | 전체 평균 질문 | 성공 실행 평균 질문 |
+|---|---:|---:|---:|
+| ours | 99.00% | 8.488 | 8.490 |
+| cp_when | 68.50% | 4.803 | 5.690 |
+| value_when | 83.75% | 13.870 | 15.406 |
+| value_what | 98.75% | 18.988 | 19.068 |
 
-| 파라미터 | 값 | 적용 범위 |
-|---|---:|---|
-| `gamma` | 0.2 | 전체 |
-| `n_simulations` | 100 | 전체 |
-| confidence threshold | 0.8 | Ours, Value-What |
-| `max_step` | 50 | 전체 |
-| `max_depth` | 20 | 전체 |
-| UCB `c` | 1.0 | 전체 |
-| `epsilon` | 0.005 | 전체 |
-| `query_cost` | 1.0 | Query-value evaluator |
-| `failure_penalty` | 10.0 | Query-value evaluator |
-| `answer_accuracy` | 1.0 | Query-value evaluator/oracle |
-| CP score temperature | 5.0 | CP-When |
-| Tomato CP `qhat` | 0.8404 | CP-When |
-| Waste CP `qhat` | 0.8704 | CP-When |
-| CP model | GPT-4o, prompt v2 | CP-When |
-| 총 실행 슬롯 | 4 conditions × 400 = 1,600 |
+Value-What 유지 배치: `experiments_logs/when_what_policy_ablation/20261005_190346_519071`. 이전 Value 결과는 `legacy/when_what_policy_ablation_before_20261005/`에 보존한다. 세부 해석과 paired 검정은 개별 `report.md`를 참조한다.
 
-`query_cost`, `failure_penalty`, `answer_accuracy`는 공통 runner 로그에도 기록되지만 정책 결정에 직접 사용하는 조건은 Value-When과 Value-What이다.
 
-### 5.4 완료 상태와 관측값
-
-| Condition | 전체 성공률 | 전체 평균 질문 수 |
-|---|---:|---:|
-| Ours | 99.0% | 8.49 |
-| CP-When | 68.5% | 4.80 |
-| Value-When | 60.25% | 1.02 |
-| Value-What | 98.25% | 12.80 |
-
-- 총 1,600 slots 중 1,596개 로그가 정상 파싱됐다.
-- CP-When의 action-option 형식 파싱 실패 4건은 재시도하지 않고 task failure로 성공률 분모에 포함했다.
-- Ours는 Value-What과 유사한 성공률을 보이면서 평균 질문 수가 더 적었다.
-- CP-When과 Value-When은 질문 수가 적지만 성공률 손실이 컸다.
+Value-When 새 배치: `experiments_logs/when_what_policy_ablation/20261005_204332_446690`. 1개 제한을 사용한 직전 패키지는 `legacy/when_what_policy_ablation_before_threshold_loop/`에 보존한다.
 
 ## 6. Experiment 4: Query baseline comparison
 

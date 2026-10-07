@@ -6,14 +6,20 @@ code. Shared implementation lives here.
 | Entrypoint | When | What |
 |---|---|---|
 | `01_cp_when.py` | KnowNo action CP set is empty, has multiple actions, or contains the fallback option | Ours EIG over the current belief |
-| `02_value_when.py` | best query-action Q exceeds every physical-action Q | Ours EIG, exactly one question per physical step |
+| `02_value_when.py` | best query-action Q exceeds every physical-action Q | Ours EIG over the current belief |
 | `03_value_what.py` | Ours entropy-confidence threshold | highest query-action Q among ambiguous state facts |
 
 Every actual query is one Boolean state-fact question. In CP-When, KnowNo's
 LLM action prediction set is used only as a query trigger; its action choice is
 never executed. Once triggered, the same Ours EIG policy used by the reference
-condition chooses the state fact to ask. The trigger is re-evaluated after each
-answer.
+condition chooses the state fact to ask. When is evaluated once at episode
+entry. After each answer, all conditions continue while confidence is below
+the configured threshold and unasked candidates remain. An answer that does
+not reduce the belief also stops the episode. There is no one-question limit.
+CP/Value triggers can start an episode even when confidence is already above
+threshold; if a candidate exists, one question is asked before checking the
+common continuation rule. Value-What recomputes question values after each
+answer using the updated belief.
 
 The default action-CP calibration values match the KnowNo baselines:
 `qhat=0.8404` for Tomato, `qhat=0.8704` for Waste Sorting, and score
