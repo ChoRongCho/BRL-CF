@@ -1,0 +1,74 @@
+\section{Supplementary Evaluation Details}~\label{appx:exp}
+
+This appendix specifies the threshold protocol and the failure categories used in Sec.~\ref{exp:sys_baseline}. The reported outcomes use the same trial sets as the corresponding main-text comparisons.
+
+\subsection{Threshold Protocol}~\label{appx:threshold_exp}
+The threshold study evaluates $\tau\in\{0.0,0.1,\ldots,1.0\}$ with entropy gain query selection and oracle responses. Each threshold has $200$ trials per domain. The planner parameters are those in Appendix~\ref{appx:planner_params}, and the shared reference at $\tau=0.8$ is specified in Appendix~\ref{appx:oracle_reference}. A threshold of zero suppresses queries because belief confidence cannot fall below zero. A threshold of one requires confidence to reach one before the robot continues, unless no differentiating fact remains. Table~\ref{tab:threshold_results} reports the success rates and successful-trial query counts.
+
+\subsection{Ablation Reporting}~\label{appx:policy_comparison}
+Table~\ref{tab:policy_ablation} contains Fully-Random, W1--W3, Q1--Q2, and Ours. Each configuration has $200$ attempted trials per domain. The success denominator includes the four unparseable W2 outputs. Cost metrics include successful trials only. The policy definitions and domain-specific discount factors are given in Appendix~\ref{appx:ablation_configs}.
+
+\subsection{Oracle Trial Budget Audit}~\label{appx:oracle_budget_audit}
+Query-Action counts both queries and physical actions toward the $50$-decision limit. Ours permits $50$ physical actions and does not subtract queries from that limit. Table~\ref{tab:app_query_action_budget} separates recorded plan failures from decision-limit termination. Every decision-limit trial contains exactly $50$ queries and physical actions combined. WasteSorting reaches the limit after $12$--$15$ physical actions and $35$--$38$ queries. TomatoHarvesting reaches the limit after $25$--$34$ physical actions and $16$--$25$ queries. The remaining failed trials terminate with the recorded label \texttt{PLAN FAILURE}. This label does not identify a specific missed verification.
+
+\begin{table}[!htbp]
+\centering
+\caption{Termination categories of failed Query-Action oracle trials. Each domain has $200$ attempted trials.}
+\label{tab:app_query_action_budget}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Domain & Failures & Decision limit & Plan failure \\
+\midrule
+WasteSorting & $26$ & $7$ & $19$ \\
+TomatoHarvesting & $85$ & $13$ & $72$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These counts identify trials affected by the decision limit but do not establish the outcome under a matched physical-action budget. The reported baseline results compare the recorded systems and limits. The effect of an equal physical-action budget requires a separate evaluation.
+
+\subsection{Query Counts over All Attempted Oracle Trials}~\label{appx:all_trial_queries}
+Table~\ref{tab:app_all_trial_queries} supplements the successful-trial means in the main text with query counts over all $200$ attempts per domain and method. Early failures can reduce query count because execution stops before task completion. Therefore the all-trial costs also require interpretation alongside success rate. Ours uses the shared reference in Appendix~\ref{appx:oracle_reference}.
+
+\begin{table}[!htbp]
+\centering
+\caption{Oracle query counts over all attempted trials, including failed trials. Values are mean $\pm$ sample standard deviation.}
+\label{tab:app_all_trial_queries}
+\small
+\begin{tabular}{lcc}
+\toprule
+Method & WasteSorting & TomatoHarvesting \\
+\midrule
+KnowNo & $1.92 \pm 1.40$ & $1.80 \pm 1.35$ \\
+IntroPlan & $5.65 \pm 2.54$ & $6.91 \pm 2.98$ \\
+Query-Action & $24.00 \pm 6.72$ & $9.73 \pm 5.73$ \\
+Ours & $7.83 \pm 2.16$ & $9.15 \pm 1.89$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{VLM Failure Classification}~\label{appx:vlm_failure_analysis}
+We classify failed physical trials using the available action candidates, external responses, and subsequent execution. A VLM failure occurs if a response incorrectly verifies a state fact or selects an action that causes failure despite an available feasible alternative. Feasible actions that do not advance the task can also cause a VLM failure if the resulting sequence exhausts the trial limit. A planner failure occurs if the candidate set contains only infeasible actions or the baseline autonomously selects an action whose preconditions are not satisfied. The termination label alone does not determine the category.
+
+Table~\ref{tab:app_vlm_failures} reports the failure counts. In WasteSorting, Ours has three VLM feedback failures. KnowNo has three VLM failures and $17$ planner failures. In TomatoHarvesting, Ours has three VLM feedback failures. KnowNo has $18$ VLM failures and $12$ planner failures. Six of the $18$ VLM failures involve detection choices that exhaust the step budget despite feasible alternatives for task progress. The remaining $12$ involve incorrect action selections.
+
+\begin{table}[!htbp]
+\centering
+\caption{Failure counts in the VLM evaluation. Percentages use failed trials as the denominator.}
+\label{tab:app_vlm_failures}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Domain & Method & Failed trials & VLM failures & Planner failures \\
+\midrule
+WasteSorting & KnowNo & $20$ & $3$ ($15\%$) & $17$ ($85\%$) \\
+WasteSorting & Ours & $3$ & $3$ ($100\%$) & $0$ \\
+TomatoHarvesting & KnowNo & $30$ & $18$ ($60\%$) & $12$ ($40\%$) \\
+TomatoHarvesting & Ours & $3$ & $3$ ($100\%$) & $0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{KnowNo Action Requests}~\label{appx:knowno_impl}
+KnowNo generates candidate actions from domain information and the current symbolic state. Candidate scores and the calibrated threshold define the conformal prediction set. If the set contains multiple actions, the interface requests one action choice from the external expert. KnowNo requests one response per trigger. The selected action is then executed, and the execution result updates the state information used for the next decision. Appendix~\ref{appx:baseline_configs} lists the model and calibration parameters.

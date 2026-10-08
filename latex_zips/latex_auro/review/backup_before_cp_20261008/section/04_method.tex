@@ -14,14 +14,14 @@
 \SetKwFunction{FilterBelief}{FILTER}
 
 \section{Method}~\label{method:method}
-To determine when and what to query the user, we maintain a particle-based belief state to quantify uncertainty and identify \cp{uncertain state facts}. However, particle sampling in large state spaces is computationally expensive, and unconstrained sampling may produce states that violate symbolic constraints. To address these challenges, we propose a frontier-based particle sampling approach that uses symbolic action models to maintain a constraint-consistent belief for query selection.
+To determine when and what to query the user, we maintain a particle-based belief state to quantify uncertainty and identify facts that distinguish possible task states. However, particle sampling in large state spaces is computationally expensive, and unconstrained sampling may produce states that violate symbolic constraints. To address these challenges, we propose a frontier-based particle sampling approach that uses symbolic action models to maintain a constraint-consistent belief for query selection.
 
 \subsection{Planning and Querying}~\label{method:overview}\label{method:planning}\label{method:PM}
-We maintain a knowledge state $s_t^{K}$ for symbolic planning and execution. For online action selection, we employ POMCP~\cite{silver2010monte}, restricting tree expansion and rollout to symbolically applicable actions. At each step, the planner selects an action $a_t\in\mathcal{A}$ applicable to $s_t^{K}$, denoted by $a_t\llbracket s_t^{K}\rrbracket$. Following execution and observation $o_{t+1}$, we construct a weighted belief $\mathcal{B}_{t+1}$ by sampling from the reachable-state frontier defined by $(s_t^{K},a_t)$. This restricts belief construction to symbolically valid successors while capturing uncertainty in the action outcome.
+We maintain a knowledge state $s_t^{K}$ for symbolic planning and execution. For online action selection, we employ POMCP~\cite{silver2010monte}, restricting tree expansion and rollout to symbolically applicable actions. At each step, the planner selects an action $a_t\in\mathcal{A}$ applicable to $s_t^{K}$, denoted by $a_t\llbracket s_t^{K}\rrbracket$. Following execution and observation $o_{t+1}$, we construct a weighted belief $\mathcal{B}_{t+1}$ by sampling from the reachable-state frontier defined by $(s_t^{K},a_t)$. This restricts belief construction to symbolically valid successors while capturing uncertainty in the action outcome. The frontier approximates the next state distribution from the committed state $s_t^{K}$. It does not propagate every hypothesis from the preceding belief, so uncertainty discarded at commitment is not retained across steps.
 
-% TODO qu2023stochastic is absent from ref.bib. Restore after the source is identified.
 \subsubsection{When to Query}~\label{method:when}\label{method:belief_rep}
-To determine when to query, we assess uncertainty about the current state through the entropy of the weighted belief. If several successor states remain plausible after an action and no single state is dominant, the robot cannot confidently identify its current state. In this situation, belief entropy is high because the weight is distributed across several possible states. We use this property of entropy to compute confidence from \cp{normalized belief entropy}, where lower confidence indicates greater state uncertainty.
+% TODO reference qu2023stochastic is absent from ref.bib. Restore the citation after the source is identified.
+To determine when to query, we assess uncertainty about the current state through the entropy of the weighted belief. If several successor states remain plausible after an action and no single state is dominant, the robot cannot confidently identify its current state. In this situation, belief entropy is high because the weight is distributed across several possible states. We use this property of entropy to compute confidence from normalized belief entropy, where lower confidence indicates greater state uncertainty.
 
 We observe that a symbolic action usually changes only part of the state. Based on this observation, we define the \textit{frontier} of reachable successor states as follows.
 \begin{equation}
@@ -34,14 +34,17 @@ We observe that a symbolic action usually changes only part of the state. Based 
 \end{equation}
 For example, an action to pick a tomato can change which object the robot holds but preserves the robot location. Uncertain outcomes within the frontier are mutually exclusive, and no two successor states are identical. We restrict particle sampling to this frontier instead of the entire symbolic state space.
 
-We construct the weighted belief \cp{over the $j$ sampled frontier states with normalized weights $w_k$}.
+We construct the weighted belief by assigning a normalized weight $w_k$ to each of the $j$ sampled frontier states $s_{t+1}^{k}$.
+
 \begin{equation}
-\mathcal{B}_{t+1}=\{(s_{t+1}^{k},w_k)\}_{k=1}^{j},
+\mathcal{B}_{t+1}
+=
+\{(s_{t+1}^{k},w_k)\}_{k=1}^{j},
 \qquad
 \sum_{k=1}^{j}w_k=1.
 \label{eq:symbolic_belief}
 \end{equation}
-Specifically, we compute these weights by normalizing the product of the transition probability \cp{from $s_t^{K}$} and the observation likelihood.
+We compute these weights by normalizing the product of the transition probability and observation likelihood for each state. This update uses the point-mass prior $b_t(s)=\mathbf{1}[s=s_t^{K}]$ in the Bayes filter of Sec.~\ref{preliminaries:POMDPs}.
 \begin{equation}
 \begin{aligned}
 \bar{w}_{k}
@@ -53,7 +56,7 @@ w_k&=\frac{\bar{w}_k}{\sum_{\ell=1}^{j}\bar{w}_{\ell}}.
 \end{equation}
 If all $\bar{w}_k$ are zero, we set $w_k=1/j$.
 
-This explicit weighted frontier is used for confidence estimation and query selection. POMCP maintains sampled states in the search tree to estimate action values. Both components use the same symbolic transition and observation models.
+This explicit weighted frontier is used for confidence estimation and query selection. POMCP maintains sampled states in the search tree to estimate action values. Both components use the same symbolic transition and observation models. After verification, the committed state determines action applicability and the observation branch retained for the next search. The root particles remain those stored in that branch, with the committed state as a fallback if the branch contains no particles. The frontier weights are not copied into the search tree.
 
 We compute the entropy of the belief as
 \[
@@ -75,7 +78,7 @@ Given a predefined threshold $\tau\in[0,1]$, the robot initiates state verificat
 \mathrm{Conf}(\mathcal{B}_{t+1})<\tau.
 \label{eq:when_query}
 \end{equation}
-A higher threshold $\tau$ requires a more concentrated belief and can increase the number of verification queries.
+A higher threshold $\tau$ requires a more concentrated belief and can increase the number of verification queries. Because filtering changes both entropy and the number of remaining states, confidence need not increase after every response. We recompute confidence over the retained states after each query.
 
 \begin{figure}[t]
 \captionsetup{skip=0pt}
@@ -88,7 +91,7 @@ A higher threshold $\tau$ requires a more concentrated belief and can increase t
 \subsubsection{What to Query}~\label{method:what}
 If belief confidence falls below $\tau$, the robot triggers a query and must decide which fact to verify. Since verification eliminates state hypotheses that are inconsistent with the answer, we select the fact with the largest expected reduction in belief entropy.
 
-Specifically, we define the query candidate set $\mathcal{Q}(\mathcal{B})$ by extracting atomic facts whose truth values differ across the remaining frontier states in the belief.
+Specifically, we define the query candidate set $\mathcal{Q}(\mathcal{B})$ by extracting atomic facts whose truth values differ across the remaining frontier states in the belief. The candidates include all such facts without an additional restriction to action preconditions or goal facts.
 \[
 \mathcal{Q}(\mathcal{B})
 =
@@ -123,7 +126,7 @@ P(\neg q)\mathcal{H}(\mathcal{B}^{q-})
 \right].
 \label{eq:select_hypo}
 \end{equation}
-Eq.~\ref{eq:select_hypo} selects the fact $q^*$ that maximizes expected entropy reduction. The robot then converts this fact into a binary query about the current state. For example, $q^*=\texttt{ripe}(\text{tomato}_1)$ produces the question \textit{`Is tomato 1 ripe?'}. Based on the response $y\in\{\texttt{true},\texttt{false}\}$, the robot updates the belief by removing states inconsistent with the reported truth value.
+Eq.~\ref{eq:select_hypo} selects the fact $q^*$ that maximizes expected entropy reduction. Under the binary response model, this reduction equals the Boolean entropy of $P(q)$, so the criterion favors facts that divide belief mass evenly. The symbolic model defines the candidate facts, and the selection criterion ranks candidates by information gain without a guarantee of maximum task reward. The robot then converts this fact into a binary query about the current state. For example, $q^*=\texttt{ripe}(\text{tomato}_1)$ produces the question \textit{`Is tomato 1 ripe?'}. Based on the response $y\in\{\texttt{true},\texttt{false}\}$, the robot updates the belief by removing states inconsistent with the reported truth value.
 \begin{equation}
 \mathcal{B}
 \leftarrow
@@ -133,7 +136,7 @@ Eq.~\ref{eq:select_hypo} selects the fact $q^*$ that maximizes expected entropy 
 \end{cases}
 \label{eq:filter}
 \end{equation}
-The retained weights are renormalized, confidence is recomputed, and another fact is selected if confidence remains below $\tau$. The loop ends if the threshold is met or no differentiating fact remains. The robot then commits the maximum a posteriori state
+The retained weights are renormalized, confidence is recomputed, and another fact is selected if confidence remains below $\tau$. If no state matches a response, the implementation preserves the belief before that response. The update treats accepted responses as correct Boolean observations. An incorrect response can therefore remove the true state, and the query loop cannot restore a removed hypothesis. The loop ends if the threshold is met or no differentiating fact remains. The robot then commits the maximum a posteriori state
 \[
 s_{t+1}^{K}
 =
@@ -141,7 +144,7 @@ s_{t+1}^{K}
 \]
 for subsequent symbolic planning.
 
-Alg.~\ref{alg:online_planning} explains the overall online planning and querying procedure. The robot first initializes the belief, step counter, and action sequence (line~\ref{alg1_planning:initialize}). At each step, POMCP selects an action (line~\ref{alg1_planning:search}), and execution stops if no action is available (line~\ref{alg1_planning:dead_end}). Otherwise, the robot executes the action  (lines~\ref{alg1_planning:execute} and~\ref{alg1_planning:record}), then constructs the weighted frontier belief and computes confidence (lines~\ref{alg1_planning:belief_update} and~\ref{alg1_planning:compute_conf}). If confidence falls below $\tau$, the robot selects a candidate fact (line~\ref{alg1_planning:select_hypo}). If no candidate remains, the query loop ends (line~\ref{alg1_planning:no_candidate}). Otherwise, the robot obtains an external response and filters the belief (lines~\ref{alg1_planning:query} and~\ref{alg1_planning:filter}), then recomputes confidence (line~\ref{alg1_planning:recompute_conf}). After the query loop, the most probable remaining state becomes the next symbolic planning state (line~\ref{alg1_planning:commit}). Appx.~\ref{appx:algorithms} provides the detailed POMCP search, simulation, and rollout procedures.
+Alg.~\ref{alg:online_planning} explains the overall online planning and querying procedure. The robot first initializes the belief, step counter, and action sequence (line~\ref{alg1_planning:initialize}). At each step, POMCP selects an action (line~\ref{alg1_planning:search}), and execution stops if no action is available (line~\ref{alg1_planning:dead_end}). Otherwise, the robot executes the action  (lines~\ref{alg1_planning:execute} and~\ref{alg1_planning:record}), then constructs the weighted frontier belief and computes confidence (lines~\ref{alg1_planning:belief_update} and~\ref{alg1_planning:compute_conf}). If confidence falls below $\tau$, the robot selects a candidate fact (line~\ref{alg1_planning:select_hypo}). If no candidate remains, the query loop ends (line~\ref{alg1_planning:no_candidate}). Otherwise, the robot obtains an external response and filters the belief (lines~\ref{alg1_planning:query} and~\ref{alg1_planning:filter}), then recomputes confidence (line~\ref{alg1_planning:recompute_conf}). After the query loop, the most probable remaining state becomes the next symbolic planning state (line~\ref{alg1_planning:commit}). The planner retains the matching search branch for the next step (line~\ref{alg1_planning:prune}). Appx.~\ref{appx:algorithms} provides the detailed POMCP search, simulation, and rollout procedures.
 
 \begin{algorithm}[t]
 \caption{Belief-Guided State Verification and Planning}
@@ -170,6 +173,7 @@ $\mathcal{B}\gets\{(s_0^{K},1)\}\qquad t\gets0\qquad \pi\gets()$\label{alg1_plan
         $c\gets\mathrm{Conf}(\mathcal{B})$\label{alg1_planning:recompute_conf}\;
     }
     $s_{t+1}^{K}\gets\arg\max_{s^k\in\mathcal{B}}w_k$\label{alg1_planning:commit}\;
+    retain the search branch for $(a_t,s_{t+1}^{K})$\label{alg1_planning:prune}\;
     $t\gets t+1$\label{alg1_planning:advance}\;
 }
 \KwRet $\pi$\label{alg1_planning:return}\;

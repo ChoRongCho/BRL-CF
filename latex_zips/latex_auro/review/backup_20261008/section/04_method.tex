@@ -14,14 +14,13 @@
 \SetKwFunction{FilterBelief}{FILTER}
 
 \section{Method}~\label{method:method}
-To determine when and what to query the user, we maintain a particle-based belief state to quantify uncertainty and identify \cp{uncertain state facts}. However, particle sampling in large state spaces is computationally expensive, and unconstrained sampling may produce states that violate symbolic constraints. To address these challenges, we propose a frontier-based particle sampling approach that uses symbolic action models to maintain a constraint-consistent belief for query selection.
+To determine when and what to query the user, we maintain a particle-based belief state to quantify uncertainty and identify task-relevant information. However, particle sampling in large state spaces is computationally expensive, and unconstrained sampling may produce states that violate symbolic constraints. To address these challenges, we propose a frontier-based particle sampling approach that uses symbolic action models to maintain a constraint-consistent belief for query selection.
 
 \subsection{Planning and Querying}~\label{method:overview}\label{method:planning}\label{method:PM}
 We maintain a knowledge state $s_t^{K}$ for symbolic planning and execution. For online action selection, we employ POMCP~\cite{silver2010monte}, restricting tree expansion and rollout to symbolically applicable actions. At each step, the planner selects an action $a_t\in\mathcal{A}$ applicable to $s_t^{K}$, denoted by $a_t\llbracket s_t^{K}\rrbracket$. Following execution and observation $o_{t+1}$, we construct a weighted belief $\mathcal{B}_{t+1}$ by sampling from the reachable-state frontier defined by $(s_t^{K},a_t)$. This restricts belief construction to symbolically valid successors while capturing uncertainty in the action outcome.
 
-% TODO qu2023stochastic is absent from ref.bib. Restore after the source is identified.
-\subsubsection{When to Query}~\label{method:when}\label{method:belief_rep}
-To determine when to query, we assess uncertainty about the current state through the entropy of the weighted belief. If several successor states remain plausible after an action and no single state is dominant, the robot cannot confidently identify its current state. In this situation, belief entropy is high because the weight is distributed across several possible states. We use this property of entropy to compute confidence from \cp{normalized belief entropy}, where lower confidence indicates greater state uncertainty.
+\subsubsection{When to Query}~\label{method:when}
+To determine when to query, we assess uncertainty about the current state through the entropy of the weighted belief. If several successor states remain plausible after an action and no single state is dominant, the robot cannot confidently identify its current state. In this situation, belief entropy is high because the weight is distributed across several possible states. We use this property of entropy to compute confidence from normalized belief entropy~\cite{qu2023stochastic}, where lower confidence indicates greater state uncertainty.
 
 We observe that a symbolic action usually changes only part of the state. Based on this observation, we define the \textit{frontier} of reachable successor states as follows.
 \begin{equation}
@@ -34,14 +33,17 @@ We observe that a symbolic action usually changes only part of the state. Based 
 \end{equation}
 For example, an action to pick a tomato can change which object the robot holds but preserves the robot location. Uncertain outcomes within the frontier are mutually exclusive, and no two successor states are identical. We restrict particle sampling to this frontier instead of the entire symbolic state space.
 
-We construct the weighted belief \cp{over the $j$ sampled frontier states with normalized weights $w_k$}.
+We construct the weighted belief by assigning a normalized weight $w_k$ to each of the $j$ sampled frontier states $s_{t+1}^{k}$.
+
 \begin{equation}
-\mathcal{B}_{t+1}=\{(s_{t+1}^{k},w_k)\}_{k=1}^{j},
+\mathcal{B}_{t+1}
+=
+\{(s_{t+1}^{k},w_k)\}_{k=1}^{j},
 \qquad
 \sum_{k=1}^{j}w_k=1.
 \label{eq:symbolic_belief}
 \end{equation}
-Specifically, we compute these weights by normalizing the product of the transition probability \cp{from $s_t^{K}$} and the observation likelihood.
+We compute these weights by normalizing the product of the transition probability and observation likelihood for each state.
 \begin{equation}
 \begin{aligned}
 \bar{w}_{k}
