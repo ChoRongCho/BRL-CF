@@ -1,0 +1,86 @@
+\section{Detailed Experimental Settings}~\label{appx:settings}
+
+This appendix summarizes implementation details that support the experimental setup in Sec.~\ref{exp:setup}. The oracle experiments use five scenarios per domain. For each threshold or policy condition, we evaluate all five scenarios with $40$ randomized episodes per scenario, yielding $200$ episodes per domain and condition. The maximum episode length is $50$ steps. POMCP uses $100$ simulations per planning step, maximum simulation depth $20$, discount factor $\gamma=0.2$, and UCB exploration constant $c=1.0$.
+
+\subsection{Planner and Evaluation Parameters}~\label{appx:planner_params}
+Table~\ref{tab:app_planner_params} lists the planner and evaluation parameters used for the standard system experiments. These values are shared across threshold and policy comparisons unless otherwise stated.
+
+\begin{table}[h]
+\centering
+\caption{Planner and evaluation parameters used in the system experiments.}
+\label{tab:app_planner_params}
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+POMCP simulations per planning step & $100$ \\
+Maximum simulation depth & $20$ \\
+Discount factor $\gamma$ & $0.2$ \\
+UCB exploration constant $c$ & $1.0$ \\
+Maximum episode steps & $50$ \\
+Scenarios per domain & $5$ \\
+Episodes per scenario-condition & $40$ \\
+Episodes per domain-condition & $200$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Baseline Configurations}~\label{appx:baseline_configs}
+The oracle comparison included KnowNo and IntroPlan and Query-Action. The physical experiments compared KnowNo and Ours.
+
+The action generation temperature was $0.3$ for the language model baselines. KnowNo used calibration thresholds $\hat{q}=0.845$ for WasteSorting and $\hat{q}=0.901$ for TomatoHarvesting across the oracle and physical experiments. IntroPlan used three retrieved examples and a score temperature of $5.0$. Its calibration thresholds were $0.980$ and $0.986$ for the two domains in the same order. Query-Action used the settings selected in a separate parameter search. Its discount factor was $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting with zero query cost and $100$ simulations. Its limit of $50$ decisions included both queries and physical actions.
+
+\subsection{Ablation Configurations}~\label{appx:ablation_configs}
+Random timing initiates a query with probability $0.4$ per physical step. Random selection chooses uniformly among facts that distinguish the current state hypotheses. Confidence timing initiates queries if belief confidence falls below $0.8$. W2 uses ambiguity in the conformal action prediction set to initiate queries and reevaluates that criterion after each answer. Its calibration thresholds are $0.870$ for WasteSorting and $0.840$ for TomatoHarvesting. Four outputs that cannot be parsed are counted as failures.
+
+The reward-based variants evaluate queries through expected cumulative task reward. W3 initiates a query episode if the highest query value exceeds the highest physical action value. It then uses entropy gain for query selection and the confidence threshold for subsequent queries. Q2 uses confidence for query timing and selects the fact with the highest query value. Both reward-based variants use zero query cost and domain specific discount factors of $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting. These factors apply to query evaluation and physical action planning. The remaining conditions use $\gamma=0.2$.
+
+\subsection{Oracle Reference Trials}~\label{appx:oracle_reference}
+We use the complete Ours batch from the policy ablation as a shared oracle reference for the baseline and ablation comparisons as well as the threshold analysis at $\tau=0.8$. This reference contains $200$ trials per domain and is reused across these comparisons. The other threshold points retain their original trial batches.
+
+\subsection{Domain Model Probabilities}~\label{appx:model_params}
+Table~\ref{tab:app_model_params} summarizes the transition and observation probabilities used by the domain models. Transition probabilities define uncertainty in action outcomes, while observation probabilities define the likelihood terms used in belief updates.
+
+\begin{table}[h]
+\centering
+\caption{Domain model probabilities used in the reported experiments.}
+\label{tab:app_model_params}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Domain} & \textbf{Model component} & \textbf{Probability} \\
+\midrule
+WasteSorting & Detect observed transition & $0.90$ \\
+WasteSorting & Detect category transition & $0.50$ \\
+WasteSorting & Pick transition & $0.90$ \\
+WasteSorting & Place transition & $0.90$ \\
+WasteSorting & Detect observed observation & $0.90$ \\
+WasteSorting & Detect category observation & $0.80$ \\
+WasteSorting & Pick/place observation & $0.95$ \\
+\midrule
+TomatoHarvesting & Navigate transition & $0.90$ \\
+TomatoHarvesting & Detect transition & $0.95$ \\
+TomatoHarvesting & Pick transition & $0.95$ \\
+TomatoHarvesting & Scan transition & $0.90$ \\
+TomatoHarvesting & Place/discard transition & $0.99$ \\
+TomatoHarvesting & Detect observed observation & $0.85$ \\
+TomatoHarvesting & Detect classification observation & $0.95$ \\
+TomatoHarvesting & Scan observation & $0.85$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The WasteSorting detect category transition probability of $0.50$ defines the controlled category-ambiguity profile used in the experiments. It creates competing category hypotheses after detection, allowing the planner and query policy to be evaluated in a setting where category uncertainty matters for bin placement. The observation model is specified separately from this transition uncertainty; for example, the waste detect category observation probability is $0.80$ and is used when computing the likelihood term $O(o \mid s_k^{\star})$ during belief update.
+
+\subsection{Randomization and Episode Seeds}~\label{appx:randomization}
+For each episode, the runner generates and records a pseudorandom seed. The seed is passed to the execution script and controls Python \texttt{random}, NumPy sampling, randomized initial arrangements, and the random-query policy when applicable. This allows individual raw episodes to be traced back to the scenario, threshold or policy condition, and sampled execution trajectory.
+
+\subsection{Uncertainty Estimates and Time Measures}~\label{appx:metric_details}
+Success bars show $95\%$ Wilson confidence intervals. Error bars for query counts and query probabilities and plan lengths show sample standard deviations. A dash denotes an unavailable standard deviation for a single successful trial.
+
+Search time is the sum of recorded plan search durations within a trial. In the oracle baseline figure, plan time is cumulative POMCP search time for Ours and Query-Action and cumulative candidate generation and scoring time for KnowNo and IntroPlan. Plan time uses successful trials and is measured in seconds. Interaction time covers external requests and response processing and is reported only for the VLM and human experiments. Total time is the accumulated trial time recorded by the planner. The planning time shown in the physical experiment summaries is total time minus interaction time minus physical execution time. This residual approximates plan search time and is distinct from the directly recorded search time. Time measures use successful trials and are reported as mean $\pm$ sample standard deviation. Their error bars also show sample standard deviations.
+
+\subsection{VLM Prompts}~\label{appx:vlm_prompts}
+
+% Insert the external expert prompts used in the VLM experiments.

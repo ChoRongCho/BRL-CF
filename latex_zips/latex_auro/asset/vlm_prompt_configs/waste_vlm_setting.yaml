@@ -1,0 +1,110 @@
+server:
+  endpoint: http://163.239.227.136:8000/v1/chat/completions
+  timeout_seconds: 90
+
+model:
+  name: nvidia/Gemma-4-31B-IT-NVFP4
+  temperature: 0.3
+  max_completion_tokens: 256
+  logprobs: true
+  top_logprobs: 5
+  enable_thinking: false
+  include_reasoning: false
+
+prompt:
+  warmup_system: Answer using only Yes or No.
+  warmup_user: Are you ready?
+  action_model: |-
+    - detect: 현재 보이는 폐기물과 각 폐기물의 종류를 탐지합니다. 그리퍼가 비어 있어야 합니다. 새로 드러났거나 아직 탐지하지 않은 폐기물은 집기 전에 반드시 탐지해야 합니다.
+    - pick <object>: 폐기물 하나를 집습니다. 해당 폐기물이 이미 탐지되었고 그리퍼가 비어 있어야 합니다.
+    - place <object> into <category> bin: 현재 들고 있는 폐기물을 탐지된 종류와 일치하는 일반쓰레기, 플라스틱, 종이 또는 캔 수거함에 넣습니다.
+    - done: 모든 폐기물을 분류했고 그리퍼가 비었을 때만 작업을 완료합니다.
+    이미지에 물체나 시각적 라벨이 보인다는 사실만으로 로봇이 detect를 완료한 것은 아닙니다. 다른 물체를 치운 뒤 새 물체가 드러났다면 pick보다 detect를 먼저 선택해야 합니다.
+  fact_system: >-
+    Answer the supplied Korean yes/no question from the two current RGB camera
+    images and the supplied robot context. State the Yes/No answer first,
+    followed by a concise reason in the requested format. Treat the current
+    action only as context about what the robot is attempting; never use the
+    current action itself as evidence that the queried hypothesis is true or
+    false. Judge the hypothesis from visible evidence in the two images.
+  fact_judgment_criteria:
+    detected: >-
+      질문에 지정된 폐기물 번호를 이미지의 표시와 외형으로 먼저 식별합니다.
+      해당 폐기물이 현재 작업대 위에 실제로 보일 때만 Yes로 판단합니다. 다른
+      폐기물이 보인다는 이유로 Yes라고 답하지 않고, Current action이 detect라는
+      이유만으로 탐지됐다고 판단하지 않습니다. 물체가 가려졌거나 번호 식별이
+      불확실하면 단순히 보이지 않는다는 이유만으로 작업대에 없다고 단정하지
+      않습니다.
+    plastic: >-
+      지정된 폐기물 자체를 식별한 뒤 플라스틱병, 플라스틱 용기처럼 플라스틱의
+      형태와 재질이 직접 보이는지 확인합니다. 색상이나 후보 행동의 수거함 이름만
+      보고 플라스틱으로 판단하지 않습니다.
+    can: >-
+      지정된 폐기물이 금속 캔의 사각 형태, 금속 표면을 보일 때
+      Yes로 판단합니다. 둥근 플라스틱 용기를 캔으로 판단하지 않습니다.
+    paper: >-
+      지정된 폐기물이 종이 또는 판지의 얇은 면, 접힘, 인쇄면과 같은 특징을
+      보일 때 Yes로 판단합니다. 단순히 밝은 색이라는 이유로 종이로 판단하지
+      않습니다.
+    general: >-
+      지정된 폐기물이 바나나 모양일 경우 일반쓰레기 입니다. 
+    holding: >-
+      지정된 폐기물이 로봇 그리퍼 안에 실제로 잡혀 있는지 확인합니다. 로봇이
+      pick을 시도 중이라는 사실만으로 Yes라고 답하지 않습니다.
+    handempty: >-
+      두 이미지에서 그리퍼 내부에 폐기물이 실제로 없는지 확인합니다. pick,
+      place라는 Current action을 그리퍼 상태의 증거로 사용하지 않습니다.
+    in_bin: >-
+      지정된 폐기물이 질문에 지정된 수거함 내부에 실제로 들어가 있는 것이
+      보일 때만 Yes로 판단합니다. place 행동의 목적지만으로 수거함 내부에
+      있다고 판단하지 않습니다.
+    sorted: >-
+      지정된 폐기물의 종류와 현재 들어간 수거함 종류를 각각 확인하고 두 종류가
+      일치할 때만 Yes로 판단합니다. 단순히 어떤 수거함 안에 있다는 이유만으로
+      올바르게 분류됐다고 판단하지 않습니다.
+    done: >-
+      작업대에 처리할 폐기물이 남아 있지 않고, 모든 폐기물이 올바른 수거함에
+      들어갔으며, 그리퍼가 비어 있는 것이 이미지에서 확인될 때만 Yes로
+      판단합니다. Current action이 done이라는 이유로 완료라고 답하지 않습니다.
+    waste: >-
+      지정된 표시의 물체가 실제 폐기 대상 물체인지 외형으로 확인합니다.
+    plastic_bin: >-
+      지정된 수거함의 표시와 외형이 플라스틱 수거함과 일치하는지 확인합니다.
+    can_bin: >-
+      지정된 수거함의 표시와 외형이 캔 수거함과 일치하는지 확인합니다.
+    paper_bin: >-
+      지정된 수거함의 표시와 외형이 종이 수거함과 일치하는지 확인합니다.
+    general_bin: >-
+      지정된 수거함의 표시와 외형이 일반쓰레기 수거함과 일치하는지 확인합니다.
+    robot: >-
+      지정된 대상이 현재 작업 로봇인지 외형으로 확인합니다.
+    default: >-
+      두 RGB 이미지에서 직접 확인되는 시각적 근거만 사용하고 Current action을
+      가설의 참 또는 거짓을 증명하는 근거로 사용하지 않습니다.
+  action_system: >-
+    두 장의 현재 RGB 카메라 이미지와 제공된 로봇 상황을 사용하여 후보 중
+    가장 적절한 다음 행동을 선택하세요. 지정된 형식에 따라 후보 토큰을 먼저
+    쓰고, 그다음 한국어로 간결한 이유를 쓰세요. 후보 행동의 이름이나 현재
+    행동을 그 행동이 실행 가능하다는 증거로 사용하지 말고, 이미지에서 확인되는
+    그리퍼 상태, 폐기물 가시성, 폐기물 종류와 수거함을 기준으로 판단하세요.
+  action_judgment_criteria:
+    detect: >-
+      그리퍼가 비어 있고 작업대에 새로 드러났거나 아직 탐지하지 않은 폐기물이
+      있을 때 pick보다 먼저 선택합니다. 이미지에 bounding box나 물체가 보인다는
+      사실만으로 detect가 이미 완료됐다고 판단하지 않습니다.
+    pick: >-
+      그리퍼가 비어 있고 지정 폐기물이 작업대에 실제로 보이며 번호를 식별할 수
+      있을 때만 선택합니다. 물체가 가려졌거나 번호가 불확실하거나 이미 다른
+      물체를 들고 있으면 선택하지 않습니다.
+    place: >-
+      그리퍼가 지정 폐기물을 실제로 들고 있고, 폐기물의 시각적 종류와 후보의
+      목표 수거함 종류가 일치할 때만 선택합니다. Current action이나 후보 문구만
+      보고 폐기물 종류를 정하지 않습니다.
+    done: >-
+      작업대에 처리할 폐기물이 남아 있지 않고 모든 폐기물이 적절한 수거함에
+      들어갔으며 그리퍼가 비어 있을 때만 선택합니다.
+    noopt: >-
+      구체적인 후보 행동들이 현재 이미지의 그리퍼 상태, 폐기물 가시성 또는
+      폐기물 종류와 맞지 않을 때 선택하여 사람이 직접 행동을 입력하게 합니다.
+    default: >-
+      이미지에서 행동 대상과 실행 조건을 직접 확인할 수 있는 후보를 선택합니다.

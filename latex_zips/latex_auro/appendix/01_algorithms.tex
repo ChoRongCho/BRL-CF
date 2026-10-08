@@ -1,23 +1,23 @@
 \section{Planning Algorithms}~\label{appx:algorithms}
 
-This appendix provides the detailed pseudocode for the POMCP-based search routines described in Sec.~\ref{method:PM}.
+This appendix provides the POMCP search procedures used in Sec.~\ref{method:PM}. The search budget is $n_{\mathrm{sim}}$, the maximum simulation depth is $d_{\max}$, the discount cutoff is $\epsilon$, and the UCB exploration constant is $c$. The search tree $T$ stores visit counts $N$, value estimates $V$, and sampled state particles $B(h)$ at history $h$.
 
 \normalem
 \subsection{POMCP Search with Applicable Actions}~\label{appx:alg_search}
-Alg.~\ref{alg:search} summarizes the root search procedure. The search samples states from the current belief when particles are available, falls back to the committed knowledge state when the belief is empty, and repeatedly calls the simulation routine until the computation budget is exhausted. The final action is selected from actions applicable to the current knowledge state.
+Algorithm~\ref{alg:search} describes POMCP search with a fixed simulation budget. Each simulation samples a state from the particles stored at the root history. If the root contains no particles, the simulation starts from the committed knowledge state. These search-tree particles support action-value estimation and are separate from the weighted frontier used for confidence and query selection in Sec.~\ref{method:belief_rep}. After the simulations, the planner selects the highest-value action applicable to the committed state.
 
-\begin{algorithm}[h]
+\begin{algorithm}[H]
 \caption{POMCP Search with Applicable Actions}
 \label{alg:search}
-\textbf{Input}: belief $b$ \\
-\textbf{Output}: selected action $a \in \mathcal{A}$
+\textbf{Input}\quad belief $b$, simulation budget $n_{\mathrm{sim}}$ \\
+\textbf{Output}\quad selected action $a \in \mathcal{A}$
 \BlankLine
 
 \Proc{\Search{$b$}}{
     $h \gets$ root history\\
     $s^{K} \gets knowledge(b)$\\
     
-    \Repeat{\Timeout}{
+    \For{$i\gets1$ \KwTo $n_{\mathrm{sim}}$}{
         \eIf{$B(h) \neq \emptyset$}{
             sample $s \sim B(h)$ \label{alg_search:sample}\\
         }{
@@ -32,17 +32,17 @@ Alg.~\ref{alg:search} summarizes the root search procedure. The search samples s
 \end{algorithm}
 
 \subsection{POMCP Simulation with Applicable Actions}~\label{appx:alg_simulate}
-Alg.~\ref{alg:simulate} describes how simulations are constrained by symbolic action applicability. When a new history node is expanded, only actions whose preconditions hold in the sampled symbolic state are inserted into the search tree. The generative model then samples the next state, observation, and reward while preserving the standard POMCP value-update structure.
+Algorithm~\ref{alg:simulate} describes how simulations are constrained by symbolic action applicability. If a history node is expanded for the first time, only actions whose preconditions hold in the sampled symbolic state are inserted into the search tree. The generative model then samples the next state, observation, and reward while preserving the standard POMCP value-update structure.
 
-\begin{algorithm}[h]
+\begin{algorithm}[H]
 \caption{POMCP Simulation with Applicable Actions}
 \label{alg:simulate}
-\textbf{Input}: state $s$, history $h$, depth $depth$ \\
-\textbf{Output}: simulated return $R$
+\textbf{Input}\quad state $s$, history $h$, depth $depth$, maximum depth $d_{\max}$ \\
+\textbf{Output}\quad simulated return $R$
 \BlankLine
 
 \Proc{\Simulate{$s, h, depth$}}{
-    \If{$\gamma^{depth} < \epsilon$}{
+    \If{$depth>0$ and $(depth\geq d_{\max}$ or $\gamma=0$ or $\gamma^{depth}<\epsilon)$}{
         \KwRet $0$\\
     }
 
@@ -51,12 +51,13 @@ Alg.~\ref{alg:simulate} describes how simulations are constrained by symbolic ac
         \KwRet $0$\\
     }
 
-    \If{$h \notin T$}{
+    \If{history $h$ has no action children}{
         \ForEach{$a\llbracket s \rrbracket \in \mathcal{A}$ \label{alg_simulate:applicable}}{
             $T, N(ha), V(ha) \gets T \cup \{ha\}, 0, 0$ \label{alg_simulate:tree_expand}\\
         }
         $N(h) \gets N(h) + 1$\\
-        \KwRet \Rollout{$s, depth$} \label{alg_simulate:rollout}\\
+        $V(h)\gets$\Rollout{$s, depth$} \label{alg_simulate:rollout}\\
+        \KwRet $V(h)$\\
     }
 
     $a \gets$ \SearchBest{$h, s, \textnormal{true}$} \label{alg_simulate:search_best}\\
@@ -74,12 +75,12 @@ Alg.~\ref{alg:simulate} describes how simulations are constrained by symbolic ac
 \end{algorithm}
 
 \subsection{Action Selection and Rollout}~\label{appx:alg_selection}
-Alg.~\ref{alg:selection} specifies the shared action-selection routine used during tree search and rollout. Tree actions are selected using either the UCB criterion or the current value estimate, whereas rollout actions are sampled uniformly from applicable actions. This keeps both planning and rollout consistent with the symbolic transition model.
+Algorithm~\ref{alg:selection} specifies the shared action-selection routine used during tree search and rollout. During simulation, unvisited applicable actions receive priority and visited actions are compared using UCB. The final root decision uses the current value estimate. Rollout actions are sampled uniformly from applicable actions. This keeps both planning and rollout consistent with the symbolic transition model.
 
-\begin{algorithm}[h]
+\begin{algorithm}[H]
 \caption{Action Selection and Rollout}
 \label{alg:selection}
-\textbf{Input}: history $h$, state $s$
+\textbf{Input}\quad history $h$, state $s$
 \BlankLine
 
 \Proc{\SearchBest{$h, s, use\_ucb$}}{
@@ -90,7 +91,10 @@ Alg.~\ref{alg:selection} specifies the shared action-selection routine used duri
     }
 
     \eIf{$use\_ucb$}{
-        \KwRet $\arg\max_{a \in \mathcal{C}} V(ha) + c \cdot \sqrt{\frac{\log N(h)}{1 + N(ha)}}$\\
+        \If{an action $a\in\mathcal{C}$ has $N(ha)=0$}{
+            \KwRet an unvisited action in $\mathcal{C}$
+        }
+        \KwRet $\arg\max_{a \in \mathcal{C}} \left[V(ha) + c \sqrt{\frac{\log(\max\{1,N(h)\})}{N(ha)}}\right]$\\
     }{
         \KwRet $\arg\max_{a \in \mathcal{C}} V(ha)$\\
     }
@@ -99,7 +103,7 @@ Alg.~\ref{alg:selection} specifies the shared action-selection routine used duri
 \BlankLine
 
 \Proc{\Rollout{$s, depth$}}{
-    \If{$(\gamma^{depth} < \epsilon \lor \gamma = 0) \land depth > 0$}{
+    \If{$depth>0$ and $(depth\geq d_{\max}$ or $\gamma=0$ or $\gamma^{depth}<\epsilon)$}{
         \KwRet $0$\\
     }
 
@@ -108,7 +112,7 @@ Alg.~\ref{alg:selection} specifies the shared action-selection routine used duri
     }
 
     $a \sim \mathrm{Uniform}(\{ a \mid  a\llbracket s \rrbracket \in \mathcal{A}\}  )$ \label{alg_rollout:uniform}\\
-    sample $(s^\prime, o, r)$ from simulator $\mathcal{G}(s, a)$ \label{alg_rollout:simulator}\\
+    sample $s^\prime$ from $T(\cdot\mid s,a)$ and evaluate reward $r$ \label{alg_rollout:simulator}\\
 
     \KwRet $r + \gamma \cdot$ \Rollout{$s^\prime, depth + 1$}\\
 }

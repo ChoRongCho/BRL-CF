@@ -1,0 +1,99 @@
+\section{Baseline Algorithms}~\label{appx:comparison_algorithms}
+
+This appendix provides separate execution procedures for KnowNo, IntroPlan, and Query-Action in Table~\ref{tab:query_strategy_matrix}. Appendix~\ref{appx:baseline_configs} gives the experimental parameter values.
+
+We use $\mathcal{D}$ for generated action candidates, $\sigma(a)$ for temperature-scaled candidate scores, and $\mathcal{P}$ for the conformal prediction set. The symbol $\bot$ denotes the option that requests an action outside the listed candidates. An external action-choice request returns one action, including a manually supplied action if the fallback option is selected. The query function in Algorithm~\ref{alg:online_planning} returns the Boolean truth value of a state fact. The function $\mathrm{UpdateKnowledge}$ records observed action outcomes without constructing the weighted belief used by Ours.
+
+\subsection{Baseline Procedures}~\label{appx:baseline_algorithms}
+
+\subsubsection{KnowNo}
+Algorithm~\ref{alg:baseline_knowno} requests one action choice if the conformal set does not identify a single concrete action. A singleton action is executed without an external query.
+
+\begin{algorithm}[H]
+\caption{KnowNo}
+\label{alg:baseline_knowno}
+\textbf{Input}\quad initial knowledge $s_0^{K}$, task goal $G$, calibration threshold $\hat q$, step limit $T_{\max}$\\
+\textbf{Output}\quad executed physical action sequence $\pi$
+\BlankLine
+\Proc{\textnormal{KNOWNO}$(s_0^{K},G,\hat q,T_{\max})$}{
+    $s^{K}\gets s_0^{K}\qquad t\gets0\qquad\pi\gets()$\\
+    \While{$t<T_{\max}$ and the trial is not terminal}{
+        $\mathcal{D}\gets\mathrm{GenerateActions}(s^{K},G,\pi)$\\
+        $\sigma\gets\mathrm{ScoreActions}(s^{K},G,\pi,\mathcal{D})$\\
+        $\mathcal{P}\gets\{a\in\mathcal{D}\mid\sigma(a)\geq1-\hat q\}$\\
+        \eIf{$|\mathcal{P}|=1$ and $\bot\notin\mathcal{P}$}{
+            $a\gets$ the action in $\mathcal{P}$\\
+        }{
+            $a\gets\mathrm{QueryActionChoice}(\mathcal{D},\mathcal{P})$\\
+        }
+        \If{$a=\emptyset$}{\textbf{break}\\}
+        execute $a$ and receive observation $o$\\
+        $s^{K}\gets\mathrm{UpdateKnowledge}(s^{K},a,o)$\\
+        $\pi\gets\pi\mathbin{\|}a\qquad t\gets t+1$\\
+    }
+    \KwRet $\pi$\\
+}
+\end{algorithm}
+
+\subsubsection{IntroPlan}
+Algorithm~\ref{alg:baseline_introplan} extends the candidate evaluation of KnowNo with retrieved examples and an introspective explanation. Retrieval uses lexical cosine similarity over example contexts. The explanation informs candidate scoring before the conformal decision.
+
+\begin{algorithm}[H]
+\caption{IntroPlan}
+\label{alg:baseline_introplan}
+\textbf{Input}\quad initial knowledge $s_0^{K}$, goal $G$, example library $\mathcal{E}$, calibration threshold $\hat q$, step limit $T_{\max}$\\
+\textbf{Output}\quad executed physical action sequence $\pi$
+\BlankLine
+\Proc{\textnormal{INTROPLAN}$(s_0^{K},G,\mathcal{E},\hat q,T_{\max})$}{
+    $s^{K}\gets s_0^{K}\qquad t\gets0\qquad\pi\gets()$\\
+    \While{$t<T_{\max}$ and the trial is not terminal}{
+        $\mathcal{D}\gets\mathrm{GenerateActions}(s^{K},G,\pi)$\\
+        $\mathcal{E}_3\gets\mathrm{RetrieveExamples}(s^{K},G,\pi,\mathcal{D},\mathcal{E},3)$\\
+        $e\gets\mathrm{ExplainCandidates}(s^{K},G,\pi,\mathcal{D},\mathcal{E}_3)$\\
+        remove any direct prediction from explanation $e$\\
+        $\sigma\gets\mathrm{ScoreActions}(s^{K},G,\pi,\mathcal{D},e)$\\
+        $\mathcal{P}\gets\{a\in\mathcal{D}\mid\sigma(a)\geq1-\hat q\}$\\
+        \eIf{$|\mathcal{P}|=1$ and $\bot\notin\mathcal{P}$}{
+            $a\gets$ the action in $\mathcal{P}$\\
+        }{
+            $a\gets\mathrm{QueryActionChoice}(\mathcal{D},\mathcal{P})$\\
+        }
+        \If{$a=\emptyset$}{\textbf{break}\\}
+        execute $a$ and receive observation $o$\\
+        $s^{K}\gets\mathrm{UpdateKnowledge}(s^{K},a,o)$\\
+        $\pi\gets\pi\mathbin{\|}a\qquad t\gets t+1$\\
+    }
+    \KwRet $\pi$\\
+}
+\end{algorithm}
+
+\subsubsection{Query-Action}
+Algorithm~\ref{alg:baseline_query_action} places Boolean queries in the POMCP action space. Queries and physical actions share the total decision limit. The posterior remains available after a query or physical observation, and the MAP state supplies the symbolic knowledge used to evaluate root applicability. Each search rebuilds the root from the current posterior and evaluates queries and physical actions by expected cumulative reward. Simulated query responses update the belief without changing the physical state.
+
+\begin{algorithm}[H]
+\caption{Query-Action}
+\label{alg:baseline_query_action}
+\textbf{Input}\quad initial knowledge $s_0^{K}$, initial belief $\mathcal{B}_0$, total decision limit $T_{\max}$\\
+\textbf{Output}\quad executed physical action sequence $\pi$
+\BlankLine
+\Proc{\textnormal{QUERY-ACTION}$(s_0^{K},\mathcal{B}_0,T_{\max})$}{
+    $s^{K}\gets s_0^{K}\qquad\mathcal{B}\gets\mathcal{B}_0\qquad d\gets0\qquad\pi\gets()$\\
+    \While{$d<T_{\max}$ and the trial is not terminal}{
+        $\mathcal{A}_q\gets$ applicable Boolean queries about ambiguous facts in $\mathcal{B}$\\
+        $\mathcal{A}_{\mathrm{root}}\gets\mathcal{A}(s^{K})\cup\mathcal{A}_q$\\
+        $a\gets\mathrm{SearchQueryPOMCP}(\mathcal{B},\mathcal{A}_{\mathrm{root}})$\\
+        \If{$a=\emptyset$}{\textbf{break}\\}
+        $d\gets d+1$\\
+        \eIf{$a$ is a query about fact $c$}{
+            $y\gets$\QuerySource{$c$}\\
+            $\mathcal{B}\gets$\FilterBelief{$\mathcal{B},c,y$}\\
+        }{
+            execute $a$ and receive observation $o$\\
+            $\mathcal{B}\gets$\UpdateBelief{$s^{K},a,o$}\\
+            $\pi\gets\pi\mathbin{\|}a$\\
+        }
+        $s^{K}\gets\arg\max_{s^k\in\mathcal{B}}w_k$\\
+    }
+    \KwRet $\pi$\\
+}
+\end{algorithm}
