@@ -1,0 +1,58 @@
+\newtcolorbox{vlmpromptbox}[1]{
+    enhanced,
+    breakable,
+    sharp corners,
+    colback=gray!12,
+    colframe=black,
+    colbacktitle=black,
+    coltitle=white,
+    fonttitle=\bfseries,
+    fontupper=\small,
+    boxrule=0.4pt,
+    left=3mm,
+    right=3mm,
+    top=2mm,
+    bottom=2mm,
+    before skip=10pt,
+    after skip=10pt,
+    title={#1},
+    title after break={}
+}
+
+\subsection{VLM Prompts}~\label{appx:vlm_prompts}
+
+Both domains use the same external VLM configuration. The served model identifier is \texttt{nvidia/Gemma-4-31B-IT-NVFP4}. The sampling temperature is $0.3$, the maximum completion length is $256$ tokens, and the request timeout is $90$ seconds. Log probabilities are enabled with the top five token alternatives. Thinking and reasoning output are disabled. A text-only warmup asks whether the model is ready and requests a Yes or No response.
+
+Each experimental request includes two current RGB camera images and the current robot action. Ours supplies a Korean state-verification question, the judgment criterion for the queried predicate, and the domain action model. KnowNo supplies candidate actions with response tokens, judgment criteria for the candidate action types, and the domain action model. TomatoHarvesting additionally supplies an environment model with fixed object identifiers and stem assignments. The following English descriptions summarize the configured prompt instructions. The supplementary configuration files preserve the original English and Korean prompt text.
+
+\begin{vlmpromptbox}{Shared Request Instructions}
+For state verification, the VLM answers the supplied Korean question from the two camera images and robot context. The response contains two lines, with Yes or No first and a concise reason second. The current action describes the attempted operation and does not establish that the queried fact is true. The VLM must judge the fact from visible evidence. The client converts Yes to \texttt{true} and No to \texttt{false} before the belief update.
+
+For action selection, the VLM chooses the most appropriate next action from the supplied candidates. The response contains two lines, with a candidate token first and a concise Korean reason second. The VLM must verify the relevant object, robot state, and execution conditions from the images. The candidate name and current action do not establish feasibility. If no concrete candidate is appropriate, the VLM selects the option that requests a manually entered action. The client parses the selected token and checks that the token belongs to the supplied candidate set.
+
+\end{vlmpromptbox}
+
+\begin{vlmpromptbox}{WasteSorting Domain Instructions}
+The action model specifies \texttt{detect}, \texttt{pick}, \texttt{place}, and \texttt{done}. Detection requires an empty gripper and identifies visible waste objects and categories. Picking requires a detected object and an empty gripper. Placement requires the robot to hold the selected object and use the bin corresponding to the detected category. Completion requires all waste objects to be sorted and the gripper to be empty. A visible object, bounding box, or category label does not establish that detection is complete. An object exposed after another object is removed must be detected before picking.
+
+State-verification criteria use the identity and appearance of the specified object. For \texttt{detected}, the VLM first identifies the specified waste number and checks whether the object is visible on the worktable. Another visible object or the current detection action is insufficient evidence. Occlusion or uncertain identity must not be treated as proof that the object is absent. For category predicates, the VLM checks material and shape. Plastic requires visible features of a plastic bottle or container. A can requires the configured rectangular shape and metal surface, and a round plastic container must not be classified as a can. Paper requires features such as a thin surface, folds, or printed cardboard. The configured general-waste example has a banana shape. Color alone or the bin name in an action candidate is insufficient evidence of category.
+
+For \texttt{holding} and \texttt{handempty}, the VLM checks the actual contents of the gripper in both images. For \texttt{in\_bin}, the specified object must be visibly inside the specified bin. For \texttt{sorted}, the object category and bin category must match. For \texttt{done}, no waste may remain on the worktable, all waste must be in the correct bins, and the gripper must be empty. Waste, robot, and bin-type predicates require visual identification of the specified target. Attempted pick or place actions do not establish the corresponding state facts.
+
+The action-selection criteria require \texttt{detect} before \texttt{pick} for newly exposed or undetected waste. A pick candidate requires an empty gripper and a visible object with an identifiable number. A place candidate requires the gripper to hold the specified object and the visual category to match the target bin. A completion candidate requires an empty worktable, correct bin placement, and an empty gripper. If visibility, object identity, or execution conditions do not support a concrete candidate, the VLM selects the option for manual action entry.
+
+\end{vlmpromptbox}
+
+\begin{vlmpromptbox}{TomatoHarvesting Domain Instructions}
+The environment model specifies two tomatoes per stem. Tomatoes 1 and 2 belong to \texttt{stem\_01}, and tomatoes 3 and 4 belong to \texttt{stem\_02}. Numbers run from right to left across the scene and remain fixed after occlusion, picking, harvesting, or disposal. The right pair of ArUco markers identifies \texttt{stem\_01}, and the left pair identifies \texttt{stem\_02}. The location criterion also states that a view containing only two markers indicates that the robot is at \texttt{stem\_02}.
+
+The action model specifies navigation, detection, picking, scanning, placement, disposal, and completion. Navigation and detection require an empty gripper. The robot moves to the next stem if no harvestable tomato remains at the current stem. Picking requires an observed ripe tomato at the current stem and an empty gripper. Scanning inspects the held tomato. Placement requires a tomato confirmed fresh after scanning, and disposal requires a tomato confirmed rotten after scanning. Completion requires all necessary tomatoes to be processed. A newly exposed tomato requires detection before picking even if the tomato is visible in the images.
+
+For \texttt{at}, the VLM identifies the specified tomato and target stem using the fixed identifiers and markers. Direct visibility at the target stem supports Yes, and direct visibility at the opposite stem supports No. Absence from an image or uncertain identity does not establish that the tomato belongs to another stem. A tomato held by the robot is no longer on the stem, and each stem contains at most two tomatoes. The current action must not be used as location evidence. For \texttt{ripe} and \texttt{unripe}, the dominant red or green surface color determines ripeness. Scratches and rotten areas are separate from ripeness.
+
+For \texttt{fresh} and \texttt{rotten}, inspect the surface of the specified tomato actually held in the gripper. Answer No only if a large, distinct beige rotten area is visible. Small scratches, dents, spots, reflections, and minor discoloration near the stalk do not indicate rot and must not be used to reject freshness. Base the judgment on both the scene image and the wrist-camera image.
+
+For \texttt{holding}, \texttt{holded}, and \texttt{handempty}, the VLM checks the actual gripper contents. For \texttt{loaded} and \texttt{discarded}, the specified tomato must be visibly in the harvest basket or disposal location. The predicates \texttt{observed} and \texttt{scanned} describe completed procedures. Visible tomatoes and attempted detect or scan actions do not establish procedural completion. For \texttt{located}, the VLM checks the robot position relative to the target marker region. Tomato counts use distinct visible tomatoes across both images without double counting or assumptions about occluded regions. Harvested counts use tomatoes visibly inside the basket and do not substitute the number of attempted placements. Tomato, robot, location, and stem predicates require identification from appearance, scene structure, and markers.
+
+The action-selection criteria require the VLM to verify robot location, gripper contents, and the target tomato. Navigation is appropriate if the gripper is empty and movement to another stem is necessary. Detection precedes picking for newly visible or undetected tomatoes at the current stem. Picking requires an empty gripper and a visible ripe tomato at the current stem. Scanning requires the robot to hold the specified tomato and still need a quality judgment. Placement requires the held tomato to appear fresh without a large rotten area. Disposal requires a large, distinct rotten area and must not follow from minor scratches alone. Completion requires no remaining ripe tomatoes to process and an empty gripper. If no concrete action satisfies the visible conditions, the VLM selects the option for manual action entry.
+\end{vlmpromptbox}
