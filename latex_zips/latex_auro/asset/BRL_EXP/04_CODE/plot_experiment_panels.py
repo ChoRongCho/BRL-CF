@@ -69,10 +69,12 @@ def save_figure(fig, filename, metric, records):
     MANIFEST.append({'file': str(output.relative_to(ROOT)), 'axes': 1, 'metric': metric, 'records': records})
 
 
-def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, compact=False, narrow=False):
+def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, compact=False, narrow=False, decimals=2, tick_rotation=30, figure_size=None):
     figsize = (3.25, 2.8) if compact else (6.2 if len(records) > 4 else 4.8, 2.75)
     if narrow:
         figsize = (3.25 if len(records) == 4 else 4.4, 2.8)
+    if figure_size is not None:
+        figsize = figure_size
     fig, ax = plt.subplots(figsize=figsize)
     positions = [0, .245, .65, .895] if compact else list(range(len(records)))
     if narrow:
@@ -82,9 +84,8 @@ def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, 
     for i, row in enumerate(records):
         value = float(row['mean'])
         if metric == 'success_rate':
-            lo, hi = float(row['ci95_low']), float(row['ci95_high'])
-            error = [[max(0, value - lo)], [max(0, hi - value)]]
-            top = hi
+            error = None
+            top = value
             suffix = ''
         else:
             sd = row.get('sample_sd')
@@ -95,10 +96,10 @@ def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, 
         ax.bar(x, value, width=bar_width, color=colors[i], edgecolor='#333333',
                linewidth=.5, hatch=hatches[i], zorder=3)
         if error is not None:
-            ax.errorbar(x, value, yerr=error, fmt='none', ecolor='#333333',
+            ax.errorbar(x, value, yerr=[[min(error, value)], [error]], fmt='none', ecolor='#333333',
                         capsize=2 if compact else 3, linewidth=.8 if compact else 1, zorder=4)
         label_offset = 4
-        value_labels.append(ax.annotate(f'{value:.2f}{suffix}', (x, top), xytext=(0, label_offset),
+        value_labels.append(ax.annotate(f'{value:.{decimals}f}{suffix}', (x, top), xytext=(0, label_offset),
                     textcoords='offset points', ha='center', fontsize=13 if compact or narrow else 9,
                     annotation_clip=False))
     ax.set_xticks(positions, labels)
@@ -121,13 +122,14 @@ def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, 
             tick.set_fontsize(12)
             tick.set_fontstretch("condensed")
             if not groups:
-                tick.set_rotation(30)
-                tick.set_ha("right")
-    ax.set_ylim(0, ymax)
+                tick.set_rotation(tick_rotation)
+                tick.set_ha("center" if tick_rotation == 0 else "right")
+    ymin = 0
+    ax.set_ylim(ymin, ymax)
     if metric in ['success_rate', 'query_probability']:
         ax.set_yticks(range(0, 101, 20))
     elif metric in ['questions', 'steps']:
-        ax.set_yticks(range(0, ymax + 1, 5))
+        ax.set_yticks(range(ymin, ymax + 1, 5))
     ax.yaxis.grid(True, color='#dddddd', linewidth=.6)
     ax.set_axisbelow(True)
     if groups:
@@ -182,19 +184,19 @@ def render_physical(environments=('VLM', 'Human')):
                  compact=True)
 
 
-def render_response_comparison():
+def render_response_comparison(metrics=('success_rate', 'questions')):
     rows = read(BASE / 'response_comparison_statistics.csv')
     lookup = {(r['domain'], r['method'], r['environment'], r['metric']): r for r in rows}
     environments = ['Oracle', 'VLM', 'Human']
     for domain in DOMAINS:
-        for metric in ['success_rate', 'questions']:
+        for metric in metrics:
             records = [lookup[domain, m, e, metric]
                        for m in ['KnowNo', 'Ours'] for e in environments]
             filename = f'exp_response_{SLUGS[domain]}_{METRICS[metric][0]}.pdf'
             bars(filename, metric, records, environments * 2,
                  [COLORS[m] for m in ['KnowNo', 'Ours'] for _ in environments],
-                 ['', '//', '..'] * 2, upper_limit(metric, records),
-                 groups=[(.245, 'KnowNo'), (1.08, 'Ours')], narrow=True)
+                 ['', '//', '..'] * 2, 12 if metric == 'questions' else upper_limit(metric, records),
+                 groups=[(.245, 'KnowNo'), (1.08, 'Ours')], narrow=True, decimals=1)
 
 
 def render_ablation():
@@ -217,27 +219,31 @@ def render_ablation():
                                sample_sd=source['questions_success_only_sd'])
                 records.append(row)
             filename = f'exp_ablation_{SLUGS[domain]}_{METRICS[metric][0]}.pdf'
-            bars(filename, metric, records, ['Fully-\nRandom', 'W1', 'W2', 'W3', 'Q1', 'Q2', 'Ours'],
+            bars(filename, metric, records, ['Fully-\nRandom', 'T1', 'T2', 'T3', 'S1', 'S2', 'Ours'],
                  ['#A4ADB5'] + ['#65A48B'] * 3 + ['#8B77B5'] * 2 + [COLORS['Ours']],
-                 ['', '//', '..', 'xx', '//', '..', 'xx'], upper_limit(metric, records), narrow=True)
+                 ['', '//', '..', 'xx', '//', '..', 'xx'], upper_limit(metric, records), narrow=True, tick_rotation=0, figure_size=(6.2, 2.8))
 
 
-def render_threshold():
+def render_threshold(metrics=('success_rate', 'questions')):
     rows = read(THRESHOLD / 'manuscript_threshold_by_domain.csv')
-    for metric in ['success_rate', 'questions']:
+    for metric in metrics:
         fig, ax = plt.subplots(figsize=(4.8, 2.75))
         for domain, color, marker in zip(DOMAINS, ['#65A48B', '#287DA8'], ['o', 's']):
             records = sorted([r for r in rows if r['domain'] == domain], key=lambda r: float(r['threshold']))
             x = [float(r['threshold']) for r in records]
             y = [float(r['success_percent'] if metric == 'success_rate' else r['questions_mean']) for r in records]
-            ax.plot(x, y, color=color, marker=marker, markersize=4,
-                    linestyle='-' if domain == DOMAINS[0] else '--', label=domain)
+            sd = None if metric == 'success_rate' else [float(r['questions_sd']) for r in records]
+            # Truncate displayed lower whiskers at zero without changing stored SDs.
+            error = None if sd is None else [[min(value, spread) for value, spread in zip(y, sd)], sd]
+            ax.errorbar(x, y, yerr=error, color=color, marker=marker, markersize=4,
+                        linestyle='-' if domain == DOMAINS[0] else '--', label=domain,
+                        capsize=2, elinewidth=.8, clip_on=False)
         ax.axvline(.8, color='#777777', linestyle=':', linewidth=1)
         ax.set_xticks([i / 10 for i in range(11)])
         ax.set_xlabel('Confidence threshold')
         ax.set_ylabel(METRICS[metric][1])
-        ax.set_ylim(0, 100 if metric == 'success_rate' else 30)
-        ax.set_yticks(range(0, 101, 20) if metric == 'success_rate' else range(0, 31, 5))
+        ax.set_ylim(0, 100 if metric == 'success_rate' else 20)
+        ax.set_yticks(range(0, 101, 20) if metric == 'success_rate' else range(0, 21, 5))
         ax.grid(axis='y', color='#dddddd', linewidth=.6)
         ax.set_axisbelow(True)
         ax.legend(frameon=False, fontsize=9, loc='lower right' if metric == 'success_rate' else 'upper left')

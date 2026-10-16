@@ -132,6 +132,8 @@ Plan time is also lowest for Ours in both domains despite the additional queries
 
 Our method combines confidence-based query timing with entropy gain query selection and achieves the highest success rate in both domains. The baseline comparisons suggest that effective query timing and selection are more important than query count alone.
 
+
+\vspace{10pt}
 \noindent\textbf{VLM}\label{exp:vlm_eval}. We evaluate whether the trends in task success and query behavior from the oracle experiments also hold in a real-world setting. We first prompt a VLM to act as an external expert and evaluate query policies on physical robots.\footnote{Appendix~\ref{appx:vlm_prompts} provides the VLM prompts.} We select KnowNo as the baseline because it achieves a high success rate relative to its query count in the oracle experiments. Each method has $40$ trials per domain. Fig.~\ref{fig:vlm_results} presents the VLM results.
 
 \begin{figure*}[!tp]
@@ -206,18 +208,18 @@ VLM & W.S. & KnowNo & 50.00 (20/40) & 3.15 & 28.64 & 11.00 & 186.51 & 15.46 & 20
  & T.H. & KnowNo & 25.00 (10/40) & 7.20 & 44.10 & 16.10 & 217.82 & 44.99 & 27.68 \\
  &  & Ours & 92.50 (37/40) & 8.51 & 37.63 & 13.27 & 180.39 & 34.12 & 1.48 \\
 \midrule
-Human & W.S. & KnowNo & - (-/10) & - & - & - & - & - & - \\
- &  & Ours & - (-/10) & - & - & - & - & - & - \\
+Human & W.S. & KnowNo & 20.00 (2/10) & 2.90 & 26.09 & 11.50 & 184.48 & 11.59 & 16.94 \\
+ &  & Ours & 90.00 (9/10) & 7.20 & 18.18 & 11.00 & 190.15 & 36.49 & 0.94 \\
 \addlinespace
- & T.H. & KnowNo & - (-/10) & - & - & - & - & - & - \\
- &  & Ours & - (-/10) & - & - & - & - & - & - \\
+ & T.H. & KnowNo & 30.00 (3/10) & 3.67 & 28.21 & 13.00 & 195.50 & 19.04 & 23.52 \\
+ &  & Ours & 10.00 (10/10) & 8.50 & 37.40 & 13.10 & 180.02 & 23.89 & 1.32 \\
 \bottomrule
 \end{tabular*}
 \end{table*}
 
 Ours achieves a success rate of $92.50\%$ in both domains with VLM responses. KnowNo achieves $50.00\%$ in WasteSorting and $25.00\%$ in TomatoHarvesting. Mean query counts are $6.70$ for Ours and $3.15$ for KnowNo in WasteSorting and $8.51$ and $7.20$ in TomatoHarvesting. Consistent with the oracle experiments, Ours requires less search time than KnowNo. Mean search time is $0.99$ seconds for Ours and $19.99$ seconds for KnowNo in WasteSorting and $1.38$ and $26.90$ seconds in TomatoHarvesting. In TomatoHarvesting, interaction time and total time are $44.99$ and $217.82$ seconds for KnowNo compared with $34.12$ and $180.39$ seconds for Ours. Notably, KnowNo uses only $15.43\%$ fewer queries than Ours in TomatoHarvesting with VLM responses compared with $73.22\%$ fewer queries in the oracle experiments. However the similar query counts do not translate into similar execution costs. KnowNo executes longer plans, with $16.10$ physical actions compared with $13.27$ for Ours. Interaction time and total time for KnowNo are $31.86\%$ and $20.75\%$ longer than for Ours respectively.
 
-To understand the differences from the oracle results, we analyze failed trials and distinguish VLM response errors from baseline planner failures. In WasteSorting, all three failures of Ours involve VLM feedback. For example, the VLM rejects a can classification from perception and the robot places the object in the plastic bin. KnowNo has three VLM response failures ($15\%$) and $17$ planner failures ($85\%$). The planner failures occur because KnowNo selects actions without requesting assistance despite unmet action preconditions. In TomatoHarvesting, all three failures of Ours also involve VLM feedback. KnowNo has $18$ VLM failures ($60\%$) and $12$ planner failures ($40\%$). The planner failures occur after action selections without external assistance. In six trials, the VLM repeatedly selects detection despite feasible alternatives and the robot reaches the step limit. The remaining $12$ VLM failures involve incorrect action selections.
+To understand the differences from the oracle results, we analyze failed trials and distinguish VLM response errors from baseline planner failures. In WasteSorting, all three failures of Ours involve VLM feedback. For example, the VLM rejects a can classification from perception and the robot places the object in the plastic bin. KnowNo has three VLM response failures ($15\%$) and $17$ planner failures ($85\%$). The planner failures occur because KnowNo selects actions without issuing a query despite unmet action preconditions. In TomatoHarvesting, all three failures of Ours also involve VLM feedback. KnowNo has $18$ VLM failures ($60\%$) and $12$ planner failures ($40\%$). The planner failures occur after action selections without querying the responder. In six trials, the VLM repeatedly selects detection despite feasible alternatives and the robot reaches the step limit. The remaining $12$ VLM failures involve incorrect action selections.
 
 The WasteSorting failures show that a single predicted action can still require additional state verification before execution. In TomatoHarvesting, action selection requires the VLM to reason about robot location and object states to determine the next action. The spatial reasoning burden can lead to less effective action choices. Even successful trials can then require additional queries and longer plans and more total time. Therefore fewer queries do not necessarily reduce interaction time or total time. Ours asks the VLM to verify current state facts and assigns action selection to the planner. The VLM assesses current observations with less need to reason about future actions and outcomes. Performance may also depend on what the VLM is asked to judge.
 
@@ -292,15 +294,12 @@ The WasteSorting failures show that a single predicted action can still require 
 
 
 
-
+\vspace{10pt}
 \noindent\textbf{Human}\label{exp:human_eval}.
 We further examine whether the trends in task success and query behavior persist with human feedback. We recruited five participants (one man and four women), with a mean age of 26.4 years (SD = 5.68; range: 18--33 years). Eligibility required no visual recognition difficulties, including color vision deficiency.
 
 
-We use the same robot platforms and task domains as in the VLM experiments. Participants receive instructions~\footnote{Appendix~\ref{appx:user} provides the detailed participant instructions and trial procedure.} about the task goals and available actions, then answer robot questions according to their own judgment through the tablet interface in Fig.~\ref{fig:human_tablet_interface}.
-
-
-Each participant completes two trials with each method in each domain, for eight trials per participant and $10$ trials per method and domain. Trials are grouped by domain, and the domain and method orders vary across participants to reduce order effects (Table~\ref{tab:human_assignment}). Fig.~\ref{fig:human_results} shows the human results, and Table~\ref{tab:physical_robot_results} summarizes both the VLM and human results.
+We use the same robot platforms and task domains as in the VLM experiments. Participants receive instructions~\footnote{Appendix~\ref{appx:user} provides the detailed participant instructions and trial procedure.} about the task goals and available actions, then answer robot questions according to their own judgment through the tablet interface in Fig.~\ref{fig:human_tablet_interface}. Each participant completes two trials with each method in each domain, for eight trials per participant and $10$ trials per method and domain. Trials are grouped by domain, and the domain and method orders vary across participants to reduce order effects (Table~\ref{tab:human_assignment}). Fig.~\ref{fig:human_results} shows the human results, and Table~\ref{tab:physical_robot_results} summarizes both the VLM and human results.
 
 \begin{table}[!htbp]
 \centering
@@ -312,58 +311,39 @@ Each participant completes two trials with each method in each domain, for eight
 \toprule
 Participant & Assigned order \\
 \midrule
-P01 & W.S. $\rightarrow$ T.H. : $A\rightarrow A\rightarrow B\rightarrow B$ \\
-P02 & T.H. $\rightarrow$ W.S. : $A\rightarrow B\rightarrow A\rightarrow B$ \\
-P03 & W.S. $\rightarrow$ T.H. : $B\rightarrow B\rightarrow A\rightarrow A$ \\
-P04 & T.H. $\rightarrow$ W.S. : $B\rightarrow A\rightarrow B\rightarrow A$ \\
-P05 & W.S. $\rightarrow$ T.H. : $A\rightarrow A\rightarrow B\rightarrow B$ \\
+P1 & W.S. $\rightarrow$ T.H. : $A\rightarrow A\rightarrow B\rightarrow B$ \\
+P2 & T.H. $\rightarrow$ W.S. : $A\rightarrow B\rightarrow A\rightarrow B$ \\
+P3 & W.S. $\rightarrow$ T.H. : $B\rightarrow B\rightarrow A\rightarrow A$ \\
+P4 & T.H. $\rightarrow$ W.S. : $B\rightarrow A\rightarrow B\rightarrow A$ \\
+P5 & W.S. $\rightarrow$ T.H. : $A\rightarrow A\rightarrow B\rightarrow B$ \\
 \bottomrule
 \end{tabular*}
 \end{table}
 
 
-% Ours achieves a success rate of $90.00\%$ in WasteSorting and $100.00\%$ in TomatoHarvesting with human responses. KnowNo achieves $20.00\%$ and $30.00\%$ respectively. % 우리의 질이 방식이 oracle, vlm 뿐만 아니라 사람에게도 보여짐을 확인할 수 있다.
-
-% Mean query counts are $7.11$ for Ours and $3.00$ for KnowNo in WasteSorting and $8.50$ and $3.67$ in TomatoHarvesting. 
 
 
-% % vlm 과 비교
-% Mean planning time is $0.94$ seconds for Ours and $16.94$ seconds for KnowNo in WasteSorting and $1.32$ and $23.52$ seconds in TomatoHarvesting. In WasteSorting, interaction time and total time are $36.49$ and $190.15$ seconds for Ours compared with $11.59$ and $184.48$ seconds for KnowNo. In TomatoHarvesting, the corresponding times are $23.89$ and $180.02$ seconds for Ours compared with $19.04$ and $195.50$ seconds for KnowNo.
+Ours achieves a success rate of $90.00\%$ in WasteSorting and $100.00\%$ in TomatoHarvesting with human responses. KnowNo achieves $20.00\%$ and $30.00\%$ respectively. These results are consistent with the oracle and VLM comparisons and show that our method also achieves higher task success with human feedback. \cp{Ours also requires} less planning time than KnowNo. Mean planning time is $0.94$ seconds for Ours and $16.94$ seconds for KnowNo in WasteSorting and $1.32$ and $23.52$ seconds in TomatoHarvesting. Participants also need time to inspect the displayed information and choose a response. We compute the mean interaction time per query by dividing total interaction time by the total number of queries across successful and failed trials. The values are $5.26$ seconds for Ours and $3.86$ seconds for KnowNo in WasteSorting and $2.81$ and $6.42$ seconds in TomatoHarvesting.
 
-% % 사람은 vlm과 달리 질문을 망설이기도 했다. 따라서 각 조건별 고민한 시간을 가져왔다.
-% Including both successful and failed trials, the mean interaction time per query is $4.71$ seconds for Ours and $3.84$ seconds for KnowNo in WasteSorting and $2.73$ and $5.95$ seconds respectively in TomatoHarvesting. 
-
-% % 특정 도메인에서는 또 질의 수는 우리가 더 많았는데, 전체 시간은 작았다. 
-% KnowNo uses $57.81\%$ fewer queries than Ours in WasteSorting and $56.86\%$ fewer in TomatoHarvesting. However the lower query counts do not consistently reduce total time. Plan lengths are similar across methods, with $11.00$ physical actions for Ours and $11.50$ for KnowNo in WasteSorting and $13.10$ and $13.00$ respectively in TomatoHarvesting. Despite the additional queries, Ours requires $7.92\%$ less total time in TomatoHarvesting, while its total time is $3.08\%$ longer in WasteSorting.
-
-Ours achieves a success rate of $90.00\%$ in WasteSorting and $100.00\%$ in TomatoHarvesting with human responses. KnowNo achieves $20.00\%$ and $30.00\%$ respectively. These results are consistent with the oracle and VLM comparisons and show that our method also achieves higher task success with human feedback. 
-% Mean query counts are $7.11$ for Ours and $3.00$ for KnowNo in WasteSorting and $8.50$ and $3.67$ in TomatoHarvesting.
-Consistent with the VLM experiments, Ours requires less planning time than KnowNo. Mean planning time is $0.94$ seconds for Ours and $16.94$ seconds for KnowNo in WasteSorting and $1.32$ and $23.52$ seconds in TomatoHarvesting. Participants also need time to inspect the displayed information and choose a response. We compute the mean interaction time per query by dividing total interaction time by the total number of queries across successful and failed trials. The values are $5.26$ seconds for Ours and $3.86$ seconds for KnowNo in WasteSorting and $2.81$ and $6.42$ seconds in TomatoHarvesting. One WasteSorting trial with Ours for P3 records $159.44$ seconds of interaction over nine queries, including one query lasting $77.00$ seconds. The experimenter observed that P3 hesitated when answering after consecutive task failures in the preceding trials. To examine the influence of P3's interaction times, we repeat the calculation after excluding all eight of P3's trials, covering both Ours and KnowNo in both domains. The mean interaction time per query is then $3.07$ seconds for Ours and $3.24$ seconds for KnowNo in WasteSorting and $2.64$ and $4.99$ seconds in TomatoHarvesting. % 이렇게 나온 이유를 작성해줘. 
-
-% 성공·실패를 포함한 전체 interaction time을 전체 질의 수로 나눈 값이다. 시행별 평균을 다시 평균하지 않았다.
-% WasteSorting은 Ours 378.7884초 / 72회 = 5.26초, KnowNo 111.9804초 / 29회 = 3.86초다.
-% TomatoHarvesting은 Ours 238.9132초 / 85회 = 2.81초, KnowNo 218.3122초 / 34회 = 6.42초다.
-% TomatoHarvesting의 KnowNo에서는 다음 행동과 선행 단계의 실행 여부를 함께 판단해야 했다. 인터뷰에서도 이러한 고민이 보고되어, 행동 선택에 시간이 더 들었을 가능성이 있다.
-% WasteSorting의 Ours에는 약 77.00초가 걸린 개별 질의가 포함되어 평균을 높였다. 따라서 모든 조건에서 Ours의 질의당 시간이 짧게 나온 것은 아니다.
-% 위 수치는 긴 응답도 제외하지 않은 전체 평균이다. 약 77.00초의 응답이 발생한 구체적 이유는 해당 질의의 진행 기록을 대조해 설명할 수 있다.
-% 실험자 관찰: P3은 앞선 시행에서 실패를 연속으로 경험한 뒤 응답 선택을 망설였다.
-% 사용자가 확인한 진행 순서는 실패-실패-실패(약 50초)-성공(약 150초) / 실패-실패-성공-성공이다.
-% 위 약 50초·150초는 실험자가 설명한 진행 맥락의 시간이며, 로그의 누적 interaction time 159.4361초와 같은 측정값으로 취급하지 않는다.
-% 따라서 긴 응답시간은 앞선 실패 경험 이후 나타난 망설임이라는 실험자 관찰과 함께 설명한다.
+One WasteSorting trial with Ours for P3 \cp{recorded} $159.44$ seconds of interaction over nine queries, including one query lasting $77.00$ seconds. The experimenter observed that P3 hesitated when answering after consecutive task failures in the preceding trials. To examine the influence of P3's interaction times, we repeat the calculation after excluding all eight of P3's trials, covering both Ours and KnowNo in both domains. The mean interaction time per query is then $3.07$ seconds for Ours and $3.24$ seconds for KnowNo in WasteSorting and $2.64$ and $4.99$ seconds in TomatoHarvesting.
 
 
-In successful TomatoHarvesting trials, interaction time is $23.89$ seconds for Ours compared with $19.04$ seconds for KnowNo. Total time is $180.02$ seconds for Ours compared with $195.50$ seconds for KnowNo, a reduction of $7.92\%$. In WasteSorting, total time is $190.15$ seconds for Ours compared with $184.48$ seconds for KnowNo, an increase of $3.08\%$. Thus fewer queries do not consistently reduce total task time.
 
-\cp{Ours also achieves higher task success than KnowNo with human responses. These results suggest that query timing determines whether participants have an opportunity to correct robot decisions. Even if a participant notices an incorrect judgment, there may be no opportunity to correct it if the robot proceeds without a query. P01 reported that KnowNo proceeded without a query in situations where they wanted to intervene. Our method requests additional information if belief confidence is insufficient and incorporates human responses into subsequent planning.}
+
+
+We also examine the failed trials with human responses. In WasteSorting, the only failure of Ours occurs after a participant incorrectly confirms the presence of an object that is not visible. KnowNo fails in eight trials. In four trials, participants select a placement action before the robot has picked the object. In the other four, KnowNo selects a pick action without issuing a query even though the object has not been detected. In TomatoHarvesting, Ours completes all ten trials, whereas KnowNo fails in seven. Four failures occur after participants select scanning before the robot has picked the tomato. Two occur after participants select picking before detection at the new location, including one action entered as free text. The remaining failure occurs when KnowNo proceeds with harvesting a rotten tomato based on incorrect perception, without asking the participant to verify its condition. These cases show that answering an action-selection query requires participants to check which preceding actions have been completed. They also show that participants have no opportunity to correct an action if KnowNo proceeds without issuing a query. 
 
 
 
 
 
 
-\noindent\textbf{Comparison across Feedback Sources}~\label{exp:response_comparison}. \cp{Fig.~\ref{fig:response_comparison} compares task success and query count across oracle, VLM, and human feedback. Ours achieves higher success rates and uses more queries than KnowNo in both domains across all three feedback sources. However the magnitude of the success advantage depends on the domain and feedback source. In WasteSorting, Ours maintains success rates of $100.00\%$, $92.50\%$, and $100.00\%$ with oracle, VLM, and human feedback respectively. In TomatoHarvesting, success decreases from $98.00\%$ with oracle feedback to $92.50\%$ with VLM feedback and $50.00\%$ with human feedback. The success advantage over KnowNo also narrows from $55.00$ percentage points with oracle feedback to $16.67$ percentage points with human feedback in TomatoHarvesting. Thus the relative advantage of Ours persists, but high success does not persist equally across domains and feedback sources.
+\vspace{10pt}
+\noindent\textbf{Baseline Discussion}\label{exp:response_comparison}.
+Fig.~\ref{fig:response_comparison} shows that Ours achieves higher task success than KnowNo across oracle, VLM, and human feedback. The failure analyses suggest that both query timing and query content contribute to this difference. KnowNo failures include actions executed without a query despite incorrect perception or unmet preconditions, as well as actions selected by responders before the required preconditions are satisfied. These cases illustrate two requirements for effective queries. Query timing determines whether the responder can intervene before an incorrect action is executed. Query content determines the information and reasoning needed to provide a correct response.
 
-Query counts also show differences across feedback sources. In TomatoHarvesting, Ours uses $9.16$, $8.51$, and $9.67$ queries with oracle, VLM, and human feedback respectively. KnowNo uses $2.45$, $7.20$, and $4.00$ queries. The query count of KnowNo increases substantially with VLM feedback, while the query count of Ours remains similar across feedback sources despite the lower success with human feedback. Therefore similar query counts do not imply similar task outcomes, and the number of queries alone does not explain the differences across feedback sources. These differences motivate the subsequent human interview analysis. We examine how participants interpret robot questions and what reasoning participants need to choose a response, with particular attention to question clarity and response effort.}
+This distinction helps explain why query counts alone do not account for task success. In TomatoHarvesting with VLM feedback, KnowNo asks $7.20$ questions on average compared with $8.51$ for Ours, yet their success rates are $25.00\%$ and $92.50\%$, respectively. Ours asks the responder to verify state facts and leaves action selection to the planner. This reduces the need for the responder to reason about action sequences, although incorrect state feedback can still cause failure. The baseline results support examining query timing and query content together. The following ablation experiments separate these components to assess their individual contributions.
+
 
 
 
@@ -405,34 +385,34 @@ Query counts also show differences across feedback sources. In TomatoHarvesting,
 
 \subsubsection{Ablation Study}~\label{exp:when_what_random}\label{exp:policy_ablation}
 
-We conduct an ablation study to assess the contributions of query timing and query selection to task success and query efficiency. We compare seven configurations with oracle feedback in simulation. For concise reference, we use \textbf{W} to label query timing variants and \textbf{Q} to label query selection variants. With entropy gain selection fixed, we compare random (W1), conformal prediction (W2), and reward-based (W3) timing. With confidence timing fixed, we compare random (Q1) and reward-based (Q2) selection. Fully-Random randomizes both query timing and query selection, while Ours combines confidence timing with entropy gain selection. Table~\ref{tab:query_strategy_matrix} summarizes these configurations. Each configuration has $200$ trials per domain. Table~\ref{tab:policy_ablation} and Fig.~\ref{fig:policy_ablation_results} present the results. Appendix~\ref{appx:ablation_configs} provides the query policy configurations.
+The ablation study isolates the effects of query timing and query selection on task success and query count. We compare seven configurations with oracle feedback. For concise reference, we use \textbf{W} to label query timing variants and \textbf{Q} to label query selection variants. With entropy gain selection fixed, we compare random (W1), conformal prediction (W2), and reward-based (W3) timing. With confidence timing fixed, we compare random (Q1) and reward-based (Q2) selection. Fully-Random randomizes both query timing and query selection, while Ours combines confidence timing with entropy gain selection. Table~\ref{tab:query_strategy_matrix} summarizes these configurations. Each configuration has $200$ trials per domain. Table~\ref{tab:policy_ablation} and Fig.~\ref{fig:policy_ablation_results} present the results. Appendix~\ref{appx:ablation_configs} provides the query policy configurations.
 
 \begin{figure*}[!tp]
 \centering
-\begin{subfigure}[t]{0.495\textwidth}
+\begin{subfigure}[t]{0.498\textwidth}
 \centering
-\includegraphics[width=\linewidth,height=.20\textheight,keepaspectratio]{figures/08_ABLATION/exp_ablation_waste_success.pdf}
+\includegraphics[width=\linewidth]{figures/08_ABLATION/exp_ablation_waste_success.pdf}
 \caption{W.S. Success rate (\%).}
 \label{fig:ablation_ablation_waste_success}
-\end{subfigure}
-\hfill
-\begin{subfigure}[t]{0.495\textwidth}
+\end{subfigure}%
+\hspace{0.004\textwidth}%
+\begin{subfigure}[t]{0.498\textwidth}
 \centering
-\includegraphics[width=\linewidth,height=.20\textheight,keepaspectratio]{figures/08_ABLATION/exp_ablation_tomato_success.pdf}
+\includegraphics[width=\linewidth]{figures/08_ABLATION/exp_ablation_tomato_success.pdf}
 \caption{T.H. Success rate (\%).}
 \label{fig:ablation_ablation_tomato_success}
 \end{subfigure}
 \par\medskip
-\begin{subfigure}[t]{0.495\textwidth}
+\begin{subfigure}[t]{0.498\textwidth}
 \centering
-\includegraphics[width=\linewidth,height=.20\textheight,keepaspectratio]{figures/08_ABLATION/exp_ablation_waste_queries.pdf}
+\includegraphics[width=\linewidth]{figures/08_ABLATION/exp_ablation_waste_queries.pdf}
 \caption{W.S. Query count.}
 \label{fig:ablation_ablation_waste_queries}
-\end{subfigure}
-\hfill
-\begin{subfigure}[t]{0.495\textwidth}
+\end{subfigure}%
+\hspace{0.004\textwidth}%
+\begin{subfigure}[t]{0.498\textwidth}
 \centering
-\includegraphics[width=\linewidth,height=.20\textheight,keepaspectratio]{figures/08_ABLATION/exp_ablation_tomato_queries.pdf}
+\includegraphics[width=\linewidth]{figures/08_ABLATION/exp_ablation_tomato_queries.pdf}
 \caption{T.H. Query count.}
 \label{fig:ablation_ablation_tomato_queries}
 \end{subfigure}
@@ -533,14 +513,23 @@ In TomatoHarvesting, higher thresholds improve success over a wider range. Succe
 
 The two domains require different confidence levels to reach high success, but both show limited gains from the strictest threshold. Relative to $\tau=0.8$, $\tau=1.0$ increases query count by $91.19\%$ in WasteSorting and $107.30\%$ in TomatoHarvesting. Success improves by $0.00$ and $2.00$ percentage points respectively. We use $\tau=0.8$ as a common threshold because it achieves $100.00\%$ and $98.00\%$ success in the two domains with substantially fewer queries than $\tau=1.0$. Thus the threshold controls the amount of state verification, and the highest confidence requirement does not provide a proportional improvement in task success.
 
+
+
 \subsubsection{Interviews}\label{exp:interviews}
-\cp{The interviews examined how participants understood and answered queries after they experienced both methods in WasteSorting and TomatoHarvesting. We focused on the judgments required to answer questions, perceived effort across the task, and difficulties with the displayed information.}
+We interviewed all five participants after they experienced Ours and KnowNo in WasteSorting and TomatoHarvesting. Our method asks questions about the current state, while KnowNo asks questions about the next action to execute. We examined how the two methods differed in the judgments needed to answer queries and the perceived effort across the task. Appendix~\ref{appx:user_interviews} provides the participant summaries.
 
-\cp{Participants described different judgments required by the two methods. P01 explained that Ours required only an assessment of the current situation, without the need to anticipate the next action. For KnowNo, P01 considered which actions had to occur first and whether a proposed action could be executed at that point. P01 also found it unclear whether an action choice implied that the robot would perform the necessary preceding actions. P02 described the questions from Ours as simpler and reported less need to think before answering.}
+The interviews suggest that action descriptions left room for different interpretations of their effects and preconditions. P1 expected some KnowNo action choices to include the necessary preceding actions, while P4 explained that skipping a required stage led to failure. P2 was unsure whether all offered actions were executable in the current state. These accounts help explain why participants selected actions that did not satisfy the execution requirements discussed in the failure analysis. Ours avoided this ambiguity by asking participants to verify state facts and leaving the interpretation of action preconditions and effects to the planner. Participants could therefore answer without determining which preceding actions were required or whether those actions were included in a proposed choice.
 
-\cp{Perceived effort across the entire task differed between participants. P01 found Ours more laborious because questions occurred more frequently, but reported greater satisfaction because the judgments were clearer and execution followed the intended course. P02 described Ours as less laborious and felt that the robot made more of the decisions. Thus, easier individual judgments did not imply uniformly lower effort across the task.}
 
-\cp{Participants also described difficulties with the information provided for their judgments. P01 reported that a mismatch between object identifiers in the question and the image made the referenced tomato unclear. P02 reported that occlusion by the gripper made it difficult to judge the condition of a tomato from the camera view. P01 also requested a way to revise an earlier answer before the robot executed an action.}
+Four of the five participants (P1--P4) described Ours as more convenient and preferred it for the evaluated tasks. They attributed this convenience to checking the current state while the robot determined subsequent actions. These accounts support the proposed division between state verification by the responder and action planning by the robot. Participants also described fatigue from repeatedly answering yes/no questions. P3 found this repetition bothersome even while preferring Ours. P5 reported no particular difficulty in selecting actions and preferred KnowNo because directly selecting or specifying commands felt more convenient than repeatedly confirming individual facts. These responses indicate that preferences also depend on the form of participation. Most participants valued leaving action decisions to the robot, while P5 preferred directing its actions.
+
+Taken together, the failure analysis and interviews suggest that effective queries require a clear division between the information provided by the responder and the action decisions made by the robot. Our method asks participants to verify uncertain state facts and uses their responses in subsequent planning. This division avoids relying on a shared interpretation of the execution scope and preconditions of an action choice. Therefore, the interviews help explain the observed action selection failures and show why most participants found state verification more convenient.
+
+
+
+
+
+
 
 \subsubsection{Discussion}\label{exp:discussion}
 
@@ -548,7 +537,7 @@ Results with oracle, VLM, and human responses support the effectiveness of our m
 
 The objective is to obtain sufficient state information for successful execution while limiting the number of queries. A stricter confidence requirement can increase the number of queries without a corresponding improvement in task success. Thus, reducing uncertainty beyond what is needed for successful execution may introduce unnecessary interaction. These findings suggest that effective querying requires balancing the information needed for reliable execution against the cost of obtaining it.
 
-Beyond task performance, the interviews also provide indirect insight into \textit{how} to query people. Participants described our state questions as easier to judge and reported less need to think before answering than with KnowNo. This feedback supports the use of the proposed state questions for human assistance. However, \textit{how} also includes interaction modalities and UI design, which can affect usability and cognitive workload. We did not compare voice interfaces or alternative UI designs, and their effects on human interaction remain future work.
+Beyond task performance, the interviews also provide indirect insight into \textit{how} to query people. Participants described our state questions as easier to judge and reported less need to think before answering than with KnowNo. This feedback supports the use of the proposed state questions for human feedback. However, \textit{how} also includes interaction modalities and UI design, which can affect usability and cognitive workload. We did not compare voice interfaces or alternative UI designs, and their effects on human interaction remain future work.
 
 
 % % Keep the experimental figures and tables before the conclusion.
