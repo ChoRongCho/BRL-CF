@@ -165,7 +165,7 @@ def render_oracle(rows):
         for domain in DOMAINS:
             rows = [lookup[domain, m, metric] for m in METHODS]
             filename = f'exp_oracle_{SLUGS[domain]}_{METRICS[metric][0]}.pdf'
-            bars(filename, metric, rows, ['KnowNo', 'IntroPlan', 'Query-\nAction', 'Ours'],
+            bars(filename, metric, rows, ['KnowNo', 'IntroPlan', 'POMCP-Q', 'Ours'],
                  [COLORS[m] for m in METHODS], [HATCHES[m] for m in METHODS], ymax, narrow=True)
 
 

@@ -156,19 +156,19 @@ Alg.~\ref{alg:online_planning} explains the overall online planning and querying
 \begin{figure*}[t]
 \captionsetup{skip=0pt}
 \centering
-\includegraphics[width=0.98\linewidth]{figures/fig3_implementation.pdf}
+\includegraphics[width=0.97\linewidth]{figures/fig3_implementation.pdf}
 \caption{Framework for robot execution of the proposed planning and querying method. The Knowledge Base (KB) stores shared symbolic facts and action models, while Sensing and Perception (SP) supplies observations from robot sensors. The Planning Manager (PM) selects actions and determines queries. If belief confidence falls below $\tau$, the Feedback Manager (FM) converts the selected fact into a question that the User Interface (UI) presents to the human. The FM converts the response into Boolean evidence, which the PM uses to update the belief and continue planning.}\label{fig:data_flow}
 \end{figure*}
 
 We implement a modular framework to execute the proposed planning and querying method on a robot, as shown in Fig.~\ref{fig:data_flow}. The Knowledge Base (KB) stores symbolic facts and action models, and Sensing and Perception (SP) provides observations and numeric state estimates from sensor data. The Planning Manager (PM) uses this information to select robot actions, construct the frontier belief, and decide when and what to query. The Feedback Manager (FM) converts the selected fact into a question and the response into evidence for the belief update. The User Interface (UI) presents the questions and collects responses during human interaction.
 
-\label{method:KB}
-The KB partitions information into domain knowledge $\mathcal{I}^{D}$, static structured information $\mathcal{I}^{S}$, and local information $\mathcal{I}^{L}$ obtained during execution. 
-\[\mathcal{KB}=\mathcal{I}^{D}\sqcup\mathcal{I}^{S}\sqcup\mathcal{I}^{L}.\]\footnote{The symbol $\sqcup$ denotes the disjoint union, indicating that the three knowledge sets are treated as distinct components.}
-Domain knowledge contains action schemas and task rules. Static information includes invariant facts and fixed map or robot parameters. Local information contains perceptual facts and numeric fluents that are updated during execution. SP maps raw sensor input to these task-level observations. For example, RGB-D sensing can update object pose and ripeness estimates, while the symbolic observation likelihood determines how those observations weight the frontier states.
+% \label{method:KB}
+% The KB partitions information into domain knowledge $\mathcal{I}^{D}$, static structured information $\mathcal{I}^{S}$, and local information $\mathcal{I}^{L}$ obtained during execution.
+% \[\mathcal{KB}=\mathcal{I}^{D}\sqcup\mathcal{I}^{S}\sqcup\mathcal{I}^{L}.\]
+% Domain knowledge contains action schemas and task rules. Static information includes invariant facts and fixed map or robot parameters. Local information contains perceptual facts and numeric fluents that are updated during execution. SP maps raw sensor input to these task-level observations. For example, RGB-D sensing can update object pose and ripeness estimates, while the symbolic observation likelihood determines how those observations weight the frontier states.
 
 \label{method:action_execution}
-Each symbolic action invokes a robot skill. Actions such as $\texttt{navigate}(\text{robot},l_1,l_2)$ and $\texttt{pick}(\text{robot},\text{tomato}_1)$ specify task-level intentions, while an off-the-shelf motion planner such as MoveIt~\cite{chitta2012moveit} uses numeric fluents from the KB to generate low-level motion. This separation allows the feedback policy to operate on task-level facts without depending on a particular motion-planning implementation.
+Each symbolic action invokes a robot skill. Actions such as $\texttt{navigate}(\text{robot},l_1,l_2)$ and $\texttt{pick}(\text{robot},\text{tomato}_1)$ specify task-level intentions, while an off-the-shelf motion planner such as MoveIt~\cite{chitta2012moveit} uses numeric fluents from the KB to generate low-level motion.
 
 \label{method:FM}
-The FM maps the selected predicate to a predefined question template and converts the response to a Boolean value. During human interaction, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options. Participants answer questions about the displayed state fact, and the planner selects the next robot action.
+The FM maps the selected predicate to a predefined question template and converts the response to a Boolean value. For example, the predicate $\mathrm{ripe}(t_1)$ is converted into the question ``Is tomato $t_1$ ripe?'' When interacting with human participants, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options. Participants answer the question based on the displayed information, and the planner updates its belief and selects the next robot action accordingly.
