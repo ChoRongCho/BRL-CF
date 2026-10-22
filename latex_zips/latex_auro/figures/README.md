@@ -6,7 +6,7 @@
 
 | 폴더 | 구성 |
 | --- | --- |
-| 03_SETUP | WasteSorting·TomatoHarvesting 환경 subplot 2개 |
+| 03_SETUP | Sort·Harvest 환경 subplot 2개 |
 | 04_ORACLE_BASELINE | Oracle baseline의 도메인별 4개 지표, subplot 8개 |
 | 05_VLM_BASELINE | VLM baseline subplot 7개 |
 | 06_HUMAN_BASELINE | Human baseline subplot 7개 |
@@ -20,4 +20,4 @@
 
 `00_DATA/experiment_panels_manifest.json`의 `file`은 이 figures 폴더 기준 상대 경로다. 원고 포장 스크립트는 TeX에서 참조하는 그림만 ZIP에 포함하므로 99_LEGACY와 원본 사진은 참조하지 않는 한 배포하지 않는다.
 
-`exp_human_interaction_time_per_query_all.pdf`는 성공·실패 전체 시행의 질문 1회당 상호작용 시간(전체 상호작용 시간 합계 / 전체 질의 수 합계)을 나타내는 독립 그림이다. 질문 0회 시행은 제외하고 오차막대는 표시하지 않으며, 다른 Human 비용 subplot의 success-only 기준과 구분한다.
+`exp_human_interaction_time_per_query_all.pdf`는 성공·실패 전체 시행의 질문 1회당 상호작용 시간(시행별 비율의 평균 ± 표본 SD)을 나타내는 독립 그림이다. 질문 0회 시행은 제외하며, 다른 Human 비용 subplot의 success-only 기준과 구분한다.

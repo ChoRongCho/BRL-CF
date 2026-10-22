@@ -1,251 +1,118 @@
-\section{Detailed Experimental Settings}~\label{appx:settings}
-
-This appendix specifies the planner settings, query policies, domain models, and reporting conventions for Sec.~\ref{exp:setup}. The oracle experiments use simulated execution with correct responses. The VLM and human evaluations use physical robot execution. We aggregate trials within each domain for all reported comparisons.
-
-\subsection{Planner and Evaluation Parameters}~\label{appx:planner_params}
-Table~\ref{tab:app_planner_params} lists the default POMCP parameters for Ours. The oracle trial limit is $50$ physical actions, and the physical trial limit is $20$. Queries do not consume physical steps for Ours. POMCP-Q uses a limit of $50$ total decisions that includes queries and physical actions. \cp{Seven WasteSorting trials and $13$ TomatoHarvesting trials terminate at this limit.} The reward-based configurations use the discount factors specified below.
+\section{Experimental Parameters}\label{appx:settings}
+\subsection{Shared Settings}\label{appx:planner_params}
+Table~\ref{tab:app_planner_params} lists the shared settings. Oracle trials use five initial configurations with $40$ repetitions each, yielding $200$ trials per domain and condition. Physical evaluations use $40$ VLM trials and $10$ human trials per method and domain.
 
 \begin{table}[!htbp]
 \centering
-\caption{Planner and evaluation parameters used by Ours.}
+\caption{Shared planner and evaluation parameters.}
 \label{tab:app_planner_params}
 \small
-\begin{tabular}{lc}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lclc@{}}
 \toprule
-\textbf{Parameter} & \textbf{Value} \\
+Parameter & Value & Parameter & Value \\
 \midrule
-POMCP simulations per planning step & $100$ \\
-Maximum simulation depth & $20$ \\
-Discount factor $\gamma$ & $0.2$ \\
-UCB exploration constant $c$ & $1.0$ \\
-Oracle physical action limit & $50$ \\
-Physical action limit & $20$ \\
-Default confidence threshold $\tau$ & $0.8$ \\
-Discount cutoff $\epsilon$ & $0.005$ \\
-Oracle frontier capacity & $8{,}000$ \\
-Oracle search-node particle capacity & $8{,}000$ \\
-Oracle transition sampling budget & $250$ \\
-Oracle initial configurations per domain & $5$ \\
-Trials per initial configuration and condition & $40$ \\
-Oracle trials per domain and condition & $200$ \\
+POMCP simulations per step & $100$ & Maximum simulation depth & $20$ \\
+Default discount factor $\gamma$ & $0.2$ & UCB exploration constant $c$ & $1.0$ \\
+Confidence threshold $\tau$ & $0.8$ & Discount cutoff $\epsilon$ & $0.005$ \\
+Oracle frontier capacity & $8{,}000$ & Oracle search-node particle capacity & $8{,}000$ \\
+Oracle transition sampling budget & $250$ & Physical trial action limit & $20$ \\
 \bottomrule
-\end{tabular}
+\end{tabular*}
 \end{table}
+With $\gamma=0.2$ and $\epsilon=0.005$, the discount cutoff stops simulations at depth $4$. Oracle trials allow $50$ physical actions, except that POMCP-Q counts both queries and physical actions toward its $50$-decision limit.
 
-\cp{With $\gamma=0.2$ and $\epsilon=0.005$, the discount cutoff stops search at depth $4$ before the nominal maximum of $20$.}
+\subsection{Baseline Parameters}\label{appx:baseline_configs}
+Tables~\ref{tab:app_baseline_params_waste} and~\ref{tab:app_baseline_params_tomato} give domain-specific settings. KnowNo and IntroPlan use GPT-4o for action generation and scoring, with score temperature $5.0$. IntroPlan retrieves three examples. POMCP-Q uses $100$ simulations per decision, zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. A dash denotes an inapplicable setting, and NR denotes a value not recorded in the logs.
 
-\subsection{Baseline Configurations}~\label{appx:baseline_configs}
-The oracle baseline comparison evaluates KnowNo, IntroPlan, and POMCP-Q against Ours. The physical experiments compare KnowNo and Ours. Appendix~\ref{appx:baseline_algorithms} provides separate procedures for the three baselines. KnowNo and IntroPlan use GPT-4o for action generation and candidate scoring. This planning model is separate from Gemma 4 31B IT, which provides external feedback in the VLM experiments.
-
-The \cp{recorded} action generation temperature is $0.3$, and the candidate score temperature is $5.0$. KnowNo uses calibration thresholds $\hat{q}=0.845165$ for WasteSorting and $\hat{q}=\cp{0.8404}$ for TomatoHarvesting in the oracle comparison. The physical VLM logs \cp{use $0.845165$ and $0.901119$ respectively}, except for one WasteSorting trial with $\hat{q}=0.8704$. \cp{The oracle TomatoHarvesting KnowNo batch does not record the generation temperature.} IntroPlan retrieves three examples and uses calibration thresholds $0.980493$ and $0.985552$ for the two domains in the same order. POMCP-Q uses the \cp{recorded domain-specific configuration}. The discount factor is $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting. Query cost is zero, the failure penalty is $10$, assumed response accuracy is $1.0$, and the planner uses $100$ simulations per decision.
-
-% Source: experiments_logs/query_action_tuning/20260921_130229_529697/analysis/
-% report.md, selected_config.json, and 01_processed/episodes.csv (1,200 trials).
-A preliminary POMCP-Q sweep tested $\gamma\in\{0.2,0.5,0.8,0.95\}$ and query costs $\{0,0.5,1\}$, with ten trials per scene in each domain for every pair. The selection criterion was the highest pooled task success rate: $\gamma=0.5$ with zero query cost achieved $66/100$ successes. This supports the zero-cost setting and the TomatoHarvesting discount factor used in the reported configurations.
-% TODO(author): Explain the later WasteSorting choice gamma=0.9. It is verified
-% in the final execution logs but is absent from the above sweep; the sweep
-% winner was gamma=0.5 for the pooled objective, not a domain-specific optimum.
-
-\cp{Tables~\ref{tab:app_baseline_params_waste} and~\ref{tab:app_baseline_params_tomato} summarize the baseline parameters for each domain.}
-
-\begin{table*}[!htbp]
+\begin{table}[!htbp]
 \centering
-\caption{Baseline parameters for WasteSorting.}
+\caption{Baseline parameters for Sort.}
 \label{tab:app_baseline_params_waste}
 \small
 \setlength{\tabcolsep}{5pt}
-\renewcommand{\arraystretch}{1.12}
+\renewcommand{\arraystretch}{1.0}
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
 \toprule
-Parameter & Ours & KnowNo & IntroPlan & POMCP-Q \\
+Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
 \midrule
-Action generation/scoring model & --- & GPT-4o & GPT-4o & --- \\
 Calibration threshold $\hat{q}$ (oracle) & --- & $0.845165$ & $0.980493$ & --- \\
 Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
-Candidate score temperature & --- & $5.0$ & $5.0$ & --- \\
-Retrieved examples & --- & --- & $3$ & --- \\
 Discount factor $\gamma$ & $0.2$ & --- & --- & $0.9$ \\
-POMCP simulations per decision & $100$ & --- & --- & $100$ \\
-Confidence threshold $\tau$ & $0.8$ & --- & --- & --- \\
-Query evaluation cost & --- & --- & --- & $0$ \\
-Failure penalty & --- & --- & --- & $10$ \\
-Assumed response accuracy & --- & --- & --- & $1.0$ \\
-Oracle trial limit & $50$ actions & $50$ actions & $50$ actions & $50$ decisions \\
 KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.845165$ & --- & --- \\
 \bottomrule
 \end{tabular*}
-\par\smallskip
-\begin{minipage}{\textwidth}
-\footnotesize A dash denotes a setting that does not apply to the listed method or query evaluator. Oracle settings are shown unless the row specifies physical VLM execution. POMCP-Q counts both queries and physical actions toward its decision limit. Common planner settings appear in Table~\ref{tab:app_planner_params}.
-\end{minipage}
-\end{table*}
-
-\begin{table*}[!htbp]
-\centering
-\caption{Baseline parameters for TomatoHarvesting.}
-\label{tab:app_baseline_params_tomato}
-\small
-\setlength{\tabcolsep}{5pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
-\toprule
-Parameter & Ours & KnowNo & IntroPlan & POMCP-Q \\
-\midrule
-Action generation/scoring model & --- & GPT-4o & GPT-4o & --- \\
-Calibration threshold $\hat{q}$ (oracle) & --- & $0.8404$ & $0.985552$ & --- \\
-Action generation temperature (oracle) & --- & NR & $0.3$ & --- \\
-Candidate score temperature & --- & $5.0$ & $5.0$ & --- \\
-Retrieved examples & --- & --- & $3$ & --- \\
-Discount factor $\gamma$ & $0.2$ & --- & --- & $0.5$ \\
-POMCP simulations per decision & $100$ & --- & --- & $100$ \\
-Confidence threshold $\tau$ & $0.8$ & --- & --- & --- \\
-Query evaluation cost & --- & --- & --- & $0$ \\
-Failure penalty & --- & --- & --- & $10$ \\
-Assumed response accuracy & --- & --- & --- & $1.0$ \\
-Oracle trial limit & $50$ actions & $50$ actions & $50$ actions & $50$ decisions \\
-KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.901119$ & --- & --- \\
-\bottomrule
-\end{tabular*}
-\par\smallskip
-\begin{minipage}{\textwidth}
-\footnotesize A dash denotes a setting that does not apply to the listed method or query evaluator. Oracle settings are shown unless the row specifies physical VLM execution. POMCP-Q counts both queries and physical actions toward its decision limit. Common planner settings appear in Table~\ref{tab:app_planner_params}. NR denotes an action generation temperature not recorded in the oracle KnowNo batch.
-\end{minipage}
-\end{table*}
-
-\subsection{Ablation Configurations}~\label{appx:ablation_configs}
-We distinguish the criterion for entering a query episode, the rule for selecting each fact, and the criterion for ending the episode. These decisions follow the belief update from a physical observation and precede the next physical action.
-
-\noindent\textbf{Entry.} Fully-Random and W1 enter with probability $0.4$ per physical step. Ours, Q1, and Q2 enter when belief confidence is below $\tau=0.8$. W2 enters unless the conformal action prediction set contains exactly one concrete action; an empty set or a set containing the fallback option also triggers verification. W3 enters when the highest query-action value exceeds the highest applicable physical-action value.
-
-\noindent\textbf{Selection.} Fully-Random and Q1 sample uniformly from facts that distinguish the remaining state hypotheses. Ours and W1--W3 select the fact with the largest expected entropy reduction, recomputed after each response. Thus neither W2's conformal set nor W3's highest-valued query specifies the fact actually asked. Q2 instead selects the highest-valued query fact and recomputes query values after each response; it does not compare them with physical-action values to cancel a query.
-
-% The 396 valid archived W2 policy traces, not the current query_episode.py,
-% verify repeated CP decisions. W3 uses the 20261005_204332_446690 rerun;
-% Q2 uses the 20261005_190346_519071 batch. See asset/BRL_oracle_exp_v2/
-% 02_when_what_policy_ablation/00_raw/ and EXPERIMENT_SETTINGS.md.
-\noindent\textbf{Continuation and termination.} After entry, Fully-Random, W1, W3, Q1, Q2, and Ours continue until confidence reaches $\tau$ or no differentiating fact remains. W3 evaluates reward-based timing only on entry and has no one-question limit in the reported rerun. In contrast, the archived W2 batch used for the reported results reevaluates the conformal criterion after each fact response and stops when the set becomes a singleton concrete action or no differentiating fact remains. W2 can therefore stop below $\tau$; its continuation criterion differs from confidence-based verification. A failure to reduce the represented hypotheses also ends an episode in the policy runner.
-
-W2 uses calibration thresholds $0.8704$ for WasteSorting and $0.8404$ for TomatoHarvesting, with score temperature $5.0$. Four unparseable outputs count as failures in the success rate and contribute no successful-trial cost measurements. Both reward-based variants use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. They reuse the domain-specific discount factors of POMCP-Q, $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting, for both query evaluation and physical action planning. The query evaluator uses at least $100$ simulations and increases the budget to the number of root candidates plus one if necessary. The remaining configurations use $\gamma=0.2$. Consequently, comparisons with W3 and Q2 also change the discount factor, and the W2 comparison changes the continuation rule in addition to the entry criterion.
-
-\cp{Tables~\ref{tab:app_ablation_params_waste} and~\ref{tab:app_ablation_params_tomato} summarize the ablation parameters for each domain.}
-
-\begin{table*}[!htbp]
-\centering
-\caption{Ablation parameters for WasteSorting.}
-\label{tab:app_ablation_params_waste}
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
-\toprule
-Parameter & FR & W1 & W2 & W3 & Q1 & Q2 & Ours \\
-\midrule
-Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
-Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
-Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
-Configured threshold $\tau$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ \\
-Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.9$ & $0.2$ & $0.9$ & $0.2$ \\
-POMCP simulations & $100$ & $100$ & $100$ & $100$ & $100$ & $100$ & $100$ \\
-Calibration threshold $\hat{q}$ & --- & --- & $0.8704$ & --- & --- & --- & --- \\
-Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
-Query evaluation cost & --- & --- & --- & $0$ & --- & $0$ & --- \\
-Failure penalty & --- & --- & --- & $10$ & --- & $10$ & --- \\
-Assumed response accuracy & --- & --- & --- & $1.0$ & --- & $1.0$ & --- \\
-Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
-\bottomrule
-\end{tabular*}
-\par\smallskip
-\begin{minipage}{\textwidth}
-\footnotesize FR denotes Fully-Random, and CP denotes conformal prediction. Entropy denotes selection by expected entropy gain. A dash denotes a setting that does not apply to the listed query policy. W2 uses the conformal prediction set to initiate and continue verification. The other configurations use confidence to continue verification after a trigger. All configurations use oracle feedback, a limit of $50$ physical actions, and $200$ trials per domain. Common planner settings appear in Table~\ref{tab:app_planner_params}.
-\end{minipage}
-\end{table*}
-
-\begin{table*}[!htbp]
-\centering
-\caption{Ablation parameters for TomatoHarvesting.}
-\label{tab:app_ablation_params_tomato}
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
-\toprule
-Parameter & FR & W1 & W2 & W3 & Q1 & Q2 & Ours \\
-\midrule
-Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
-Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
-Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
-Configured threshold $\tau$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ & $0.8$ \\
-Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.5$ & $0.2$ & $0.5$ & $0.2$ \\
-POMCP simulations & $100$ & $100$ & $100$ & $100$ & $100$ & $100$ & $100$ \\
-Calibration threshold $\hat{q}$ & --- & --- & $0.8404$ & --- & --- & --- & --- \\
-Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
-Query evaluation cost & --- & --- & --- & $0$ & --- & $0$ & --- \\
-Failure penalty & --- & --- & --- & $10$ & --- & $10$ & --- \\
-Assumed response accuracy & --- & --- & --- & $1.0$ & --- & $1.0$ & --- \\
-Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
-\bottomrule
-\end{tabular*}
-\par\smallskip
-\begin{minipage}{\textwidth}
-\footnotesize FR denotes Fully-Random, and CP denotes conformal prediction. Entropy denotes selection by expected entropy gain. A dash denotes a setting that does not apply to the listed query policy. W2 uses the conformal prediction set to initiate and continue verification. The other configurations use confidence to continue verification after a trigger. All configurations use oracle feedback, a limit of $50$ physical actions, and $200$ trials per domain. Common planner settings appear in Table~\ref{tab:app_planner_params}.
-\end{minipage}
-\end{table*}
-
-\subsection{Oracle Reference Trials}~\label{appx:oracle_reference}
-We use the complete Ours batch from the policy ablation as a shared oracle reference for the baseline and ablation comparisons as well as the threshold analysis at $\tau=0.8$. This reference contains $200$ trials per domain and is reused across these comparisons. The other threshold points retain their original trial batches.
-
-% Parameter values below are verified against the current 02 domain YAML files.
-% Historical per-run YAML snapshots are not included in the raw bundles.
-\subsection{Domain Model Probabilities}~\label{appx:model_params}
-Table~\ref{tab:app_model_params} lists the parameters in the domain configuration files. Transition probabilities determine symbolic successor hypotheses. Observation sampling generates simulated sensor responses, and observation likelihoods weight the represented hypotheses. Detection sampling accuracy and likelihood accuracy are specified separately. Physical execution supplies real sensor observations to the belief update.
+\end{table}
 
 \begin{table}[!htbp]
 \centering
-\caption{Domain model parameters for transition and observation models.}
-\label{tab:app_model_params}
+\caption{Baseline parameters for Harvest.}
+\label{tab:app_baseline_params_tomato}
 \small
-\begin{tabular}{lll}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.0}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
 \toprule
-\textbf{Domain} & \textbf{Model component} & \textbf{Probability} \\
+Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
 \midrule
-WasteSorting & Detect observed transition & $0.90$ \\
-WasteSorting & Detect category transition & $0.50$ \\
-WasteSorting & Pick transition & $0.90$ \\
-WasteSorting & Place transition & $0.90$ \\
-WasteSorting & Detect observation likelihood & $0.97$ \\
-WasteSorting & Detect category observation & $0.85$ \\
-WasteSorting & Pick/place observation & $0.95$ \\
-WasteSorting & Detect sampling accuracy & $[0.94,1.00]$ \\
-WasteSorting & False-positive likelihood & $0.03$ \\
-\midrule
-TomatoHarvesting & Navigate transition & $0.99$ \\
-TomatoHarvesting & Detect transition & $0.95$ \\
-TomatoHarvesting & Pick transition & $0.95$ \\
-TomatoHarvesting & Scan transition & $0.90$ \\
-TomatoHarvesting & Place/discard transition & $0.99$ \\
-TomatoHarvesting & Detect observation likelihood & $0.90$ \\
-TomatoHarvesting & Detect classification observation & $0.95$ \\
-TomatoHarvesting & Scan observation & $0.85$ \\
-TomatoHarvesting & Detect sampling accuracy & $[0.85,0.95]$ \\
-TomatoHarvesting & False-positive probability & $0.03$ \\
-TomatoHarvesting & Navigate observation & $0.95$ \\
-TomatoHarvesting & Place observation & $1.00$ \\
+Calibration threshold $\hat{q}$ (oracle) & --- & $0.8404$ & $0.985552$ & --- \\
+Action generation temperature (oracle) & --- & NR & $0.3$ & --- \\
+Discount factor $\gamma$ & $0.2$ & --- & --- & $0.5$ \\
+KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.901119$ & --- & --- \\
 \bottomrule
-\end{tabular}
+\end{tabular*}
 \end{table}
 
-The WasteSorting category transition parameter $0.50$ creates competing category hypotheses after detection. Detection observation sampling uses the hidden object category, with uniform allocation of classification error across the other categories. Occluded objects and objects already held or placed in bins are excluded from simulated detection. In TomatoHarvesting, detection produces ripe or unripe labels, and rotten tomatoes share the ripe visual label. A subsequent scan distinguishes fresh from rotten tomatoes. The detect models combine individual object outcomes into a joint observation distribution. Detector confidence values do not directly scale the symbolic observation likelihood.
+\clearpage
+\subsection{Ablation Parameters}\label{appx:ablation_configs}
+Tables~\ref{tab:app_ablation_params_waste} and~\ref{tab:app_ablation_params_tomato} specify query timing and selection. FR denotes Fully-Random, CP denotes conformal prediction, and Entropy denotes expected entropy gain. All configurations use $100$ POMCP simulations per step and $\tau=0.8$. T3 and S2 use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$.
 
-\subsection{Randomization and Episode Seeds}~\label{appx:randomization}
-Each oracle trial records a pseudorandom seed. The runner uses the seed for Python \texttt{random}, NumPy sampling, initial arrangements, and randomized query decisions. Conditions within each oracle experiment share the seed assigned to the same domain, initial configuration, and repetition. Different policies can consume random numbers differently after different action choices. The shared Ours reference described in Appendix~\ref{appx:oracle_reference} retains its original seeds.
+\begin{table}[!htbp]
+\centering
+\caption{Ablation parameters for Sort.}
+\label{tab:app_ablation_params_waste}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.0}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
+\toprule
+Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
+\midrule
+Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.9$ & $0.2$ & $0.9$ & $0.2$ \\
+Calibration threshold $\hat{q}$ & --- & --- & $0.8704$ & --- & --- & --- & --- \\
+Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\bottomrule
+\end{tabular*}
+\end{table}
 
-\subsection{Uncertainty Estimates and Time Measures}~\label{appx:metric_details}
-Success rates use all attempted trials. Query counts, query probabilities, plan lengths, and time measures use successful trials and are reported as mean $\pm$ sample standard deviation. Query probability is the fraction of physical steps that initiate at least one query. Several questions within one query episode increase query count but contribute only one triggered step. Success bars show $95\%$ Wilson confidence intervals. Cost error bars show sample standard deviations. A dash or the asterisk identified in the figure caption denotes a single successful trial for which sample standard deviation is unavailable.
+\begin{table}[!htbp]
+\centering
+\caption{Ablation parameters for Harvest.}
+\label{tab:app_ablation_params_tomato}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.0}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
+\toprule
+Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
+\midrule
+Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.5$ & $0.2$ & $0.5$ & $0.2$ \\
+Calibration threshold $\hat{q}$ & --- & --- & $0.8404$ & --- & --- & --- & --- \\
+Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\bottomrule
+\end{tabular*}
+\end{table}
 
-Search time is the sum of directly recorded planning durations within a trial. The oracle plan-time comparison uses cumulative POMCP search time for Ours and POMCP-Q and cumulative candidate generation and scoring time for KnowNo and IntroPlan. Interaction time measures external requests and response processing and is reported for the physical experiments. Total time is the accumulated trial duration. Physical result tables and figures use the residual planning-time estimate
-\[
-t_{\mathrm{plan}}=t_{\mathrm{total}}-t_{\mathrm{interaction}}-t_{\mathrm{execution}}.
-\]
-This estimate includes overhead outside the separately recorded interaction and physical execution durations. Direct search time and residual planning time are distinct measurements.
+T2 starts and continues verification while the conformal prediction set contains multiple actions. T3 starts verification when the highest query value exceeds the highest physical action value. S2 selects the highest-value fact without comparing its value with physical actions. After a trigger, all configurations except T2 continue verification until confidence reaches $\tau$ or no differentiating fact remains. Four unparseable T2 outputs count as failures.
 
-\input{appendix/05_vlm_prompts.tex}
+\subsection{Trial Reuse and Reporting}\label{appx:oracle_reference}\label{appx:randomization}\label{appx:metric_details}
+The same $200$ \textbf{Ours} trials per domain are reused for the baseline, ablation, and threshold comparisons at $\tau=0.8$. Other thresholds use separate batches. Oracle conditions share seeds for each initial configuration and repetition, although policies can consume random numbers differently.
+
+Success uses all trials, and other trial-level metrics use successful-trial means and sample standard deviations. Planning time is cumulative recorded search time, including candidate generation and scoring for KnowNo and IntroPlan. Oracle total time equals planning time. Human interaction time per query pools interaction time and query count across successful and failed trials.

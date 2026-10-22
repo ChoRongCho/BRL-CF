@@ -12,6 +12,7 @@ import json
 import math
 import re
 import summarize_human as human_parser
+from domain_labels import DOMAIN_LABELS
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE, ABLATION, THRESHOLD = '01_BASELINE', '02_ABLATION', '03_THRESHOLD'
@@ -186,6 +187,7 @@ def export_table(path, rows):
     def cell(row, field):
         v = row.get(field, '')
         if v == '': return '--'
+        if field == 'domain': return escape(DOMAIN_LABELS.get(v, v))
         if field.endswith('_mean'):
             sd = row.get(field.removesuffix('_mean')+'_sd', '')
             return f'${float(v):.2f}' + (f' \\pm {float(sd):.2f}$' if sd != '' else '$')

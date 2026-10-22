@@ -4,6 +4,7 @@ import csv
 import json
 import math
 import os
+from domain_labels import DOMAIN_LABELS
 
 os.environ.setdefault('MPLCONFIGDIR', '/tmp/brl-paper-matplotlib')
 import matplotlib
@@ -53,7 +54,7 @@ def upper_limit(metric, rows):
         return 30
     if metric == 'steps':
         return 20
-    top = max(float(r['mean']) + float(r.get('sample_sd') or 0) for r in rows)
+    top = max(float(r['mean']) for r in rows)
     spacing = 20 if top > 100 else 10 if top > 40 else 5
     return max(spacing, spacing * math.ceil(top * 1.18 / spacing))
 
@@ -83,23 +84,11 @@ def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, 
     value_labels = []
     for i, row in enumerate(records):
         value = float(row['mean'])
-        if metric == 'success_rate':
-            error = None
-            top = value
-            suffix = ''
-        else:
-            sd = row.get('sample_sd')
-            error = float(sd) if sd not in ['', None] else None
-            top = value + (error or 0)
-            suffix = '*' if error is None and row.get('error_type') != 'not_reported' else ''
         x = positions[i]
         ax.bar(x, value, width=bar_width, color=colors[i], edgecolor='#333333',
                linewidth=.5, hatch=hatches[i], zorder=3)
-        if error is not None:
-            ax.errorbar(x, value, yerr=[[min(error, value)], [error]], fmt='none', ecolor='#333333',
-                        capsize=2 if compact else 3, linewidth=.8 if compact else 1, zorder=4)
         label_offset = 4
-        value_labels.append(ax.annotate(f'{value:.{decimals}f}{suffix}', (x, top), xytext=(0, label_offset),
+        value_labels.append(ax.annotate(f'{value:.{decimals}f}', (x, value), xytext=(0, label_offset),
                     textcoords='offset points', ha='center', fontsize=13 if compact or narrow else 9,
                     annotation_clip=False))
     ax.set_xticks(positions, labels)
@@ -166,7 +155,8 @@ def render_oracle(rows):
             rows = [lookup[domain, m, metric] for m in METHODS]
             filename = f'exp_oracle_{SLUGS[domain]}_{METRICS[metric][0]}.pdf'
             bars(filename, metric, rows, ['KnowNo', 'IntroPlan', 'POMCP-Q', 'Ours'],
-                 [COLORS[m] for m in METHODS], [HATCHES[m] for m in METHODS], ymax, narrow=True)
+                 [COLORS[m] for m in METHODS], [HATCHES[m] for m in METHODS], ymax,
+                 narrow=True, tick_rotation=0, figure_size=(3.8, 2.8))
 
 
 def render_physical(environments=('VLM', 'Human')):
@@ -180,7 +170,7 @@ def render_physical(environments=('VLM', 'Human')):
             filename = f'exp_{environment.lower()}_{METRICS[metric][0]}.pdf'
             bars(filename, metric, records, methods * 2,
                  [COLORS[m] for m in methods] * 2, [HATCHES[m] for m in methods] * 2,
-                 upper_limit(metric, records), groups=[(.1225, DOMAINS[0]), (.7725, DOMAINS[1])],
+                 upper_limit(metric, records), groups=[(.1225, DOMAIN_LABELS[DOMAINS[0]]), (.7725, DOMAIN_LABELS[DOMAINS[1]])],
                  compact=True)
 
 
@@ -232,12 +222,9 @@ def render_threshold(metrics=('success_rate', 'questions')):
             records = sorted([r for r in rows if r['domain'] == domain], key=lambda r: float(r['threshold']))
             x = [float(r['threshold']) for r in records]
             y = [float(r['success_percent'] if metric == 'success_rate' else r['questions_mean']) for r in records]
-            sd = None if metric == 'success_rate' else [float(r['questions_sd']) for r in records]
-            # Truncate displayed lower whiskers at zero without changing stored SDs.
-            error = None if sd is None else [[min(value, spread) for value, spread in zip(y, sd)], sd]
-            ax.errorbar(x, y, yerr=error, color=color, marker=marker, markersize=4,
-                        linestyle='-' if domain == DOMAINS[0] else '--', label=domain,
-                        capsize=2, elinewidth=.8, clip_on=False)
+            ax.plot(x, y, color=color, marker=marker, markersize=4,
+                    linestyle='-' if domain == DOMAINS[0] else '--', label=DOMAIN_LABELS[domain],
+                    clip_on=False)
         ax.axvline(.8, color='#777777', linestyle=':', linewidth=1)
         ax.set_xticks([i / 10 for i in range(11)])
         ax.set_xlabel('Confidence threshold')
@@ -258,7 +245,7 @@ def render_interaction_per_query_all():
     methods = ['KnowNo', 'Ours']
     bars(FILENAME, METRIC, records, methods * 2,
          [COLORS[m] for m in methods] * 2, [HATCHES[m] for m in methods] * 2,
-         upper_limit(METRIC, records), groups=[(.1225, DOMAINS[0]), (.7725, DOMAINS[1])], compact=True)
+         upper_limit(METRIC, records), groups=[(.1225, DOMAIN_LABELS[DOMAINS[0]]), (.7725, DOMAIN_LABELS[DOMAINS[1]])], compact=True)
 
 
 def main():
