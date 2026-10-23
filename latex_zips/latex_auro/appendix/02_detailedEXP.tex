@@ -22,90 +22,64 @@ Oracle transition sampling budget & $250$ & Physical trial action limit & $20$ \
 With $\gamma=0.2$ and $\epsilon=0.005$, the discount cutoff stops simulations at depth $4$. Oracle trials allow $50$ physical actions, except that POMCP-Q counts both queries and physical actions toward its $50$-decision limit.
 
 \subsection{Baseline Parameters}\label{appx:baseline_configs}
-Tables~\ref{tab:app_baseline_params_waste} and~\ref{tab:app_baseline_params_tomato} give domain-specific settings. KnowNo and IntroPlan use GPT-4o for action generation and scoring, with score temperature $5.0$. IntroPlan retrieves three examples. POMCP-Q uses $100$ simulations per decision, zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. A dash denotes an inapplicable setting, and NR denotes a value not recorded in the logs.
+Table~\ref{tab:app_baseline_params} gives domain-specific settings. KnowNo and IntroPlan use GPT-4o for action generation and scoring, with score temperature $5.0$. The calibration thresholds $\hat{q}$ for KnowNo and IntroPlan target $95\%$ prediction-set coverage. Under the exchangeability assumption, conformal prediction guarantees that the prediction set contains at least one correct action with probability at least $0.95$~\citep{ren2023robots}. IntroPlan retrieves three examples. POMCP-Q uses $100$ simulations per decision, zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. The discount factor $\gamma$ and other POMCP-Q settings are selected separately for each domain based on the highest task success rate among the evaluated configurations. A dash denotes an inapplicable setting.
 
 \begin{table}[!htbp]
 \centering
-\caption{Baseline parameters for Sort.}
-\label{tab:app_baseline_params_waste}
-\small
-\setlength{\tabcolsep}{5pt}
-\renewcommand{\arraystretch}{1.0}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\caption{Baseline parameters for Sort and Harvest.}
+\label{tab:app_baseline_params}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.05}
+\setlength{\extrarowheight}{0pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llcccc@{}}
 \toprule
-Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
+Domain & Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
 \midrule
-Calibration threshold $\hat{q}$ (oracle) & --- & $0.845165$ & $0.980493$ & --- \\
-Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
-Discount factor $\gamma$ & $0.2$ & --- & --- & $0.9$ \\
-KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.845165$ & --- & --- \\
-\bottomrule
-\end{tabular*}
-\end{table}
-
-\begin{table}[!htbp]
-\centering
-\caption{Baseline parameters for Harvest.}
-\label{tab:app_baseline_params_tomato}
-\small
-\setlength{\tabcolsep}{5pt}
-\renewcommand{\arraystretch}{1.0}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lcccc@{}}
-\toprule
-Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
-\midrule
-Calibration threshold $\hat{q}$ (oracle) & --- & $0.8404$ & $0.985552$ & --- \\
-Action generation temperature (oracle) & --- & NR & $0.3$ & --- \\
-Discount factor $\gamma$ & $0.2$ & --- & --- & $0.5$ \\
-KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.901119$ & --- & --- \\
+\multirow{4}{*}{Sort} & Calibration threshold $\hat{q}$ (oracle) & --- & $0.845165$ & $0.980493$ & --- \\
+ & Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
+ & Discount factor $\gamma$ & $0.2$ & --- & --- & $0.9$ \\
+ & KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.845165$ & --- & --- \\
+\addlinespace[3pt]
+\multirow{4}{*}{Harvest} & Calibration threshold $\hat{q}$ (oracle) & --- & $0.8404$ & $0.985552$ & --- \\
+ & Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
+ & Discount factor $\gamma$ & $0.2$ & --- & --- & $0.5$ \\
+ & KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.901119$ & --- & --- \\
 \bottomrule
 \end{tabular*}
 \end{table}
 
 \clearpage
 \subsection{Ablation Parameters}\label{appx:ablation_configs}
-Tables~\ref{tab:app_ablation_params_waste} and~\ref{tab:app_ablation_params_tomato} specify query timing and selection. FR denotes Fully-Random, CP denotes conformal prediction, and Entropy denotes expected entropy gain. All configurations use $100$ POMCP simulations per step and $\tau=0.8$. T3 and S2 use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$.
+Table~\ref{tab:app_ablation_params} specifies query timing and selection. FR denotes Fully-Random, CP denotes conformal prediction, and Entropy denotes expected entropy gain. All configurations use $100$ POMCP simulations per step and $\tau=0.8$. T3 and S2 use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$.
 
 \begin{table}[!htbp]
 \centering
-\caption{Ablation parameters for Sort.}
-\label{tab:app_ablation_params_waste}
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.0}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
+\caption{Ablation parameters for Sort and Harvest.}
+\label{tab:app_ablation_params}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.05}
+\setlength{\extrarowheight}{0pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llccccccc@{}}
 \toprule
-Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
+Domain & Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
 \midrule
-Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
-Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
-Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
-Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.9$ & $0.2$ & $0.9$ & $0.2$ \\
-Calibration threshold $\hat{q}$ & --- & --- & $0.8704$ & --- & --- & --- & --- \\
-Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
-Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
-\bottomrule
-\end{tabular*}
-\end{table}
-
-\begin{table}[!htbp]
-\centering
-\caption{Ablation parameters for Harvest.}
-\label{tab:app_ablation_params_tomato}
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.0}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lccccccc@{}}
-\toprule
-Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
-\midrule
-Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
-Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
-Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
-Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.5$ & $0.2$ & $0.5$ & $0.2$ \\
-Calibration threshold $\hat{q}$ & --- & --- & $0.8404$ & --- & --- & --- & --- \\
-Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
-Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\multirow{7}{*}{Sort} & Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+ & Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+ & Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+ & Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.9$ & $0.2$ & $0.9$ & $0.2$ \\
+ & Calibration threshold $\hat{q}$ & --- & --- & $0.8704$ & --- & --- & --- & --- \\
+ & Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+ & Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\addlinespace[3pt]
+\multirow{7}{*}{Harvest} & Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+ & Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+ & Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+ & Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.5$ & $0.2$ & $0.5$ & $0.2$ \\
+ & Calibration threshold $\hat{q}$ & --- & --- & $0.8404$ & --- & --- & --- & --- \\
+ & Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+ & Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
 \bottomrule
 \end{tabular*}
 \end{table}

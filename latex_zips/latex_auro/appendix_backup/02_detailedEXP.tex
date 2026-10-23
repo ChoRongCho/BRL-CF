@@ -3,7 +3,7 @@
 This appendix specifies the planner settings, query policies, domain models, and reporting conventions for Sec.~\ref{exp:setup}. The oracle experiments use simulated execution with correct responses. The VLM and human evaluations use physical robot execution. We aggregate trials within each domain for all reported comparisons.
 
 \subsection{Planner and Evaluation Parameters}~\label{appx:planner_params}
-Table~\ref{tab:app_planner_params} lists the default POMCP parameters for Ours. The oracle trial limit is $50$ physical actions, and the physical trial limit is $20$. Queries do not consume physical steps for Ours. Query-Action uses a limit of $50$ total decisions that includes queries and physical actions. \cp{Query-Action also counts queries toward the trial limit. Seven WasteSorting trials and $13$ TomatoHarvesting trials terminate at this limit.} The reward-based configurations use the discount factors specified below.
+Table~\ref{tab:app_planner_params} lists the default POMCP parameters for Ours. The oracle trial limit is $50$ physical actions, and the physical trial limit is $20$. Queries do not consume physical steps for Ours. Query-Action uses a limit of $50$ total decisions that includes queries and physical actions. \cp{Query-Action also counts queries toward the trial limit. Seven Sort trials and $13$ Harvest trials terminate at this limit.} The reward-based configurations use the discount factors specified below.
 
 \begin{table}[!htbp]
 \centering
@@ -37,13 +37,13 @@ Oracle trials per domain and condition & $200$ \\
 \subsection{Baseline Configurations}~\label{appx:baseline_configs}
 The oracle baseline comparison evaluates KnowNo, IntroPlan, and Query-Action against Ours. The physical experiments compare KnowNo and Ours. Appendix~\ref{appx:baseline_algorithms} provides separate procedures for the three baselines. KnowNo and IntroPlan use GPT-4o for action generation and candidate scoring. This planning model is separate from Gemma 4 31B IT, which provides external feedback in the VLM experiments.
 
-The \cp{recorded} action generation temperature is $0.3$, and the candidate score temperature is $5.0$. KnowNo uses calibration thresholds $\hat{q}=0.845165$ for WasteSorting and $\hat{q}=\cp{0.8404}$ for TomatoHarvesting in the oracle comparison. The physical VLM logs \cp{use $0.845165$ and $0.901119$ respectively}, except for one WasteSorting trial with $\hat{q}=0.8704$. \cp{The oracle TomatoHarvesting KnowNo batch does not record the generation temperature.} IntroPlan retrieves three examples and uses calibration thresholds $0.980493$ and $0.985552$ for the two domains in the same order. Query-Action uses the \cp{recorded domain-specific configuration}. The discount factor is $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting. Query cost is zero, the failure penalty is $10$, assumed response accuracy is $1.0$, and the planner uses $100$ simulations per decision.
+The \cp{recorded} action generation temperature is $0.3$, and the candidate score temperature is $5.0$. KnowNo uses calibration thresholds $\hat{q}=0.845165$ for Sort and $\hat{q}=\cp{0.8404}$ for Harvest in the oracle comparison. The physical VLM logs \cp{use $0.845165$ and $0.901119$ respectively}, except for one Sort trial with $\hat{q}=0.8704$. \cp{The oracle Harvest KnowNo batch does not record the generation temperature.} IntroPlan retrieves three examples and uses calibration thresholds $0.980493$ and $0.985552$ for the two domains in the same order. Query-Action uses the \cp{recorded domain-specific configuration}. The discount factor is $0.9$ for Sort and $0.5$ for Harvest. Query cost is zero, the failure penalty is $10$, assumed response accuracy is $1.0$, and the planner uses $100$ simulations per decision.
 
 \cp{Tables~\ref{tab:app_baseline_params_waste} and~\ref{tab:app_baseline_params_tomato} summarize the baseline parameters for each domain.}
 
 \begin{table*}[!htbp]
 \centering
-\caption{Baseline parameters for WasteSorting.}
+\caption{Baseline parameters for Sort.}
 \label{tab:app_baseline_params_waste}
 \small
 \setlength{\tabcolsep}{5pt}
@@ -75,7 +75,7 @@ KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.845165$ & --- & --- \\
 
 \begin{table*}[!htbp]
 \centering
-\caption{Baseline parameters for TomatoHarvesting.}
+\caption{Baseline parameters for Harvest.}
 \label{tab:app_baseline_params_tomato}
 \small
 \setlength{\tabcolsep}{5pt}
@@ -108,15 +108,15 @@ KnowNo calibration $\hat{q}$ (physical VLM) & --- & $0.901119$ & --- & --- \\
 \subsection{Ablation Configurations}~\label{appx:ablation_configs}
 Fully-Random uses random timing and random selection. W1, W2, and W3 use entropy gain selection with random, conformal prediction, and reward-based timing respectively. Q1 and Q2 use confidence timing with random and reward-based selection respectively. Random timing initiates a query episode with probability $0.4$ per physical step. Random selection samples uniformly from facts that distinguish the current state hypotheses. Confidence timing initiates verification if belief confidence falls below $\tau=0.8$. After a trigger, Fully-Random, W1, Q1, Q2, and Ours continue verification until confidence reaches $\tau$ or no differentiating fact remains.
 
-W2 initiates verification if the conformal action prediction set contains multiple candidates. The criterion is reevaluated after each response. The calibration thresholds are $0.8704$ for WasteSorting and $0.8404$ for TomatoHarvesting, with score temperature $5.0$. Four unparseable outputs count as failures in the success rate and contribute no successful-trial cost measurements.
+W2 initiates verification if the conformal action prediction set contains multiple candidates. The criterion is reevaluated after each response. The calibration thresholds are $0.8704$ for Sort and $0.8404$ for Harvest, with score temperature $5.0$. Four unparseable outputs count as failures in the success rate and contribute no successful-trial cost measurements.
 
-W3 evaluates the expected cumulative reward of query and physical actions. A query episode begins if the highest query value exceeds the highest physical action value. After the initial trigger, entropy gain selects questions and confidence determines whether verification continues. Q2 starts queries using confidence and selects the fact with the highest query value. Q2 does not compare that value with physical action values to cancel a query. Both reward-based variants use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. The discount factors are $0.9$ for WasteSorting and $0.5$ for TomatoHarvesting and apply to query evaluation and physical action planning. The query evaluator uses at least $100$ simulations and increases the budget to the number of root candidates plus one if necessary. The remaining configurations use $\gamma=0.2$.
+W3 evaluates the expected cumulative reward of query and physical actions. A query episode begins if the highest query value exceeds the highest physical action value. After the initial trigger, entropy gain selects questions and confidence determines whether verification continues. Q2 starts queries using confidence and selects the fact with the highest query value. Q2 does not compare that value with physical action values to cancel a query. Both reward-based variants use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. The discount factors are $0.9$ for Sort and $0.5$ for Harvest and apply to query evaluation and physical action planning. The query evaluator uses at least $100$ simulations and increases the budget to the number of root candidates plus one if necessary. The remaining configurations use $\gamma=0.2$.
 
 \cp{Tables~\ref{tab:app_ablation_params_waste} and~\ref{tab:app_ablation_params_tomato} summarize the ablation parameters for each domain.}
 
 \begin{table*}[!htbp]
 \centering
-\caption{Ablation parameters for WasteSorting.}
+\caption{Ablation parameters for Sort.}
 \label{tab:app_ablation_params_waste}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -147,7 +147,7 @@ Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ &
 
 \begin{table*}[!htbp]
 \centering
-\caption{Ablation parameters for TomatoHarvesting.}
+\caption{Ablation parameters for Harvest.}
 \label{tab:app_ablation_params_tomato}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -193,33 +193,33 @@ Table~\ref{tab:app_model_params} lists the parameters in the domain configuratio
 \toprule
 \textbf{Domain} & \textbf{Model component} & \textbf{Probability} \\
 \midrule
-WasteSorting & Detect observed transition & $0.90$ \\
-WasteSorting & Detect category transition & $0.50$ \\
-WasteSorting & Pick transition & $0.90$ \\
-WasteSorting & Place transition & $0.90$ \\
-WasteSorting & Detect observation likelihood & $0.97$ \\
-WasteSorting & Detect category observation & $0.85$ \\
-WasteSorting & Pick/place observation & $0.95$ \\
-WasteSorting & Detect sampling accuracy & $[0.94,1.00]$ \\
-WasteSorting & False-positive likelihood & $0.03$ \\
+Sort & Detect observed transition & $0.90$ \\
+Sort & Detect category transition & $0.50$ \\
+Sort & Pick transition & $0.90$ \\
+Sort & Place transition & $0.90$ \\
+Sort & Detect observation likelihood & $0.97$ \\
+Sort & Detect category observation & $0.85$ \\
+Sort & Pick/place observation & $0.95$ \\
+Sort & Detect sampling accuracy & $[0.94,1.00]$ \\
+Sort & False-positive likelihood & $0.03$ \\
 \midrule
-TomatoHarvesting & Navigate transition & $0.99$ \\
-TomatoHarvesting & Detect transition & $0.95$ \\
-TomatoHarvesting & Pick transition & $0.95$ \\
-TomatoHarvesting & Scan transition & $0.90$ \\
-TomatoHarvesting & Place/discard transition & $0.99$ \\
-TomatoHarvesting & Detect observation likelihood & $0.90$ \\
-TomatoHarvesting & Detect classification observation & $0.95$ \\
-TomatoHarvesting & Scan observation & $0.85$ \\
-TomatoHarvesting & Detect sampling accuracy & $[0.85,0.95]$ \\
-TomatoHarvesting & False-positive probability & $0.03$ \\
-TomatoHarvesting & Navigate observation & $0.95$ \\
-TomatoHarvesting & Place observation & $1.00$ \\
+Harvest & Navigate transition & $0.99$ \\
+Harvest & Detect transition & $0.95$ \\
+Harvest & Pick transition & $0.95$ \\
+Harvest & Scan transition & $0.90$ \\
+Harvest & Place/discard transition & $0.99$ \\
+Harvest & Detect observation likelihood & $0.90$ \\
+Harvest & Detect classification observation & $0.95$ \\
+Harvest & Scan observation & $0.85$ \\
+Harvest & Detect sampling accuracy & $[0.85,0.95]$ \\
+Harvest & False-positive probability & $0.03$ \\
+Harvest & Navigate observation & $0.95$ \\
+Harvest & Place observation & $1.00$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The WasteSorting category transition parameter $0.50$ creates competing category hypotheses after detection. Detection observation sampling uses the hidden object category, with uniform allocation of classification error across the other categories. Occluded objects and objects already held or placed in bins are excluded from simulated detection. In TomatoHarvesting, detection produces ripe or unripe labels, and rotten tomatoes share the ripe visual label. A subsequent scan distinguishes fresh from rotten tomatoes. The detect models combine individual object outcomes into a joint observation distribution. Detector confidence values do not directly scale the symbolic observation likelihood.
+The Sort category transition parameter $0.50$ creates competing category hypotheses after detection. Detection observation sampling uses the hidden object category, with uniform allocation of classification error across the other categories. Occluded objects and objects already held or placed in bins are excluded from simulated detection. In Harvest, detection produces ripe or unripe labels, and rotten tomatoes share the ripe visual label. A subsequent scan distinguishes fresh from rotten tomatoes. The detect models combine individual object outcomes into a joint observation distribution. Detector confidence values do not directly scale the symbolic observation likelihood.
 
 \subsection{Randomization and Episode Seeds}~\label{appx:randomization}
 Each oracle trial records a pseudorandom seed. The runner uses the seed for Python \texttt{random}, NumPy sampling, initial arrangements, and randomized query decisions. Conditions within each oracle experiment share the seed assigned to the same domain, initial configuration, and repetition. Different policies can consume random numbers differently after different action choices. The shared Ours reference described in Appendix~\ref{appx:oracle_reference} retains its original seeds.
