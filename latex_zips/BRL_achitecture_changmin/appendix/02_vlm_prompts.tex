@@ -1,0 +1,36 @@
+\newtcolorbox{vlmpromptbox}[1]{
+    enhanced,
+    breakable,
+    sharp corners,
+    colback=white,
+    colframe=black,
+    colbacktitle=gray!10,
+    coltitle=black,
+    fonttitle=\bfseries,
+    fontupper=\small,
+    boxrule=0.4pt,
+    left=3mm,
+    right=3mm,
+    top=2mm,
+    bottom=2mm,
+    before skip=10pt,
+    after skip=10pt,
+    title={#1},
+    title after break={}
+}
+
+\section{VLM Prompts}\label{appx:vlm_prompts}
+
+Both domains use \texttt{nvidia/Gemma-4-31B-IT-NVFP4} with a sampling temperature of $0.3$. Each request includes two current RGB camera images, the current robot action, and the domain action model. Ours supplies a Korean state-verification question and criteria for the queried predicate. KnowNo supplies candidate actions, response tokens, and criteria for action selection. Harvest also supplies fixed object identifiers and stem assignments. The boxes summarize the prompt instructions in English; supplementary configuration files preserve the original English and Korean text.
+
+\begin{vlmpromptbox}{Shared Request Instructions}
+State verification requires Yes or No on the first line and a concise reason on the second. The client converts the answer to a Boolean value for the belief update. Action selection requires a candidate token followed by a concise Korean reason. The VLM checks object identity, robot state, and action preconditions from the images. Attempted actions do not establish successful execution or satisfied preconditions. If no candidate meets the execution conditions, the VLM selects the option for manual action entry. The client checks that the returned token belongs to the candidate set.
+\end{vlmpromptbox}
+
+\begin{vlmpromptbox}{Sort Domain Instructions}
+The VLM identifies the queried object by its number and checks visibility, material, and shape. Occlusion does not establish absence, and color or a candidate bin name alone does not establish category. Gripper and bin contents provide evidence for holding and placement facts. Detection must precede picking, including for newly exposed objects. Picking requires an empty gripper; placement requires holding the object and matching its category to the bin. Visible objects and bounding boxes do not establish completed detection. Completion requires an empty worktable, correctly sorted objects, and an empty gripper.
+\end{vlmpromptbox}
+
+\begin{vlmpromptbox}{Harvest Domain Instructions}
+The VLM uses fixed tomato identifiers and ArUco markers to determine location. Dominant red or green color determines ripeness. A large beige rotten area indicates rot; minor scratches, reflections, and discoloration do not. The VLM inspects the held tomato using both camera views and checks gripper and basket contents directly. Navigation and detection require an empty gripper. Picking requires completed detection and a ripe tomato at the current stem. Scanning follows picking and determines whether the tomato should be placed or discarded. Visible tomatoes and attempted actions do not establish completed detection or scanning. Completion requires no remaining ripe tomatoes to process and an empty gripper.
+\end{vlmpromptbox}

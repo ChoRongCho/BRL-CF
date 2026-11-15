@@ -26,7 +26,7 @@ We observe that a symbolic action usually changes only part of the state. Based 
 $\mathcal{F}_{t+1} = \mathrm{Frontier}(s_t^{K},a_t) = \{s_{t+1}^{1},\ldots,s_{t+1}^{j}\}.$
 For example, an action to pick a tomato can change which object the robot holds but preserves the robot location. Uncertain outcomes within the frontier are mutually exclusive, and no two successor states are identical. We restrict particle sampling to this frontier instead of the entire symbolic state space.
 
-We construct the weighted belief over the $j$ sampled frontier states with normalized weights $w_k$.
+We construct the weighted belief over the $j$ frontier states with normalized weights $w_k$.
 $\mathcal{B}_{t+1}=\{(s_{t+1}^{k},w_k)\}_{k=1}^{j}$, with $\sum_{k=1}^{j}w_k=1.$
 Specifically, we compute these weights by normalizing the product of the transition probability from $s_t^{K}$ and the observation likelihood.
 \begin{equation}
@@ -127,9 +127,9 @@ Eq.~\eqref{eq:select_hypo} selects the fact $q^*$ that maximizes expected entrop
 \end{cases}
 \label{eq:filter}
 \end{equation}
-The retained weights are renormalized, confidence is recomputed, and another fact is selected if confidence remains below $\tau$. The loop ends if the threshold is met or no differentiating fact remains. The robot then commits the maximum a posteriori state
+The robot renormalizes the retained weights, recomputes confidence, and selects another fact if confidence remains below $\tau$. The verification loop ends if confidence reaches $\tau$ or no differentiating fact remains. The robot then commits the maximum a posteriori state
 $s_{t+1}^{K} = \arg\max_{s^k\in\mathcal{B}_{t+1}}w_k$
-for subsequent symbolic planning.
+for subsequent symbolic planning. \cp{We construct the next frontier from the committed knowledge state and the next action, without propagating the full preceding belief.}
 
 Alg.~\ref{alg:online_planning} explains the overall online planning and querying procedure. The robot first initializes the belief, step counter, and action sequence (line~\ref{alg1_planning:initialize}). Execution continues while $t<T_{\max}$ and the goal condition is not satisfied, $\mathcal{G}\nsubseteq s_t^{K}$ (line~\ref{alg1_planning:termination}). At each step, POMCP selects an action (line~\ref{alg1_planning:search}), and execution stops if no action is available (line~\ref{alg1_planning:dead_end}). Otherwise, the robot executes the action  (lines~\ref{alg1_planning:execute} and~\ref{alg1_planning:record}), then constructs the weighted frontier belief and computes confidence (lines~\ref{alg1_planning:belief_update} and~\ref{alg1_planning:compute_conf}). If confidence falls below $\tau$, the robot selects a candidate fact (line~\ref{alg1_planning:select_hypo}). If no candidate remains, the query loop ends (line~\ref{alg1_planning:no_candidate}). Otherwise, the robot obtains an external response and filters the belief (lines~\ref{alg1_planning:query} and~\ref{alg1_planning:filter}), then recomputes confidence (line~\ref{alg1_planning:recompute_conf}). After the query loop, the most probable remaining state becomes the next symbolic planning state (line~\ref{alg1_planning:commit}).
 

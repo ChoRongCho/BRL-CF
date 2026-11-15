@@ -2,6 +2,8 @@
 
 단독 그림은 figures 루트에 두고, 같은 figure의 subplot만 같은 폴더에 둔다. 파일명은 유지하고 TeX에서 폴더 경로를 명시한다.
 
+2026-10-23의 20회 제한 수정본은 `04_ORACLE_BASELINE_STEP20`(8개), `08_ABLATION_STEP20`(4개), `09_THRESHOLD_STEP20`(2개)을 사용한다. 원래 접미사 없는 세 폴더는 기존 `05_exp_system.tex`용 원본으로 보존한다. 수정본 그림과 수치는 `python3 scripts/update_step20_results.py`로 함께 갱신하며, 수치 manifest는 `asset/BRL_EXP/05_STEP20/figure_manifest.json`에 있다.
+
 단독 그림: `fig_pomdp_preliminaries.pdf`, `fig2_method.pdf`, `fig3_implementation.pdf`, `exp_human_ui.pdf`. 원본 사진도 루트에 보관한다.
 
 | 폴더 | 구성 |

@@ -1,5 +1,7 @@
 \section{Experiments}~\label{experiment}
-We evaluate our method in simulation and on physical robots. The evaluation covers waste sorting (\textit{Sort}) and tomato harvesting (\textit{Harvest}). We first compare the complete query policies in simulation with oracle responses. We then evaluate physical robot execution with responses from a VLM and human participants. Ablation experiments examine the contributions of query timing and query selection. A threshold sweep examines the balance between task success and query count. The oracle experiments include $200$ trials per domain and condition. The VLM experiments include $40$ trials per domain and method. The planned human evaluation is designed for five participants with $10$ trials per domain and method for a total of $40$ trials.
+We evaluate our method in waste sorting (\textit{Sort}) and tomato harvesting (\textit{Harvest}) through a baseline comparison, an ablation study, and a confidence-threshold sweep. The baseline comparison evaluates complete planning systems that query an external agent. Oracle simulations compare Ours with KnowNo, IntroPlan, and POMCP-Q. Physical robot experiments compare Ours with KnowNo using VLM and human feedback to examine whether the performance trends persist across feedback sources. The ablation study examines the contributions of query timing and query selection in simulation. The threshold sweep examines the trade-off between task success and query count.
+
+The oracle experiments include $200$ trials per domain and condition. The VLM experiments include $40$ trials per domain and method. The human evaluation involves five participants, with $10$ trials per domain and method and $40$ trials in total.
 
 \begin{figure}[t]
     \centering
@@ -20,7 +22,7 @@ We evaluate our method in simulation and on physical robots. The evaluation cove
 
 
 \subsection{Experimental Setup}~\label{exp:setup}
-The oracle experiments use simulated task execution and exact external responses. The VLM and human experiments use physical robots in laboratory environments. Fig.~\ref{fig:env_setting} shows the physical setups. Sort uses a fixed UR5e robot arm. Harvest uses a Summit mobile platform equipped with a UR5e robot arm. The mobile platform uses an RGB-D camera for perception and LiDAR for localization. Sort uses SAM3 for object detection~\citep{carion2025sam3segmentconcepts}. Harvest uses YOLOv12 for object detection~\citep{tian2025yolov12}.
+The oracle experiments use simulated task execution and exact answer. The VLM and human experiments use physical robots in laboratory environments. Fig.~\ref{fig:env_setting} shows the physical setups. Sort uses a fixed UR5e robot arm. Harvest uses a Summit mobile platform equipped with a UR5e robot arm. The mobile platform uses an RGB-D camera for perception and LiDAR for localization. Sort uses SAM3 for object detection~\citep{carion2025sam3segmentconcepts}. Harvest uses YOLOv12 for object detection~\citep{tian2025yolov12}.
 
 
 % \subsubsection{Task Domains}~\label{exp:setup_domains}
@@ -35,7 +37,7 @@ We evaluate two domains with different sources of uncertainty (Fig.~\ref{fig:env
 
 
 \subsubsection{Implementation Details}~\label{exp:details}
-Our POMCP planner uses $100$ simulations per planning step with a maximum simulation depth of $20$. The discount factor is $\gamma=0.2$ and the UCB exploration constant is $c=1.0$. The default confidence threshold is $\tau=0.8$. We use Gemma 4 31B IT with NVFP4 quantization~\citep{gemmateam2026gemma4} as the external expert in the VLM experiments. Appendix~\ref{appx:settings} provides the baseline configurations and additional experimental details.
+Our POMCP planner uses $100$ simulations per planning step with a maximum simulation depth of $20$. The discount factor is $\gamma=0.2$ and the UCB exploration constant is $c=1.0$. The default confidence threshold is $\tau=0.8$. We use Gemma 4 31B IT with NVFP4 quantization~\citep{gemmateam2026gemma4} as the external agent in the VLM experiments. Appendix~\ref{appx:settings} provides the baseline configurations and additional experimental details.
 
 \subsubsection{Evaluation Metrics}~\label{exp:metrics}
-Success rate is the fraction of all trials that achieve the task goal within the trial limit. Query count is the number of external requests per trial. Query probability is the fraction of physical steps that trigger at least one query. Plan length is the number of physical actions executed per trial. Search time is the cumulative time spent on plan search per trial. Interaction time is the cumulative time spent on external requests and response processing per trial. We report interaction time only for the VLM and human experiments.
+Success rate is the fraction of all trials that achieve the task goal within the trial limit. In the oracle experiments, we allow at most $20$ physical actions per trial. For POMCP-Q, we also allow at most $30$ queries per trial. Query count is the number of query per trial. Query probability is the fraction of physical steps that trigger at least one query. Plan length is the number of physical actions executed per trial. Planning time is the cumulative time spent on plan search per trial. Interaction time is the cumulative time spent on query and response per trial. We report interaction time only for the VLM and human experiments. For all metrics other than success rate, we report the mean and sample standard deviation across successful trials.

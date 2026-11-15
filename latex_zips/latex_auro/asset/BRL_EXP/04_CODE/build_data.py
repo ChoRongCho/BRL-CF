@@ -213,7 +213,7 @@ def main():
                 {'knowno', 'introplan', 'query_action_pomcp_selected'}) or r['environment']=='VLM'] + shared + current_human
     ablation = [r for r in parsed if r['batch']=='policy_when_what' or
                 (r['batch']=='random_when_what' and r['condition']!='ours')]
-    threshold = [r for r in parsed if r['batch']=='threshold_sweep' and float(r['threshold']) != .8] + shared
+    threshold = [r for r in parsed if r['batch']=='threshold_sweep']
     assert len(baseline)==1760+len(current_human) and len(ablation)==2800 and len(threshold)==4400
     validation = dict(source_files_verified=len(files), source_runs_verified=len(parsed),
                       human_participants=sorted({r['participant'] for r in current_human}),
@@ -264,18 +264,29 @@ def main():
                 assert math.isclose(float(old[key]),float(new[key]),abs_tol=1e-8), (old,key,new)
         comparisons.append(dict(domain=old['domain'],method=old['method'],metric=old['metric'],matches=True))
     validation['oracle_paper_metrics_matched'] = len(comparisons)
-    # Compare all original ablation/threshold plotted values to rebuilt data.
+    # Preserve the ablation reference; threshold uses the complete original sweep.
     for filename, current, keys, values in [
         ('ablation_unified_by_domain.csv', read(ROOT/ABLATION/'02_graph_data/ablation_unified_by_domain.csv'),
          ['domain','condition'], ['success_percent_errors_as_failure','questions_success_only_mean','questions_success_only_sd']),
         ('manuscript_threshold_by_domain.csv', read(ROOT/THRESHOLD/'02_graph_data/manuscript_threshold_by_domain.csv'),
          ['domain','threshold'], ['success_percent','questions_mean','questions_sd'])]:
-        original = {tuple(r[k] for k in keys):r for r in read(snapshot.parent/filename)}
+        if filename == 'manuscript_threshold_by_domain.csv':
+            original = {
+                (DOMAIN[r['domain']], r['condition']): dict(
+                    success_percent=r['success_percent_errors_as_failure'],
+                    questions_mean=r['questions_success_only_mean'],
+                    questions_sd=r['questions_success_only_sd'])
+                for r in read(ROOT/THRESHOLD/'00_raw/source_inputs/threshold_sweep/summary.csv')
+                if r['scene'] == 'all' and r['domain'] in DOMAIN
+            }
+        else:
+            original = {tuple(r[k] for k in keys):r for r in read(snapshot.parent/filename)}
         for row in current:
             old = original[tuple(row[k] for k in keys)]
             for key in values:
                 assert math.isclose(float(row[key]),float(old[key]),abs_tol=1e-8), (filename,row,key,old[key])
-    validation['ablation_threshold_paper_metrics_matched'] = True
+    validation['ablation_paper_metrics_matched'] = True
+    validation['threshold_original_sweep_metrics_matched'] = True
     previous_vlm = {(r['domain'],r['method'],r['metric']):r for r in read(snapshot.parent/'vlm_human_statistics.csv')
                     if r['environment']=='VLM' and r['mode']=='success'}
     for row in base_stats:

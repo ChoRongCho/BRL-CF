@@ -2,6 +2,17 @@
 
 `latex_auro`에서 본문·그림·인용·실험 데이터를 편집하고 검증한다. 완료된 원고를 배포할 때만 패키지 폴더에 반영한다. 현재 디스크의 패키지 폴더 이름은 `../BRL_achitecture`이며, 대화에서 언급한 BRL_architecture에 해당한다.
 
+## 20회 제한 수정본 (2026-10-23)
+
+`main.tex`와 `main.pdf`는 물리 행동 20회까지, POMCP-Q 질문 30회까지 허용하는 Oracle 재판정 결과를 사용한다. 경계에서의 성공은 유지한다. Baseline·ablation·threshold의 성공률과 성공 시행 기준 비용 통계를 갱신했다.
+
+- 활성 실험 본문: `section/05_exp_setting_step20.tex`, `section/05_exp_system_step20.tex`.
+- 활성 파라미터 부록: `appendix/02_detailedEXP.tex`.
+- 활성 Oracle 그림: `figures/04_ORACLE_BASELINE_STEP20`, `08_ABLATION_STEP20`, `09_THRESHOLD_STEP20`.
+- 재계산 데이터와 검증 기록: `asset/BRL_EXP/05_STEP20/`.
+
+기존 `05_exp_setting.tex`, `05_exp_system.tex`, 파라미터 부록과 그림은 원본으로 보존했다. 기존 메인 문서와 PDF 백업은 `02_BRL_CODE/experiments_backups/20261023_manuscript_step20/`에 있다. 재생성은 이 폴더에서 `python3 scripts/update_step20_results.py` 실행 후 아래 빌드 명령을 따른다.
+
 ## 문서 및 인용 형식
 
 패키지의 형식에 맞춰 다음 설정을 사용한다.

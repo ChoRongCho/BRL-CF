@@ -1,5 +1,7 @@
 # AURO 논문 실험 데이터
 
+**현재 20회 제한 수정본은 `05_STEP20/`의 Oracle 통계와 그림을 사용한다.** Baseline·ablation·threshold를 같은 행동 제한으로 재판정했으며 POMCP-Q에만 별도 질의 제한 30회를 적용했다. 경계의 성공을 허용한다. `01_BASELINE`·`02_ABLATION`·`03_THRESHOLD`의 원본 로그와 기존 정규화 데이터는 보존한다. 새 성공 집합의 평균·표본 표준편차와 그림은 `../../scripts/update_step20_results.py`에서 함께 갱신한다. VLM·Human의 수치는 기존 데이터를 사용한다.
+
 `section/05_exp_setting.tex`와 `section/05_exp_system.tex`의 실험 순서에 맞춰 baseline, ablation, threshold를 최상위 분류로 사용한다. Oracle·VLM·Human은 baseline 내부의 응답 제공 조건이며, 정리 CSV의 `environment` 열로 구분한다. Oracle은 시뮬레이션, VLM·Human은 실제 로봇 실험이다.
 
 ## 폴더 구조
@@ -46,9 +48,9 @@ BRL_EXP/
 | Baseline / VLM | 기존 논문 그림에 사용한 최종 VLM 배치. 도메인·방법별 40회 | 160 |
 | Baseline / Human | `08_Delete_Me/00_real_human/human_summary.csv`와 일치하는 p001~p003의 새 시행. 도메인·방법별 6회 | 24 |
 | Ablation | Fully-Random, W1~W3, Q1~Q2, 공통 Ours. 도메인·조건별 200회 | 2,800 |
-| Threshold | 0.0~1.0, 0.1 간격. 도메인·threshold별 200회. 0.8은 공통 Ours로 교체 | 4,400 |
+| Threshold | 원본 threshold sweep 전체. 0.0~1.0, 0.1 간격. 도메인·threshold별 200회 | 4,400 |
 
-공통 Ours는 `02_ABLATION/00_raw/policy_when_what`의 400회 배치다. WasteSorting 200/200, TomatoHarvesting 196/200이며, 세 비교의 `raw_path`와 `raw_sha256`이 동일하다. 다른 Ours 배치를 합산하지 않는다. Threshold 원본 0.8 시행은 raw로 보존하고 분석에서는 제외한다.
+공통 Ours는 `02_ABLATION/00_raw/policy_when_what`의 400회 배치다. WasteSorting 200/200, TomatoHarvesting 196/200이며, baseline과 ablation의 `raw_path`와 `raw_sha256`이 동일하다. 다른 Ours 배치를 합산하지 않는다. Threshold는 0.8을 포함해 원본 sweep 전체를 사용한다. 현재 행동 20회 제한 수치는 `05_STEP20`에서 재계산한다.
 
 | 원본 condition | 논문 표기 | When | What |
 | --- | --- | --- | --- |

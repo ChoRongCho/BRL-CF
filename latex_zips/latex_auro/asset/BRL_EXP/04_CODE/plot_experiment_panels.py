@@ -70,7 +70,7 @@ def save_figure(fig, filename, metric, records):
     MANIFEST.append({'file': str(output.relative_to(ROOT)), 'axes': 1, 'metric': metric, 'records': records})
 
 
-def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, compact=False, narrow=False, decimals=2, tick_rotation=30, figure_size=None):
+def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, compact=False, narrow=False, decimals=2, tick_rotation=30, figure_size=None, group_fontsize=None):
     figsize = (3.25, 2.8) if compact else (6.2 if len(records) > 4 else 4.8, 2.75)
     if narrow:
         figsize = (3.25 if len(records) == 4 else 4.4, 2.8)
@@ -122,9 +122,10 @@ def bars(filename, metric, records, labels, colors, hatches, ymax, groups=None, 
     ax.yaxis.grid(True, color='#dddddd', linewidth=.6)
     ax.set_axisbelow(True)
     if groups:
+        group_size = group_fontsize if group_fontsize is not None else (13 if compact or narrow else 10)
         for position, label in groups:
             ax.text(position, -.26, label, transform=ax.get_xaxis_transform(),
-                    ha='center', va='top', fontsize=13 if compact or narrow else 10,
+                    ha='center', va='top', fontsize=group_size,
                     fontstretch='condensed' if compact or narrow else 'normal')
         fig.subplots_adjust(bottom=.30, left=.10 if compact or narrow else .16, right=.98, top=.90)
     else:
@@ -171,7 +172,7 @@ def render_physical(environments=('VLM', 'Human')):
             bars(filename, metric, records, methods * 2,
                  [COLORS[m] for m in methods] * 2, [HATCHES[m] for m in methods] * 2,
                  upper_limit(metric, records), groups=[(.1225, DOMAIN_LABELS[DOMAINS[0]]), (.7725, DOMAIN_LABELS[DOMAINS[1]])],
-                 compact=True)
+                 compact=True, group_fontsize=18)
 
 
 def render_response_comparison(metrics=('success_rate', 'questions')):
@@ -233,7 +234,7 @@ def render_threshold(metrics=('success_rate', 'questions')):
         ax.set_yticks(range(0, 101, 20) if metric == 'success_rate' else range(0, 21, 5))
         ax.grid(axis='y', color='#dddddd', linewidth=.6)
         ax.set_axisbelow(True)
-        ax.legend(frameon=False, fontsize=9, loc='lower right' if metric == 'success_rate' else 'upper left')
+        ax.legend(frameon=False, fontsize=9, loc='upper left')
         fig.subplots_adjust(bottom=.20, left=.16, right=.98, top=.96)
         filename = 'exp_threshold_success.pdf' if metric == 'success_rate' else 'exp_threshold_queries.pdf'
         save_figure(fig, filename, metric, rows)

@@ -1,0 +1,92 @@
+\section{Experimental Parameters}\label{appx:settings}
+\subsection{Shared Settings}\label{appx:planner_params}
+Table~\ref{tab:app_planner_params} lists the shared settings. Oracle trials use $200$ trials per domain and condition. Physical evaluations use $40$ VLM trials and $10$ human trials per method and domain.
+
+\begin{table}[!htbp]
+\centering
+\caption{Shared planner and evaluation parameters.}
+\label{tab:app_planner_params}
+\small
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lclc@{}}
+\toprule
+Parameter & Value & Parameter & Value \\
+\midrule
+POMCP simulations per step & $100$ & Maximum simulation depth & $20$ \\
+Default discount factor $\gamma$ & $0.2$ & UCB exploration constant $c$ & $1.0$ \\
+Confidence threshold $\tau$ & $0.8$ & Discount cutoff $\epsilon$ & $0.005$ \\
+Oracle frontier capacity & $8{,}000$ & Oracle search-node particle capacity & $8{,}000$ \\
+Oracle transition sampling budget & $250$ & Physical trial action limit & $20$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+With $\gamma=0.2$ and $\epsilon=0.005$, the discount cutoff stops simulations at depth $4$. Oracle trials allow $50$ physical actions, except that POMCP-Q counts both queries and physical actions toward its $50$-decision limit.
+
+\subsection{Baseline Parameters}\label{appx:baseline_configs}
+Table~\ref{tab:app_baseline_params} gives domain-specific settings. KnowNo and IntroPlan use GPT-4o with an action generation temperature of $0.3$ and a score temperature of $5.0$. The calibration thresholds $\hat{q}$ for KnowNo and IntroPlan target $95\%$ prediction-set coverage. Under the exchangeability assumption, conformal prediction guarantees that the prediction set contains at least one correct action with probability at least $0.95$~\citep{ren2023robots}. 
+
+POMCP-Q uses $100$ simulations per decision, zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$. The discount factor $\gamma$ and other POMCP-Q settings are selected separately for each domain based on the highest task success rate among the evaluated configurations. A dash denotes an inapplicable setting.
+
+\begin{table}[!htbp]
+\centering
+\caption{Baseline parameters for Sort and Harvest.}
+\label{tab:app_baseline_params}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.05}
+\setlength{\extrarowheight}{0pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llcccc@{}}
+\toprule
+Domain & Parameter & \textbf{Ours} & KnowNo & IntroPlan & POMCP-Q \\
+\midrule
+\multirow{3}{*}{Sort} & Calibration threshold $\hat{q}$ (oracle) & --- & $0.845165$ & $0.980493$ & --- \\
+ & Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
+ & Discount factor $\gamma$ & $0.2$ & --- & --- & $0.9$ \\
+\addlinespace[3pt]
+\multirow{3}{*}{Harvest} & Calibration threshold $\hat{q}$ (oracle) & --- & $0.901119$ & $0.985552$ & --- \\
+ & Action generation temperature (oracle) & --- & $0.3$ & $0.3$ & --- \\
+ & Discount factor $\gamma$ & $0.2$ & --- & --- & $0.5$ \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\clearpage
+\subsection{Ablation Parameters}\label{appx:ablation_configs}
+Table~\ref{tab:app_ablation_params} specifies query timing and selection. FR denotes Fully-Random, CP denotes conformal prediction, and Entropy denotes expected entropy gain. All configurations use $100$ POMCP simulations per step and $\tau=0.8$. T3 and S2 use zero query cost, a failure penalty of $10$, and assumed response accuracy $1.0$.
+
+\begin{table}[!htbp]
+\centering
+\caption{Ablation parameters for Sort and Harvest.}
+\label{tab:app_ablation_params}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.05}
+\setlength{\extrarowheight}{0pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}llccccccc@{}}
+\toprule
+Domain & Parameter & FR & T1 & T2 & T3 & S1 & S2 & \textbf{Ours} \\
+\midrule
+\multirow{7}{*}{Sort} & Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+ & Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+ & Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+ & Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.9$ & $0.2$ & $0.9$ & $0.2$ \\
+ & Calibration threshold $\hat{q}$ & --- & --- & $0.8704$ & --- & --- & --- & --- \\
+ & Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+ & Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\addlinespace[3pt]
+\multirow{7}{*}{Harvest} & Query timing & Random & Random & CP & Reward & Confidence & Confidence & Confidence \\
+ & Query selection & Random & Entropy & Entropy & Entropy & Random & Reward & Entropy \\
+ & Random trigger probability & $0.4$ & $0.4$ & --- & --- & --- & --- & --- \\
+ & Discount factor $\gamma$ & $0.2$ & $0.2$ & $0.2$ & $0.5$ & $0.2$ & $0.5$ & $0.2$ \\
+ & Calibration threshold $\hat{q}$ & --- & --- & $0.8404$ & --- & --- & --- & --- \\
+ & Candidate score temperature & --- & --- & $5.0$ & --- & --- & --- & --- \\
+ & Query evaluation simulations & --- & --- & --- & $\geq 100$ & --- & $\geq 100$ & --- \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+T2 starts and continues verification while the conformal prediction set contains multiple actions. T3 starts verification when the highest query value exceeds the highest physical action value. S2 selects the highest-value fact without comparing its value with physical actions. After a trigger, all configurations except T2 continue verification until confidence reaches $\tau$ or no differentiating fact remains. Four unparseable T2 outputs count as failures.
+
+\subsection{Trial Reuse and Reporting}\label{appx:oracle_reference}\label{appx:randomization}\label{appx:metric_details}
+The same $200$ \textbf{Ours} trials per domain are reused for the baseline, ablation, and threshold comparisons at $\tau=0.8$. Other thresholds use separate batches. Oracle conditions share seeds for each initial configuration and repetition, although policies can consume random numbers differently.
+
+Success uses all trials, and other trial-level metrics use successful-trial means and sample standard deviations. Planning time is cumulative recorded search time, including candidate generation and scoring for KnowNo and IntroPlan. Oracle total time equals planning time. Human interaction time per query pools interaction time and query count across successful and failed trials.
