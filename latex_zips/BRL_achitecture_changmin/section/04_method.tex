@@ -23,7 +23,6 @@
 \label{fig:planning_and_query}
 \end{figure*}
 
-
 \section{Method}~\label{method:method}
 We first describe the online planning and querying procedure, which uses state uncertainty to determine when and what to query. We then present the system implementation for robot execution.
 % \vspace{-25pt}
@@ -41,7 +40,7 @@ We use a knowledge state $s_t^{K}$ for symbolic planning. For online action sele
 
 
 \subsubsection{When to Query}~\label{method:when}\label{method:belief_rep}
-To determine when to query, we \cp{compute confidence from normalized belief entropy~\citep{qu2023stochastic}, which decreases as probability concentrates on a single state.} We observe that a symbolic action usually changes only part of the state. For example, an action to pick a tomato can change which object the robot holds but preserves the robot location. We therefore define the \textit{frontier} of reachable successor states as $\mathrm{Frontier}(s_t^{K},a_t)=\{s_{t+1}^{1},\ldots,s_{t+1}^{j}\}$, \cp{where $s_{t+1}^{k}\neq s_{t+1}^{\ell}$ for all $k\neq\ell$.} We restrict particle sampling to the frontier instead of the entire symbolic state space.
+To determine when to query, we \cp{compute confidence from normalized belief entropy~\citep{qu2023stochastic}, which decreases as probability concentrates on a single state.} We observe that a symbolic action usually changes only part of the state. For example, an action to pick a tomato can change which object the robot holds but preserves the robot location. We therefore define the \textit{frontier} of reachable successor states as $\mathrm{Frontier}(s_t^{K},a_t)=\{s_{t+1}^{1},\ldots,s_{t+1}^{j}\}$, where $s_{t+1}^{k}\neq s_{t+1}^{\ell}$ for all $k\neq\ell$. We restrict particle sampling to the frontier instead of the entire symbolic state space.
 
 As shown in Fig.~\ref{fig:planning_and_query}, we construct the weighted belief over the $j$ frontier states with normalized weights $w_k$.
 Here, $\mathcal{B}_{t+1}=\{(s_{t+1}^{k},w_k)\}_{k=1}^{j}$, with $\sum_{k=1}^{j}w_k=1.$
@@ -83,7 +82,7 @@ If belief confidence falls below $\tau$, the robot triggers a query and \cp{deci
 \caption{Planning and Querying}
 \label{alg:online_planning}
 \DontPrintSemicolon
-\textbf{Input}\quad initial state $s_0^{K}$, goal condition $\mathcal{G}$, confidence threshold $\tau$, step limit $T_{\max}$\;
+\textbf{Input}\quad init state $s_0^{K}$, goal $\mathcal{G}$, threshold $\tau$, step limit $T_{\max}$\;
 \textbf{Output}\quad executed action sequence $\pi$\;
 \BlankLine
 $\mathcal{B}\gets\{(s_0^{K},1)\}\qquad t\gets0\qquad \pi\gets()$\label{alg1_planning:initialize}\;
@@ -107,15 +106,15 @@ $\mathcal{B}\gets\{(s_0^{K},1)\}\qquad t\gets0\qquad \pi\gets()$\label{alg1_plan
         $c\gets\mathrm{Conf}(\mathcal{B})$\label{alg1_planning:recompute_conf}\hfill Eq.~\eqref{eq:compute_confidence}\;
     }
     $s_{t+1}^{K}\gets\arg\max_{s^k\in\mathcal{B}}w_k$\label{alg1_planning:commit}\;
-    \cp{$\mathcal{B}\gets\{(s_{t+1}^{K},1)\}$}\label{alg1_planning:reset_belief}\;
-    $t\gets t+1$\label{alg1_planning:advance}\;
+    $\mathcal{B}, t\gets\{(s_{t+1}^{K},1)\}, t+1$\label{alg1_planning:reset_belief}\;
+    % $t\gets t+1$\label{alg1_planning:advance}\;
 }
 \KwRet $\pi$\label{alg1_planning:return}\;
 \end{algorithm}
 
 
 
-Specifically, we define the query candidate set $\mathcal{Q}(\mathcal{B})$ by extracting atomic facts whose truth values differ across the remaining frontier states in the belief,
+Specifically, we define the candidate set $\mathcal{Q}(\mathcal{B})$ by extracting facts whose truth values differ across the remaining frontier states in the belief,
 $\mathcal{Q}(\mathcal{B}) = \bigcup_{(s,w)\in\mathcal{B}}s \setminus \bigcap_{(s,w)\in\mathcal{B}}s.$
 For each candidate fact $q\in\mathcal{Q}(\mathcal{B})$, we partition the belief according to whether $q$ holds in each state,
 $\mathcal{B}^{q+}=\{(s^k,w_k)\mid q\in s^k\}$, $\mathcal{B}^{q-}=\{(s^k,w_k)\mid q\notin s^k\}.$
@@ -139,10 +138,6 @@ After each response, we renormalize the remaining weights, recompute confidence,
 
 
 
-% The robot renormalizes the retained weights, recomputes confidence, and selects another fact if confidence remains below $\tau$. The verification loop ends if confidence reaches $\tau$ or no differentiating fact remains. The robot then commits the maximum a posteriori state (MAP)
-% $s_{t+1}^{K} = \arg\max_{s^k\in\mathcal{B}_{t+1}}w_k$
-% for subsequent symbolic planning. To limit the computational cost of belief updates, we construct the next frontier from the committed knowledge state and the next action.
-
 Alg.~\ref{alg:online_planning} explains the overall online planning and querying procedure. The robot first initializes the belief, step counter, and action sequence (line~\ref{alg1_planning:initialize}). Execution continues while $t<T_{\max}$ and the goal condition is not satisfied, $\mathcal{G}\nsubseteq s_t^{K}$ (line~\ref{alg1_planning:termination}). At each step, POMCP selects an action (line~\ref{alg1_planning:search}), and execution stops if no action is available (line~\ref{alg1_planning:dead_end}). Otherwise, the robot executes the action  (lines~\ref{alg1_planning:execute} and~\ref{alg1_planning:record}), then constructs the weighted frontier belief and computes confidence (lines~\ref{alg1_planning:belief_update} and~\ref{alg1_planning:compute_conf}). If confidence falls below $\tau$, the robot selects a candidate fact (line~\ref{alg1_planning:select_hypo}). If no candidate remains, the query loop ends (line~\ref{alg1_planning:no_candidate}). Otherwise, the robot queries an external agent, obtains an answer, and filters the belief (lines~\ref{alg1_planning:query} and~\ref{alg1_planning:filter}), then recomputes confidence (line~\ref{alg1_planning:recompute_conf}). After the query loop, the most probable remaining state becomes the next symbolic planning state (line~\ref{alg1_planning:commit}).
 
 \begin{figure*}[t]
@@ -165,4 +160,4 @@ We implement a modular framework to execute the proposed planning and querying m
 Each symbolic action invokes a robot skill. Actions such as $\texttt{navigate}(\text{robot},l_1,l_2)$ and $\texttt{pick}(\text{robot},\text{tomato}_1)$ specify task-level intentions, while an off-the-shelf motion planner such as MoveIt~\citep{chitta2012moveit} uses numeric fluents from the KB to generate low-level motion.
 
 \label{method:FM}
-The FM maps the selected predicate to a predefined question template and converts the response to a Boolean value. For example, the predicate $\mathrm{ripe}(t_1)$ is converted into the question ``Is tomato $t_1$ ripe?'' When interacting with human participants, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options. Participants answer the question based on the displayed information, and the planner updates its belief and selects the next robot action accordingly.
+The FM maps the selected fact to a predefined question template and converts the response to a Boolean value. For example, the fact $\mathrm{ripe}(t_1)$ is converted into the question ``Is tomato $t_1$ ripe?'' When interacting with human participants, the tablet UI displays the camera view, highlights the referenced object with a bounding box, and presents simple response options. Participants answer the question based on the displayed information, and the planner updates its belief and selects the next robot action accordingly.
